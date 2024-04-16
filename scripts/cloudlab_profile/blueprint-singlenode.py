@@ -160,8 +160,8 @@ for i in range(params.nodeCount):
     # Optional hardware type.
     if params.phystype != "":
         node.hardware_type = params.phystype
-        node.addService(pg.Install(url="http://example.org/sample.tar.gz", path="/local"))
-        node.addService(pg.Execute(shell="bash", command="/local"))
+        node.addService(pg.Install(url="https://github.com/docc-lab/blueprint-docc-mod/blob/main/scripts/cloudlab_profile/test.tar.gz", path="/local"))
+        node.addService(pg.Execute(shell="bash", command="/local/setup-dependency.sh"))
         pass
     # Optional Blockstore
     if params.tempFileSystemSize > 0 or params.tempFileSystemMax:
