@@ -24,6 +24,8 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/mongodb"
 	"github.com/blueprint-uservices/blueprint/plugins/rabbitmq"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
+	"github.com/blueprint-uservices/blueprint/plugins/opentelemetry"
+	"github.com/blueprint-uservices/blueprint/plugins/zipkin"
 )
 
 // A wiring spec that deploys each service into its own Docker container and uses http to communicate between services.
@@ -39,7 +41,12 @@ var Docker = cmdbuilder.SpecOption{
 func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	var containers []string
 	var allServices []string
+
+	// Define the trace collector, which will be used by all services
+	trace_collector := zipkin.Collector(spec, "zipkin")
+
 	applyDockerDefaults := func(serviceName, procName, ctrName string) {
+		opentelemetry.Instrument(spec, serviceName, trace_collector)
 		http.Deploy(spec, serviceName)
 		goproc.CreateProcess(spec, procName, serviceName)
 		linuxcontainer.CreateContainer(spec, ctrName, procName)
