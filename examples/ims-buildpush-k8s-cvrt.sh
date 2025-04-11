@@ -125,20 +125,22 @@ done
 for yaml_file in *.yaml; do
   echo "Processing $yaml_file..."
   
-  # Replace hostname fields with underscores
-  sed -i 's/hostname: \([a-zA-Z0-9_]*\)_\([a-zA-Z0-9_]*\)/hostname: \1-\2/g' "$yaml_file"
+  # Fix service names in metadata
+  sed -i 's/name: "\([a-zA-Z0-9]*\)_\([a-zA-Z0-9_]*\)"/name: "\1-\2"/g' "$yaml_file"
+  sed -i 's/name: \([a-zA-Z0-9]*\)_\([a-zA-Z0-9_]*\)/name: \1-\2/g' "$yaml_file"
   
-  # Do a second pass to catch any remaining hostnames with underscores
-  sed -i 's/hostname: "\([a-zA-Z0-9_]*\)_\([a-zA-Z0-9_]*\)"/hostname: "\1-\2"/g' "$yaml_file"
+  # Fix all hostname fields - multiple passes to catch nested underscores
+  sed -i 's/hostname: "\([^"]*\)_\([^"]*\)"/hostname: "\1-\2"/g' "$yaml_file"
+  sed -i 's/hostname: \([a-zA-Z0-9]*\)_\([a-zA-Z0-9_-]*\)/hostname: \1-\2/g' "$yaml_file"
+  
+  # Additional pass to catch any remaining cases with multiple underscores
+  sed -i 's/_/-/g' "$yaml_file"
   
   # Fix image references
   for original in "${!name_map[@]}"; do
     hyphen_version=${name_map[$original]}
     # Replace the image reference with the registry version
     sed -i "s|image: ${hyphen_version}|image: ${registry}/${hyphen_version}:${tag}|g" "$yaml_file"
-    
-    # Also replace any remaining underscore references in the file
-    sed -i "s|${original}|${hyphen_version}|g" "$yaml_file"
   done
 done
 
