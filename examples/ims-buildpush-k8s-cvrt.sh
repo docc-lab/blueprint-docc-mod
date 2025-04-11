@@ -9,13 +9,14 @@ tag="latest"
 usage() {
   echo "Usage: $0 [OPTIONS]"
   echo "Options:"
-  echo "  --registry=URL      Remote Docker registry URL (required)"
+  echo "  --registry=NAME     Docker registry organization/repository name (required)"
+  echo "                      (e.g., 'docclabgroup' for images like docclabgroup/service-name)"
   echo "  --tag=TAG           Tag for all images (default: latest)"
   echo ""
   echo "Note: This script assumes you have already logged in to your Docker registry."
-  echo "Please run 'docker login <your-registry>' before running this script if needed."
+  echo "Please run 'docker login' before running this script if needed."
   echo ""
-  echo "Example: $0 --registry=myregistry.com/repo --tag=v1.0"
+  echo "Example: $0 --registry=docclabgroup --tag=v1.0"
   exit 1
 }
 
@@ -44,17 +45,16 @@ if [ -z "$registry" ]; then
   usage
 fi
 
-# Trim trailing slash from registry if present
+# Remove trailing slash if present
 registry=${registry%/}
 
-
-# Step 1: Build, tag and push images
+# Step 2: Build, tag and push images
 echo "==== Building, tagging and pushing images ===="
 
-# Dynamically find container directories
+# Dynamically find container directories (directories that contain a Dockerfile)
 CONTAINERS=()
 for dir in */; do
-  dir=${dir%/} 
+  dir=${dir%/}  # Remove trailing slash
   if [ -f "$dir/Dockerfile" ]; then
     CONTAINERS+=("$dir")
     echo "Found container directory: $dir"
@@ -65,7 +65,6 @@ if [ ${#CONTAINERS[@]} -eq 0 ]; then
   echo "No container directories with Dockerfiles found! Exiting..."
   exit 1
 fi
-
 
 # Build and push each container
 for container in "${CONTAINERS[@]}"; do
@@ -90,10 +89,10 @@ for container in "${CONTAINERS[@]}"; do
   echo "  Done with $container"
 done
 
-# Step 2: Load environment variables and convert docker-compose to K8s manifests
-echo "==== Converting docker-compose to Kubernetes manifests ===="
+# Step 3: Prepare environment variables and convert docker-compose to K8s manifests
+echo "==== Preparing environment variables and converting docker-compose to Kubernetes manifests ===="
 
-# Check if need to copy environment variables from parent directory
+# First check if need to copy environment variables from parent directory
 if [ ! -f ".env" ] && [ -f "../.local.env" ]; then
   echo "Copying ../.local.env to ./.env..."
   cp "../.local.env" "./.env"
@@ -111,7 +110,7 @@ fi
 echo "Running kompose convert..."
 kompose convert
 
-# Step 3: Update image references in all Kubernetes manifest files
+# Step 4: Update image references in all Kubernetes manifest files
 echo "==== Updating image references in Kubernetes manifests ===="
 
 # First handle the deployment files
@@ -137,7 +136,7 @@ for service_file in *_*-service.yaml; do
     # New file name with hyphens instead of underscores
     new_name=$(echo "$service_file" | tr '_' '-')
     
-    # First fix the content (replace underscores with hyphens in the file content)
+    # Fix the content (replace underscores with hyphens in the file content)
     sed -i 's/_/-/g' "$service_file"
     
     # Then rename the file if needed
@@ -149,12 +148,12 @@ for service_file in *_*-service.yaml; do
 done
 
 echo "==== Process completed successfully ===="
-echo "Images built, tagged, and pushed to: $registry"
+echo "Images built, tagged, and pushed to: $registry organization"
 echo "Kubernetes manifests generated and updated"
 echo ""
 echo "You can now apply the Kubernetes manifests with:"
 echo "kubectl apply -f . --exclude=docker-compose.yml"
 echo ""
 echo "Or create a namespace first:"
-echo "kubectl create namespace sockshop"
-echo "kubectl apply -f . --namespace=<app-name> --exclude=docker-compose.yml"
+echo "kubectl create namespace <your-app-name>"
+echo "kubectl apply -f . --namespace=<your-app-name> --exclude=docker-compose.yml"
