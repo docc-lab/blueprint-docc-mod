@@ -48,7 +48,7 @@ fi
 # Remove trailing slash if present
 registry=${registry%/}
 
-# Step 2: Build, tag and push images
+# Step 1: Build, tag and push images
 echo "==== Building, tagging and pushing images ===="
 
 # Dynamically find container directories (directories that contain a Dockerfile)
@@ -89,7 +89,7 @@ for container in "${CONTAINERS[@]}"; do
   echo "  Done with $container"
 done
 
-# Step 3: Prepare environment variables and convert docker-compose to K8s manifests
+# Step 2: Prepare environment variables and convert docker-compose to K8s manifests
 echo "==== Preparing environment variables and converting docker-compose to Kubernetes manifests ===="
 
 # First check if need to copy environment variables from parent directory
@@ -110,36 +110,46 @@ fi
 echo "Running kompose convert..."
 kompose convert
 
-# Step 4: Update image references in all Kubernetes manifest files
-echo "==== Updating image references in Kubernetes manifests ===="
+# Step 3: Fix all references and naming conventions in Kubernetes manifests
+echo "==== Fixing naming conventions in Kubernetes manifests ===="
 
-# First handle the deployment files
+# Create a list of patterns to replace (underscores with hyphens)
+# Store both original name with underscore and hyphenated version
+declare -A name_map
 for container in "${CONTAINERS[@]}"; do
-  # Convert underscores to hyphens for file naming
   hyphen_name=$(echo $container | tr '_' '-')
-  deployment_file="${hyphen_name}-deployment.yaml"
+  name_map["$container"]="$hyphen_name"
+done
+
+# Update all YAML files to replace underscores with hyphens
+for yaml_file in *.yaml; do
+  echo "Processing $yaml_file..."
   
-  if [ -f "$deployment_file" ]; then
-    echo "Updating $deployment_file..."
+  # Replace hostname fields with underscores
+  sed -i 's/hostname: \([a-zA-Z0-9_]*\)_\([a-zA-Z0-9_]*\)/hostname: \1-\2/g' "$yaml_file"
+  
+  # Do a second pass to catch any remaining hostnames with underscores
+  sed -i 's/hostname: "\([a-zA-Z0-9_]*\)_\([a-zA-Z0-9_]*\)"/hostname: "\1-\2"/g' "$yaml_file"
+  
+  # Fix image references
+  for original in "${!name_map[@]}"; do
+    hyphen_version=${name_map[$original]}
+    # Replace the image reference with the registry version
+    sed -i "s|image: ${hyphen_version}|image: ${registry}/${hyphen_version}:${tag}|g" "$yaml_file"
     
-    # Replace image reference
-    sed -i "s|image: ${hyphen_name}|image: ${registry}/${hyphen_name}:${tag}|g" "$deployment_file"
-  else
-    echo "Warning: $deployment_file not found"
-  fi
+    # Also replace any remaining underscore references in the file
+    sed -i "s|${original}|${hyphen_version}|g" "$yaml_file"
+  done
 done
 
 # Fix service file names (replace underscores with hyphens)
-echo "==== Fixing service file names and contents ===="
+echo "==== Fixing service file names ===="
 for service_file in *_*-service.yaml; do
   if [ -f "$service_file" ]; then
     # New file name with hyphens instead of underscores
     new_name=$(echo "$service_file" | tr '_' '-')
     
-    # Fix the content (replace underscores with hyphens in the file content)
-    sed -i 's/_/-/g' "$service_file"
-    
-    # Then rename the file if needed
+    # Rename the file if needed
     if [ "$service_file" != "$new_name" ]; then
       mv "$service_file" "$new_name"
       echo "Renamed $service_file to $new_name"
@@ -152,8 +162,9 @@ echo "Images built, tagged, and pushed to: $registry organization"
 echo "Kubernetes manifests generated and updated"
 echo ""
 echo "You can now apply the Kubernetes manifests with:"
-echo "kubectl apply -f . --exclude=docker-compose.yml"
+echo "kubectl apply -f ."
 echo ""
 echo "Or create a namespace first:"
 echo "kubectl create namespace <your-app-name>"
 echo "kubectl apply -f . --namespace=<your-app-name> --exclude=docker-compose.yml"
+echo "==== END ===="
