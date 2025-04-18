@@ -1,4 +1,4 @@
-# To add OTel to existing app manually
+# To add OTel collector to existing app manually (after blueprint code generation)
 
 You need to follow steps below
 
