@@ -52,7 +52,8 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 		// Golang-level modifiers that add functionality
 		retries.AddRetries(spec, serviceName, 3)
 		clientpool.Create(spec, serviceName, 10)
-		opentelemetry.Instrument(spec, serviceName, trace_collector)
+		// opentelemetry.Instrument(spec, serviceName, trace_collector)
+		opentelemetry.Instrument(spec, serviceName)
 		if len(useHTTP) > 0 && useHTTP[0] {
 			http.Deploy(spec, serviceName)
 		} else {

@@ -7,6 +7,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/service"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/ir"
 	"github.com/blueprint-uservices/blueprint/plugins/golang"
+	"github.com/blueprint-uservices/blueprint/plugins/tracecoordinator"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow/workflowspec"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/jaeger"
 	"golang.org/x/exp/slog"
@@ -17,14 +18,15 @@ type JaegerCollectorClient struct {
 	golang.Node
 	service.ServiceNode
 	golang.Instantiable
-	ClientName string
-	ServerDial *address.DialConfig
+	ClientName  string
+	ServerDial  *address.DialConfig
+	Coordinator *tracecoordinator.TraceCoordinator
 
 	InstanceName string
 	Spec         *workflowspec.Service
 }
 
-func newJaegerCollectorClient(name string, addr *address.DialConfig) (*JaegerCollectorClient, error) {
+func newJaegerCollectorClient(name string, addr *address.DialConfig, coordinator *tracecoordinator.TraceCoordinator) (*JaegerCollectorClient, error) {
 	spec, err := workflowspec.GetService[jaeger.JaegerTracer]()
 	if err != nil {
 		return nil, err
@@ -34,6 +36,7 @@ func newJaegerCollectorClient(name string, addr *address.DialConfig) (*JaegerCol
 		InstanceName: name,
 		ClientName:   name,
 		ServerDial:   addr,
+		Coordinator:  coordinator,
 		Spec:         spec,
 	}
 	return node, nil
@@ -58,7 +61,8 @@ func (node *JaegerCollectorClient) AddInstantiation(builder golang.NamespaceBuil
 
 	slog.Info(fmt.Sprintf("Instantiating JaegerClient %v in %v/%v", node.InstanceName, builder.Info().Package.PackageName, builder.Info().FileName))
 
-	return builder.DeclareConstructor(node.InstanceName, node.Spec.Constructor.AsConstructor(), []ir.IRNode{node.ServerDial})
+	// Pass the coordinator along with the server dial config
+	return builder.DeclareConstructor(node.InstanceName, node.Spec.Constructor.AsConstructor(), []ir.IRNode{node.ServerDial, node.Coordinator})
 }
 
 // Implements service.ServiceNode

@@ -22,8 +22,6 @@ type OpenTelemetryClientWrapper struct {
 	outputPackage string
 	Wrapped       golang.Service
 	Collector     OpenTelemetryCollectorInterface
-	ServiceName   string
-	ServiceClient ir.IRNode
 }
 
 func newOpenTelemetryClientWrapper(name string, server golang.Service, collector OpenTelemetryCollectorInterface) (*OpenTelemetryClientWrapper, error) {
@@ -198,6 +196,13 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	ctx, span := tr.Start(ctx, "{{$f.Name}} start")
 	defer span.End()
 	
+	// Add agent info including IP address
+	span.SetAttributes(
+		attribute.String("tracing.agent.type", "opentelemetry"),
+		attribute.String("tracing.agent.version", "1.0.0"),
+		attribute.String("tracing.agent.ip", getLocalIP()),
+	)
+	
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, string(trace_ctx))
 	if err != nil {
@@ -206,4 +211,20 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	return
 }
 {{end}}
+
+// Helper function to get local IP address
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "unknown"
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "unknown"
+}
 `
