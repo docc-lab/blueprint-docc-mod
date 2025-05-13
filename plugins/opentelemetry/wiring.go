@@ -53,52 +53,70 @@
 package opentelemetry
 
 import (
-	"fmt"
-
+	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/pointer"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/ir"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/wiring"
+	"github.com/blueprint-uservices/blueprint/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/plugins/goproc"
+	"golang.org/x/exp/slog"
 )
 
-// CollectorInterface defines the interface that all collectors must implement
-type CollectorInterface interface {
-	ir.IRNode
-	GetEndpoint() string
-}
+// [Instrument] can be used by wiring specs to instrument `serviceName` with OpenTelemetry.  This can only be done if `serviceName` is a service declared in the wiring spec using [workflow.Define] and has not yet been deployed over the network using grpc, thrift, or http.
+//
+// This call will configure the generated clients on server and client side to use the exporter provided by the custom collector indicated by the `collectorName`.
+// The `collectorName` must already be declared in the wiring spec.
+func Instrument(spec wiring.WiringSpec, serviceName string, collectorName string) {
+	// The nodes that we are defining
+	clientWrapper := serviceName + ".client.ot"
+	serverWrapper := serviceName + ".server.ot"
 
-// Instrument adds OpenTelemetry instrumentation to a service.
-// It wraps both client and server sides with OpenTelemetry instrumentation.
-func Instrument(spec wiring.WiringSpec, serviceName string, collectorName string) string {
+	// Get the pointer metadata
+	ptr := pointer.GetPointer(spec, serviceName)
+	if ptr == nil {
+		slog.Error("Unable to instrument " + serviceName + " with OpenTelemetry as it is not a pointer")
+		return
+	}
+
+	// Add the client wrapper to the pointer src
+	clientNext := ptr.AddSrcModifier(spec, clientWrapper)
+
 	// Define the client wrapper
-	clientWrapper := fmt.Sprintf("%s.client.ot", serviceName)
-	spec.Define(clientWrapper, &OpenTelemetryClientWrapper{}, func(ns wiring.Namespace) (ir.IRNode, error) {
-		var service ir.IRNode
-		if err := ns.Get(serviceName, &service); err != nil {
+	spec.Define(clientWrapper, &OpenTelemetryClientWrapper{}, func(namespace wiring.Namespace) (ir.IRNode, error) {
+		var server golang.Service
+		err := namespace.Get(clientNext, &server)
+		if err != nil {
 			return nil, err
 		}
 
-		return &OpenTelemetryClientWrapper{
-			ServiceName:   serviceName,
-			ServiceClient: service,
-		}, nil
+		var collectorClient OpenTelemetryCollectorInterface
+		err = namespace.Get(collectorName, &collectorClient)
+		if err != nil {
+			return nil, err
+		}
+
+		return newOpenTelemetryClientWrapper(clientWrapper, server, collectorClient)
 	})
+
+	// Add the server wrapper to the pointer dst
+	serverNext := ptr.AddDstModifier(spec, serverWrapper)
 
 	// Define the server wrapper
-	serverWrapper := fmt.Sprintf("%s.server.ot", serviceName)
-	spec.Define(serverWrapper, &OpenTelemetryServerWrapper{}, func(ns wiring.Namespace) (ir.IRNode, error) {
-		var service ir.IRNode
-		if err := ns.Get(serviceName, &service); err != nil {
+	spec.Define(serverWrapper, &OpenTelemetryServerWrapper{}, func(namespace wiring.Namespace) (ir.IRNode, error) {
+		var wrapped golang.Service
+		err := namespace.Get(serverNext, &wrapped)
+		if err != nil {
 			return nil, err
 		}
 
-		return &OpenTelemetryServerWrapper{
-			ServiceName:   serviceName,
-			ServiceServer: service,
-		}, nil
+		var collectorClient OpenTelemetryCollectorInterface
+		err = namespace.Get(collectorName, &collectorClient)
+		if err != nil {
+			return nil, err
+		}
+
+		return newOpenTelemetryServerWrapper(serverWrapper, wrapped, collectorClient)
 	})
 
-	// Return the name of the instrumented service
-	return serviceName
 }
 
 // [Logger] can be used by wiring specs to install a process-level ot logger for process `processName` to be used in tandem with an OT Tracer. Replaces the existing logger installed for the process.
