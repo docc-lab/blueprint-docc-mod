@@ -68,7 +68,7 @@ type CollectorInterface interface {
 
 // Instrument adds OpenTelemetry instrumentation to a service.
 // It wraps both client and server sides with OpenTelemetry instrumentation.
-func Instrument(spec wiring.WiringSpec, serviceName string) string {
+func Instrument(spec wiring.WiringSpec, serviceName string, collectorName string) string {
 	// Define the client wrapper
 	clientWrapper := fmt.Sprintf("%s.client.ot", serviceName)
 	spec.Define(clientWrapper, &OpenTelemetryClientWrapper{}, func(ns wiring.Namespace) (ir.IRNode, error) {
