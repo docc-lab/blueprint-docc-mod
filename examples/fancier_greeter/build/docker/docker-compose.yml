@@ -1,0 +1,71 @@
+
+version: '3'
+services:
+
+  fancier_greeter_2_basic_greeter_ctr:
+    build:
+      context: fancier_greeter_2_basic_greeter_ctr
+      dockerfile: ./Dockerfile
+    hostname: fancier_greeter_2_basic_greeter_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${FANCIER_GREETER_2_BASIC_GREETER_GRPC_BIND_ADDR?fancier_greeter_2__basic_greeter.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - FANCIER_GREETER_2_BASIC_GREETER_GRPC_BIND_ADDR=0.0.0.0:12345
+     - ZIPKIN_DIAL_ADDR=zipkin_ctr:9411
+    restart: always
+
+  fancier_greeter_2_ctr:
+    build:
+      context: fancier_greeter_2_ctr
+      dockerfile: ./Dockerfile
+    hostname: fancier_greeter_2_ctr
+    expose:
+     - "2000"
+    ports:
+     - "${FANCIER_GREETER_2_HTTP_BIND_ADDR?fancier_greeter_2.http.bind_addr must be set by the calling environment}:2000"
+    environment:
+     - FANCIER_GREETER_2_BASIC_GREETER_GRPC_DIAL_ADDR=fancier_greeter_2_basic_greeter_ctr:12345
+     - FANCIER_GREETER_2_HTTP_BIND_ADDR=0.0.0.0:2000
+     - ZIPKIN_DIAL_ADDR=zipkin_ctr:9411
+    restart: always
+
+  fancier_greeter_basic_greeter_ctr:
+    build:
+      context: fancier_greeter_basic_greeter_ctr
+      dockerfile: ./Dockerfile
+    hostname: fancier_greeter_basic_greeter_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${FANCIER_GREETER_BASIC_GREETER_GRPC_BIND_ADDR?fancier_greeter__basic_greeter.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - FANCIER_GREETER_BASIC_GREETER_GRPC_BIND_ADDR=0.0.0.0:12345
+     - ZIPKIN_DIAL_ADDR=zipkin_ctr:9411
+    restart: always
+
+  fancier_greeter_ctr:
+    build:
+      context: fancier_greeter_ctr
+      dockerfile: ./Dockerfile
+    hostname: fancier_greeter_ctr
+    expose:
+     - "2000"
+    ports:
+     - "${FANCIER_GREETER_HTTP_BIND_ADDR?fancier_greeter.http.bind_addr must be set by the calling environment}:2000"
+    environment:
+     - FANCIER_GREETER_BASIC_GREETER_GRPC_DIAL_ADDR=fancier_greeter_basic_greeter_ctr:12345
+     - FANCIER_GREETER_HTTP_BIND_ADDR=0.0.0.0:2000
+     - ZIPKIN_DIAL_ADDR=zipkin_ctr:9411
+    restart: always
+
+  zipkin_ctr:
+    image: openzipkin/zipkin
+    hostname: zipkin_ctr
+    expose:
+     - "9411"
+    ports:
+     - "${ZIPKIN_BIND_ADDR?zipkin.bind_addr must be set by the calling environment}:9411"
+    restart: always
+

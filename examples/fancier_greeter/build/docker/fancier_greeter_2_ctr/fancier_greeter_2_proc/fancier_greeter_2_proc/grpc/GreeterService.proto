@@ -1,0 +1,28 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message GreeterService_OTServerWrapperInterface_SayGoodbye_Request {
+    string name = 1;
+    string traceCtx = 2;
+}
+
+message GreeterService_OTServerWrapperInterface_SayGoodbye_Response {
+    string ret0 = 1;
+}
+
+message GreeterService_OTServerWrapperInterface_SayHello_Request {
+    string name = 1;
+    string traceCtx = 2;
+}
+
+message GreeterService_OTServerWrapperInterface_SayHello_Response {
+    string ret0 = 1;
+}
+
+service GreeterService_OTServerWrapperInterface {
+    rpc SayGoodbye (GreeterService_OTServerWrapperInterface_SayGoodbye_Request) returns (GreeterService_OTServerWrapperInterface_SayGoodbye_Response) {}
+    rpc SayHello (GreeterService_OTServerWrapperInterface_SayHello_Request) returns (GreeterService_OTServerWrapperInterface_SayHello_Response) {}
+}
+

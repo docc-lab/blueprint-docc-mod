@@ -5,15 +5,12 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"context"
-
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/blueprint"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/service"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/ir"
 	"github.com/blueprint-uservices/blueprint/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/plugins/golang/gocode"
 	"github.com/blueprint-uservices/blueprint/plugins/golang/gogen"
-	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -27,11 +24,6 @@ type OpenTelemetryServerWrapper struct {
 	outputPackage string
 	Wrapped       golang.Service
 	Collector     OpenTelemetryCollectorInterface
-	ServiceName   string
-	ServiceServer ir.IRNode
-	Sidecar       interface {
-		GetTracerProvider(context.Context) (trace.TracerProvider, error)
-	}
 }
 
 func newOpenTelemetryServerWrapper(name string, server ir.IRNode, collector ir.IRNode) (*OpenTelemetryServerWrapper, error) {
@@ -262,9 +254,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
-	ctx, span := tr.Start(ctx, "{{$f.Name}} start")
+	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}")
 	defer span.End()
-	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)

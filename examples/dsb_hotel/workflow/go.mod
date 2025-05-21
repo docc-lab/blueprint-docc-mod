@@ -1,8 +1,8 @@
 module github.com/blueprint-uservices/blueprint/examples/dsb_hotel/workflow
 
-go 1.21
+go 1.23.6
 
-toolchain go1.22.1
+toolchain go1.23.6
 
 require github.com/hailocab/go-geoindex v0.0.0-20160127134810-64631bfe9711
 

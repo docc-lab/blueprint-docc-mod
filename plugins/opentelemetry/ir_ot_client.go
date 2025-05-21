@@ -22,8 +22,6 @@ type OpenTelemetryClientWrapper struct {
 	outputPackage string
 	Wrapped       golang.Service
 	Collector     OpenTelemetryCollectorInterface
-	ServiceName   string
-	ServiceClient ir.IRNode
 }
 
 func newOpenTelemetryClientWrapper(name string, server golang.Service, collector OpenTelemetryCollectorInterface) (*OpenTelemetryClientWrapper, error) {
@@ -190,14 +188,14 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 }
 
 {{$service := .Service.Name -}}
+{{$basename := .Service.BaseName -}}
 {{$receiver := .Name -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
-	ctx, span := tr.Start(ctx, "{{$f.Name}} start")
+	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}")
 	defer span.End()
-	
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, string(trace_ctx))
 	if err != nil {

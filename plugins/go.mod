@@ -1,8 +1,8 @@
 module github.com/blueprint-uservices/blueprint/plugins
 
-go 1.21
+go 1.23.6
 
-toolchain go1.22.1
+toolchain go1.23.6
 
 require golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
 

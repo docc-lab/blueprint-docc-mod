@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"path/filepath"
@@ -91,7 +92,12 @@ func (workspace *WorkspaceBuilderImpl) CreateModule(moduleName string, moduleVer
 	workspace.GeneratedModules[moduleShortName] = moduleName
 
 	// Create the go.mod file
-	modfileContents := fmt.Sprintf("module %v\n\ngo 1.22", moduleName)
+	// modfileContents := fmt.Sprintf("module %v\n\ngo 1.22", moduleName)
+	goVersion := strings.TrimPrefix(runtime.Version(), "go")
+	if strings.Count(goVersion, ".") > 1 {
+		goVersion = goVersion[:strings.LastIndex(goVersion, ".")]
+	}
+	modfileContents := fmt.Sprintf("module %v\n\ngo %s", moduleName, goVersion)
 	modfile := filepath.Join(moduleDir, "go.mod")
 
 	return moduleDir, os.WriteFile(modfile, []byte(modfileContents), 0755)
@@ -167,13 +173,13 @@ func (workspace *WorkspaceBuilderImpl) readModfile(moduleSubDir string) (*modfil
 	return f, nil
 }
 
-var goWorkTemplate = `go 1.22.1
+var goWorkTemplate = fmt.Sprintf(`go %s
 
 use (
 	{{ range $dirName, $moduleName := .Modules }}./{{ $dirName }}
 	{{ end }}
 )
-`
+`, strings.TrimPrefix(runtime.Version(), "go"))
 
 // This method should be called by plugins after all modules in a workspace have been combined.
 //

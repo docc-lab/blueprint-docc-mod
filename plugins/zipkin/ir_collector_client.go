@@ -50,7 +50,6 @@ func (node *ZipkinCollectorClient) AddInstantiation(builder golang.NamespaceBuil
 
 	slog.Info(fmt.Sprintf("Instantiating ZipkinClient %v in %v/%v", node.ClientName, builder.Info().Package.PackageName, builder.Info().FileName))
 
-	// Pass the coordinator along with the server dial config
 	return builder.DeclareConstructor(node.ClientName, node.Spec.Constructor.AsConstructor(), []ir.IRNode{node.ServerDial})
 }
 
