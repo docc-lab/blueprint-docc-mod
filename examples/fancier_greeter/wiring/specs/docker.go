@@ -57,7 +57,7 @@ func makeFancierDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 
 	// Define the fancier greeter service (exposed via HTTP)
 	fancier_greeter := fanciergreeter.Service(spec, "fancier_greeter")
-	fancier_greeter_2 := fanciergreeter.Service(spec, "fancier_greeter_2")
+	// fancier_greeter_2 := fanciergreeter.Service(spec, "fancier_greeter_2")
 
 	// Get all services defined in the spec
 	services := spec.Defs()
@@ -67,7 +67,8 @@ func makeFancierDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 		fmt.Printf("  - %s\n", service)
 	}
 
-	exposeHTTP := []string{fancier_greeter, fancier_greeter_2}
+	// exposeHTTP := []string{fancier_greeter, fancier_greeter_2}
+	exposeHTTP := []string{fancier_greeter}
 
 	// Apply Docker defaults to all service nodes
 	for _, service := range services {
@@ -81,5 +82,6 @@ func makeFancierDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 		}
 	}
 
-	return []string{fancier_greeter, fancier_greeter_2}, nil
+	// return []string{fancier_greeter, fancier_greeter_2}, nil
+	return []string{fancier_greeter}, nil
 }
