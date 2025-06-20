@@ -38,7 +38,7 @@ func NewCoordinator(spec wiring.WiringSpec, name string) string {
 	})
 
 	// Create a pointer to the coordinator instance
-	pointer.CreatePointer[*TraceCoordinator](spec, name, coordinatorName)
+	pointer.CreatePointer[*TraceCoordinator](spec, name, coordinatorName, pointer.PointerOpts{RequireUniqueness: nil})
 
 	// Return the pointer; anybody who wants to access the coordinator instance should do so through the pointer
 	return name

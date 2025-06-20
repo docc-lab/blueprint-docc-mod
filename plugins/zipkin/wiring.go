@@ -21,6 +21,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/pointer"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/ir"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/wiring"
+	"github.com/blueprint-uservices/blueprint/plugins/tracecoordinator"
 )
 
 // [Collector] can be used by the wiring spec to add and instantiate a zipkin docker container named `collectorName` that uses the latest zipkin container
@@ -65,7 +66,10 @@ func Collector(spec wiring.WiringSpec, collectorName string) string {
 			return nil, err
 		}
 
-		return newZipkinCollectorClient(collectorClient, addr.Dial)
+		var coordinator *tracecoordinator.TraceCoordinator
+		ns.Get("coordinator", &coordinator)
+
+		return newZipkinCollectorClient(collectorClient, addr.Dial, coordinator)
 	})
 
 	// Return the pointer; anybody who wants to access the Zipkin collector instance should do so through the pointer

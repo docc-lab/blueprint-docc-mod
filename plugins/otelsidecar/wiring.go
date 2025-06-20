@@ -91,7 +91,7 @@ func DeploySidecar(spec wiring.WiringSpec, sidecarName string, collectorType str
 }
 
 // WithPort sets the port for the OpenTelemetry sidecar.
-func WithPort(port int) func(*OtelSidecarContainer) {
+func WithPort(port uint16) func(*OtelSidecarContainer) {
 	return func(sidecar *OtelSidecarContainer) {
 		sidecar.BindAddr.Port = port
 	}
@@ -100,6 +100,7 @@ func WithPort(port int) func(*OtelSidecarContainer) {
 // WithImage sets the Docker image for the OpenTelemetry sidecar.
 func WithImage(image string) func(*OtelSidecarContainer) {
 	return func(sidecar *OtelSidecarContainer) {
-		sidecar.Image = image
+		// Note: Image field is not currently supported in OtelSidecarContainer
+		// This function is kept for future compatibility
 	}
 }

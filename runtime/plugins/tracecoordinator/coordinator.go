@@ -30,7 +30,7 @@ type TraceCoordinator struct {
 }
 
 // NewTraceCoordinator creates a new TraceCoordinator instance
-func NewTraceCoordinator(ctx context.Context) (*TraceCoordinator, error) {
+func NewTraceCoordinator(ctx context.Context) (Coordinator, error) {
 	return &TraceCoordinator{
 		tracers: make(map[string]Tracer),
 	}, nil

@@ -24,9 +24,9 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/otelsidecar"
 	"github.com/blueprint-uservices/blueprint/plugins/retries"
 	"github.com/blueprint-uservices/blueprint/plugins/simple"
+	"github.com/blueprint-uservices/blueprint/plugins/tracecoordinator"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
 	"github.com/blueprint-uservices/blueprint/plugins/workload"
-	"github.com/blueprint-uservices/blueprint/plugins/zipkin"
 )
 
 // A wiring spec that deploys each service into its own Docker container with an OpenTelemetry sidecar.
@@ -45,8 +45,8 @@ var DockerWithSidecar = cmdbuilder.SpecOption{
 }
 
 func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
-	// Define the Zipkin collector that the sidecar will forward traces to
-	zipkin_collector := zipkin.Collector(spec, "zipkin")
+	// Define the trace coordinator that will coordinate between different tracing systems
+	tracecoordinator.NewCoordinator(spec, "coordinator")
 	
 	// Define the OpenTelemetry sidecar that will process and forward traces to Zipkin
 	otel_sidecar := otelsidecar.DeploySidecar(spec, "otel_sidecar", "zipkin")

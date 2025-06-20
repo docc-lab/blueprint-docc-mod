@@ -93,3 +93,5 @@ func (node *OtelSidecarClient) AddToWorkspace(builder golang.WorkspaceBuilder) e
 func (node *OtelSidecarClient) ImplementsGolangNode() {}
 
 func (node *OtelSidecarClient) ImplementsOTSidecarClient() {}
+
+func (node *OtelSidecarClient) ImplementsOTCollectorClient() {}

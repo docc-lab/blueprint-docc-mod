@@ -4,6 +4,7 @@ package zipkin
 import (
 	"context"
 
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/tracecoordinator"
 	"go.opentelemetry.io/otel/exporters/zipkin"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
@@ -17,7 +18,7 @@ type ZipkinTracer struct {
 
 // Returns a new instance of ZipkinTracer.
 // Configures opentelemetry to export zipkin traces to the zipkin collector hosted at address `addr`.
-func NewZipkinTracer(ctx context.Context, addr string) (*ZipkinTracer, error) {
+func NewZipkinTracer(ctx context.Context, addr string, coord tracecoordinator.Coordinator) (*ZipkinTracer, error) {
 	exp, err := zipkin.New("http://" + addr + "/api/v2/spans")
 	if err != nil {
 		return nil, err

@@ -9,6 +9,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow/workflowspec"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/zipkin"
+	"github.com/blueprint-uservices/blueprint/plugins/tracecoordinator"
 	"golang.org/x/exp/slog"
 )
 
@@ -16,17 +17,19 @@ import (
 type ZipkinCollectorClient struct {
 	golang.Node
 	golang.Instantiable
-	ClientName string
-	ServerDial *address.DialConfig
-	Spec       *workflowspec.Service
+	ClientName    string
+	ServerDial    *address.DialConfig
+	Coordinator   *tracecoordinator.TraceCoordinator
+	Spec          *workflowspec.Service
 }
 
-func newZipkinCollectorClient(name string, addr *address.DialConfig) (*ZipkinCollectorClient, error) {
+func newZipkinCollectorClient(name string, addr *address.DialConfig, coordinator *tracecoordinator.TraceCoordinator) (*ZipkinCollectorClient, error) {
 	spec, err := workflowspec.GetService[zipkin.ZipkinTracer]()
 	node := &ZipkinCollectorClient{
-		ClientName: name,
-		ServerDial: addr,
-		Spec:       spec,
+		ClientName:    name,
+		ServerDial:    addr,
+		Coordinator:   coordinator,
+		Spec:          spec,
 	}
 	return node, err
 }
@@ -50,7 +53,7 @@ func (node *ZipkinCollectorClient) AddInstantiation(builder golang.NamespaceBuil
 
 	slog.Info(fmt.Sprintf("Instantiating ZipkinClient %v in %v/%v", node.ClientName, builder.Info().Package.PackageName, builder.Info().FileName))
 
-	return builder.DeclareConstructor(node.ClientName, node.Spec.Constructor.AsConstructor(), []ir.IRNode{node.ServerDial})
+	return builder.DeclareConstructor(node.ClientName, node.Spec.Constructor.AsConstructor(), []ir.IRNode{node.ServerDial, node.Coordinator})
 }
 
 // Implements service.ServiceNode
