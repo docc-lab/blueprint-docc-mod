@@ -61,13 +61,13 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 
 	// Deploy greeter sidecar for each main service
 	mainServices := []string{"user_service", "payment_service", "cart_service", "shipping_service", "order_service", "catalogue_service", "frontend"}
-	greeterSidecars := []string{}
+	greeterSidecarContainers := []string{}
 	for _, svc := range mainServices {
 		greeterName := svc + "_greeter_sidecar"
 		greeter.Service(spec, greeterName)
 		goproc.Deploy(spec, greeterName)
 		linuxcontainer.Deploy(spec, greeterName)
-		greeterSidecars = append(greeterSidecars, greeterName)
+		greeterSidecarContainers = append(greeterSidecarContainers, greeterName+"_ctr")
 	}
 
 	user_db := mongodb.Container(spec, "user_db")
@@ -102,5 +102,5 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 
 	wlgen := workload.Generator[workloadgen.SimpleWorkload](spec, "wlgen", frontend_service)
 
-	return append([]string{"frontend_ctr", wlgen, "gotests"}, greeterSidecars...), nil
+	return append([]string{"frontend_ctr", wlgen, "gotests"}, greeterSidecarContainers...), nil
 } 
