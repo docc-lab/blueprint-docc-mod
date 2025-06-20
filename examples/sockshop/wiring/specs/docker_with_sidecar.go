@@ -73,7 +73,7 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 	}
 
 	// Deploy greeter as a sidecar for user service
-	greeterSidecar := greeter.Service(spec, "user_greeter_sidecar")
+	greeter.Service(spec, "user_greeter_sidecar")
 	goproc.Deploy(spec, "user_greeter_sidecar")
 	linuxcontainer.Deploy(spec, "user_greeter_sidecar")
 
@@ -113,5 +113,5 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 
 	// Instantiate starting with the frontend which will trigger all other services to be instantiated
 	// Also include the tests and wlgen
-	return []string{"frontend_ctr", wlgen, "gotests"}, nil
+	return []string{"frontend_ctr", wlgen, "gotests", "user_greeter_sidecar_ctr"}, nil
 } 
