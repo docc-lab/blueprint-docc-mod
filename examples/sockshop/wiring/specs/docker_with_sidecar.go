@@ -65,6 +65,7 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 	for _, svc := range mainServices {
 		greeterName := svc + "_greeter_sidecar"
 		greeter.Service(spec, greeterName)
+		grpc.Deploy(spec, greeterName)
 		goproc.Deploy(spec, greeterName)
 		linuxcontainer.Deploy(spec, greeterName)
 		greeterSidecarContainers = append(greeterSidecarContainers, greeterName+"_ctr")
