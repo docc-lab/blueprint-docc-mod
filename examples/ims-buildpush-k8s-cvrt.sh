@@ -110,7 +110,16 @@ fi
 echo "Running kompose convert..."
 kompose convert
 
-# Step 3: Fix all references and naming conventions in Kubernetes manifests
+# Step 3: Merge sidecar containers into main deployments
+echo "==== Merging sidecar containers into main deployments ===="
+SCRIPT_DIR=$(dirname "$0")
+if [ -f "$SCRIPT_DIR/im-buildpush-k8s-sidecar.py" ]; then
+    python "$SCRIPT_DIR/im-buildpush-k8s-sidecar.py"
+else
+    echo "Warning: im-buildpush-k8s-sidecar.py not found in $SCRIPT_DIR, skipping sidecar merge."
+fi
+
+# Step 4: Fix all references and naming conventions in Kubernetes manifests
 echo "==== Fixing naming conventions in Kubernetes manifests ===="
 
 # Create a list of patterns to replace (underscores with hyphens)
