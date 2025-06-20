@@ -25,6 +25,7 @@ func main() {
 		specs.Basic,
 		specs.GRPC,
 		specs.Docker,
+		specs.DockerWithSidecar,
 		specs.DockerRabbit,
 	)
 }

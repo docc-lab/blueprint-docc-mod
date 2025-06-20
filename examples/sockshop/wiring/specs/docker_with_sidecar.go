@@ -29,22 +29,25 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/zipkin"
 )
 
-// A wiring spec that deploys each service into its own Docker container and using gRPC to communicate between services.
+// A wiring spec that deploys each service into its own Docker container with an OpenTelemetry sidecar.
 //
 // All RPC calls are retried up to 3 times.
 // RPC clients use a client pool with 10 clients.
-// All services are instrumented with OpenTelemetry and traces are exported to Zipkin
+// All services are instrumented with OpenTelemetry and traces are exported through the sidecar to Zipkin
 //
 // The user, cart, shipping, and orders services using separate MongoDB instances to store their data.
 // The catalogue service uses MySQL to store catalogue data.
 // The shipping service and queue master service run within the same process.
-var Docker = cmdbuilder.SpecOption{
-	Name:        "docker",
-	Description: "Deploys each service in a separate container with gRPC, and uses mongodb as NoSQL database backends.",
-	Build:       makeDockerSpec,
+var DockerWithSidecar = cmdbuilder.SpecOption{
+	Name:        "docker_with_sidecar",
+	Description: "Deploys each service in a separate container with gRPC, uses OpenTelemetry sidecar for tracing, and uses mongodb as NoSQL database backends.",
+	Build:       makeDockerWithSidecarSpec,
 }
 
-func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
+func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
+	// Define the Zipkin collector that the sidecar will forward traces to
+	zipkin_collector := zipkin.Collector(spec, "zipkin")
+	
 	// Define the OpenTelemetry sidecar that will process and forward traces to Zipkin
 	otel_sidecar := otelsidecar.DeploySidecar(spec, "otel_sidecar", "zipkin")
 
@@ -54,7 +57,6 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 		retries.AddRetries(spec, serviceName, 3)
 		clientpool.Create(spec, serviceName, 10)
 		opentelemetry.Instrument(spec, serviceName, otel_sidecar)
-		// opentelemetry.Instrument(spec, serviceName)
 		if len(useHTTP) > 0 && useHTTP[0] {
 			http.Deploy(spec, serviceName)
 		} else {
@@ -106,4 +108,4 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Instantiate starting with the frontend which will trigger all other services to be instantiated
 	// Also include the tests and wlgen
 	return []string{"frontend_ctr", wlgen, "gotests"}, nil
-}
+} 

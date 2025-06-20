@@ -14,7 +14,7 @@ type Tracer interface {
 // Coordinator represents a service that coordinates between tracers
 type Coordinator interface {
 	// RegisterTracer registers a tracer with the coordinator
-	RegisterTracer(name string, tracer Tracer) error
+	RegisterTracer(ctx context.Context, name string, tracer Tracer) error
 
 	// PingTracer sends a ping to a registered tracer
 	PingTracer(ctx context.Context, tracerName string) error
@@ -30,14 +30,14 @@ type TraceCoordinator struct {
 }
 
 // NewTraceCoordinator creates a new TraceCoordinator instance
-func NewTraceCoordinator() *TraceCoordinator {
+func NewTraceCoordinator(ctx context.Context) (*TraceCoordinator, error) {
 	return &TraceCoordinator{
 		tracers: make(map[string]Tracer),
-	}
+	}, nil
 }
 
 // RegisterTracer implements Coordinator.RegisterTracer
-func (c *TraceCoordinator) RegisterTracer(name string, tracer Tracer) error {
+func (c *TraceCoordinator) RegisterTracer(ctx context.Context, name string, tracer Tracer) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.tracers[name] = tracer
