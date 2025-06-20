@@ -25,6 +25,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
 	"github.com/blueprint-uservices/blueprint/plugins/workload"
 	"github.com/blueprint-uservices/blueprint/plugins/greeter"
+	"github.com/blueprint-uservices/blueprint/plugins/retries"
 )
 
 // A wiring spec that deploys each service into its own Docker container with an OpenTelemetry sidecar.
