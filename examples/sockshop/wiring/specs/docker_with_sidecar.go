@@ -20,9 +20,6 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/linuxcontainer"
 	"github.com/blueprint-uservices/blueprint/plugins/mongodb"
 	"github.com/blueprint-uservices/blueprint/plugins/mysql"
-	"github.com/blueprint-uservices/blueprint/plugins/opentelemetry"
-	"github.com/blueprint-uservices/blueprint/plugins/otelsidecar"
-	"github.com/blueprint-uservices/blueprint/plugins/retries"
 	"github.com/blueprint-uservices/blueprint/plugins/simple"
 	"github.com/blueprint-uservices/blueprint/plugins/tracecoordinator"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
@@ -46,36 +43,31 @@ var DockerWithSidecar = cmdbuilder.SpecOption{
 }
 
 func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
-	// Define the trace coordinator that will coordinate between different tracing systems
 	tracecoordinator.NewCoordinator(spec, "coordinator")
-	
-	// Define the OpenTelemetry sidecar that will process and forward traces to Zipkin
-	otel_sidecar := otelsidecar.DeploySidecar(spec, "otel_sidecar", "zipkin")
 
-	// Modifiers that will be applied to all services
 	applyDockerDefaults := func(serviceName string, useHTTP ...bool) {
-		// Golang-level modifiers that add functionality
 		retries.AddRetries(spec, serviceName, 3)
 		clientpool.Create(spec, serviceName, 10)
-		opentelemetry.Instrument(spec, serviceName, otel_sidecar)
 		if len(useHTTP) > 0 && useHTTP[0] {
 			http.Deploy(spec, serviceName)
 		} else {
 			grpc.Deploy(spec, serviceName)
 		}
-
-		// Deploying to namespaces
 		goproc.Deploy(spec, serviceName)
 		linuxcontainer.Deploy(spec, serviceName)
-
-		// Also add to tests
 		gotests.Test(spec, serviceName)
 	}
 
-	// Deploy greeter as a sidecar for user service
-	greeter.Service(spec, "user_greeter_sidecar")
-	goproc.Deploy(spec, "user_greeter_sidecar")
-	linuxcontainer.Deploy(spec, "user_greeter_sidecar")
+	// Deploy greeter sidecar for each main service
+	mainServices := []string{"user_service", "payment_service", "cart_service", "shipping_service", "order_service", "catalogue_service", "frontend"}
+	greeterSidecars := []string{}
+	for _, svc := range mainServices {
+		greeterName := svc + "_greeter_sidecar"
+		greeter.Service(spec, greeterName)
+		goproc.Deploy(spec, greeterName)
+		linuxcontainer.Deploy(spec, greeterName)
+		greeterSidecars = append(greeterSidecars, greeterName+"_ctr")
+	}
 
 	user_db := mongodb.Container(spec, "user_db")
 	user_service := workflow.Service[user.UserService](spec, "user_service", user_db)
@@ -93,8 +85,6 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 	shipping_service := workflow.Service[shipping.ShippingService](spec, "shipping_service", shipqueue, shipdb)
 	applyDockerDefaults(shipping_service)
 
-	// Deploy queue master to the same process as the shipping proc
-	// TODO: after distributed queue is supported, move to separate containers
 	queue_master := workflow.Service[queuemaster.QueueMaster](spec, "queue_master", shipqueue, shipping_service)
 	goproc.AddToProcess(spec, "shipping_proc", queue_master)
 
@@ -107,11 +97,9 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 	applyDockerDefaults(catalogue_service)
 
 	frontend_service := workflow.Service[frontend.Frontend](spec, "frontend", user_service, catalogue_service, cart_service, order_service)
-	applyDockerDefaults(frontend_service, true) // Only the frontend gets deployed with HTTP
+	applyDockerDefaults(frontend_service, true)
 
 	wlgen := workload.Generator[workloadgen.SimpleWorkload](spec, "wlgen", frontend_service)
 
-	// Instantiate starting with the frontend which will trigger all other services to be instantiated
-	// Also include the tests and wlgen
-	return []string{"frontend_ctr", wlgen, "gotests", "user_greeter_sidecar_ctr"}, nil
+	return append([]string{"frontend_ctr", wlgen, "gotests"}, greeterSidecars...), nil
 } 
