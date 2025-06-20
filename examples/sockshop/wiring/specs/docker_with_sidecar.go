@@ -67,7 +67,7 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 		greeter.Service(spec, greeterName)
 		goproc.Deploy(spec, greeterName)
 		linuxcontainer.Deploy(spec, greeterName)
-		greeterSidecars = append(greeterSidecars, greeterName+"_ctr")
+		greeterSidecars = append(greeterSidecars, greeterName)
 	}
 
 	user_db := mongodb.Container(spec, "user_db")
