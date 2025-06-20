@@ -27,6 +27,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/tracecoordinator"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
 	"github.com/blueprint-uservices/blueprint/plugins/workload"
+	"github.com/blueprint-uservices/blueprint/plugins/greeter"
 )
 
 // A wiring spec that deploys each service into its own Docker container with an OpenTelemetry sidecar.
@@ -70,6 +71,11 @@ func makeDockerWithSidecarSpec(spec wiring.WiringSpec) ([]string, error) {
 		// Also add to tests
 		gotests.Test(spec, serviceName)
 	}
+
+	// Deploy greeter as a sidecar for user service
+	greeterSidecar := greeter.Service(spec, "user_greeter_sidecar")
+	goproc.Deploy(spec, "user_greeter_sidecar")
+	linuxcontainer.Deploy(spec, "user_greeter_sidecar")
 
 	user_db := mongodb.Container(spec, "user_db")
 	user_service := workflow.Service[user.UserService](spec, "user_service", user_db)
