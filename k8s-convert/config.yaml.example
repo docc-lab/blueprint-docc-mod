@@ -1,0 +1,102 @@
+# Example configuration file for k8s-convert
+# Copy this file to config.yaml and adjust values for your environment
+# All values can also be set via environment variables
+
+# Whether to use kompose for conversion (default: false)
+use_kompose: false
+
+registry:
+  # Registry hostname or IP address
+  # Can be set via REGISTRY_HOST environment variable
+  host: ""
+
+  # Registry port number
+  # Can be set via REGISTRY_PORT environment variable
+  port: ""
+
+  # Optional path prefix for images
+  # Can be set via REGISTRY_PATH environment variable
+  path: ""
+
+  # Whether to use insecure registry connection
+  # Can be set via REGISTRY_INSECURE environment variable
+  insecure: false
+
+  # Optional registry credentials
+  # Can be set via REGISTRY_USERNAME and REGISTRY_PASSWORD environment variables
+  username: ""
+  password: ""
+
+kubernetes:
+  # Target Kubernetes namespace
+  # Can be set via K8S_NAMESPACE environment variable
+  namespace: ""
+
+  # Optional Kubernetes context to use
+  # Can be set via K8S_CONTEXT environment variable
+  context: ""
+
+  # Whether to skip TLS verification
+  # Can be set via K8S_INSECURE_SKIP_TLS_VERIFY environment variable
+  insecure_skip_tls_verify: false
+
+  # Whether to enable ingress
+  # Can be set via K8S_INGRESS_ENABLED environment variable
+  ingress:
+    enabled: true
+    host: "example.com"
+    tls: true
+
+resources:
+  # Resource configuration for non-database services
+  # Can be overridden via DEFAULT_CPU_REQUEST, DEFAULT_MEMORY_REQUEST,
+  # DEFAULT_CPU_LIMIT, and DEFAULT_MEMORY_LIMIT environment variables
+  default:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  # Resource configuration for database services
+  # Can be overridden via DB_CPU_REQUEST, DB_MEMORY_REQUEST,
+  # DB_CPU_LIMIT, and DB_MEMORY_LIMIT environment variables
+  # Database service types can be configured via DB_SERVICE_TYPES
+  # environment variable (comma-separated list)
+  database:
+    requests:
+      cpu: ""
+      memory: ""
+    limits:
+      cpu: ""
+      memory: ""
+
+# Database configuration
+database:
+  mysql:
+    root_password: "root"
+    database: "app"
+    user: "app"
+    password: "app"
+  postgres:
+    postgres_password: "postgres"
+    database: "app"
+    user: "app"
+    password: "app"
+  mongodb:
+    root_username: "root"
+    root_password: "root"
+    database: "app"
+    user: "app"
+    password: "app"
+
+# Volume configuration
+volumes:
+  enabled: true
+  storage_class: "standard"
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s" 

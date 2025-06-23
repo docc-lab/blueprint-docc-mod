@@ -1,0 +1,57 @@
+
+version: '3'
+services:
+
+  basic_greeter_ctr:
+    build:
+      context: basic_greeter_ctr
+      dockerfile: ./Dockerfile
+    hostname: basic_greeter_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${BASIC_GREETER_GRPC_BIND_ADDR?basic_greeter.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - BASIC_GREETER_GRPC_BIND_ADDR=0.0.0.0:12345
+     - ZIPKIN_DIAL_ADDR=zipkin_ctr:9411
+    restart: always
+
+  fancy_greeter_0_ctr:
+    build:
+      context: fancy_greeter_0_ctr
+      dockerfile: ./Dockerfile
+    hostname: fancy_greeter_0_ctr
+    expose:
+     - "2000"
+    ports:
+     - "${FANCY_GREETER_0_HTTP_BIND_ADDR?fancy_greeter_0.http.bind_addr must be set by the calling environment}:2000"
+    environment:
+     - BASIC_GREETER_GRPC_DIAL_ADDR=basic_greeter_ctr:12345
+     - FANCY_GREETER_0_HTTP_BIND_ADDR=0.0.0.0:2000
+     - ZIPKIN_DIAL_ADDR=zipkin_ctr:9411
+    restart: always
+
+  fancy_greeter_1_ctr:
+    build:
+      context: fancy_greeter_1_ctr
+      dockerfile: ./Dockerfile
+    hostname: fancy_greeter_1_ctr
+    expose:
+     - "2000"
+    ports:
+     - "${FANCY_GREETER_1_HTTP_BIND_ADDR?fancy_greeter_1.http.bind_addr must be set by the calling environment}:2000"
+    environment:
+     - BASIC_GREETER_GRPC_DIAL_ADDR=basic_greeter_ctr:12345
+     - FANCY_GREETER_1_HTTP_BIND_ADDR=0.0.0.0:2000
+     - ZIPKIN_DIAL_ADDR=zipkin_ctr:9411
+    restart: always
+
+  zipkin_ctr:
+    image: openzipkin/zipkin
+    hostname: zipkin_ctr
+    expose:
+     - "9411"
+    ports:
+     - "${ZIPKIN_BIND_ADDR?zipkin.bind_addr must be set by the calling environment}:9411"
+    restart: always
+

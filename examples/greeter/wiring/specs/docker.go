@@ -57,8 +57,11 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	applyDockerDefaults(basic_greeter, false)
 
 	// Define the fancy greeter service (exposed via HTTP)
-	fancy_greeter := fancygreeter.Service(spec, "fancy_greeter", basic_greeter)
-	applyDockerDefaults(fancy_greeter, true)
+	fancy_greeter_0 := fancygreeter.Service(spec, "fancy_greeter_0", basic_greeter)
+	applyDockerDefaults(fancy_greeter_0, true)
 
-	return []string{basic_greeter, fancy_greeter}, nil
+	fancy_greeter_1 := fancygreeter.Service(spec, "fancy_greeter_1", basic_greeter)
+	applyDockerDefaults(fancy_greeter_1, true)
+
+	return []string{basic_greeter, fancy_greeter_0, fancy_greeter_1}, nil
 }

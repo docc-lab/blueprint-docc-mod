@@ -23,9 +23,9 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/opentelemetry"
 	"github.com/blueprint-uservices/blueprint/plugins/retries"
 	"github.com/blueprint-uservices/blueprint/plugins/simple"
+	"github.com/blueprint-uservices/blueprint/plugins/tracingagent"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
 	"github.com/blueprint-uservices/blueprint/plugins/workload"
-	"github.com/blueprint-uservices/blueprint/plugins/zipkin"
 )
 
 // A wiring spec that deploys each service into its own Docker container and using gRPC to communicate between services.
@@ -45,7 +45,8 @@ var Docker = cmdbuilder.SpecOption{
 
 func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Define the trace collector, which will be used by all services
-	trace_collector := zipkin.Collector(spec, "zipkin")
+	// trace_collector := zipkin.Collector(spec, "zipkin")
+	trace_collector := tracingagent.Agent(spec, "tracing_agent")
 
 	// Modifiers that will be applied to all services
 	applyDockerDefaults := func(serviceName string, useHTTP ...bool) {

@@ -19,7 +19,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/linuxcontainer"
 	"github.com/blueprint-uservices/blueprint/plugins/opentelemetry"
 	"github.com/blueprint-uservices/blueprint/plugins/retries"
-	"github.com/blueprint-uservices/blueprint/plugins/zipkin"
+	"github.com/blueprint-uservices/blueprint/plugins/tracingagent"
 )
 
 // A wiring spec that deploys each service in its own Docker container.
@@ -31,7 +31,11 @@ var FancierDocker = cmdbuilder.SpecOption{
 
 func makeFancierDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Define the trace collector, which will be used by all services
-	trace_collector := zipkin.Collector(spec, "zipkin")
+	// trace_collector := zipkin.Collector(spec, "zipkin")
+	trace_collector := tracingagent.Agent(spec, "tracing_agent")
+	grpc.Deploy(spec, "tracing_agent.ctr")
+	goproc.Deploy(spec, "tracing_agent.ctr")
+	linuxcontainer.Deploy(spec, "tracing_agent.ctr")
 
 	// Modifiers that will be applied to all services
 	applyDockerDefaults := func(serviceName string, exposeHTTP bool) {
@@ -83,5 +87,5 @@ func makeFancierDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	}
 
 	// return []string{fancier_greeter, fancier_greeter_2}, nil
-	return []string{fancier_greeter}, nil
+	return []string{fancier_greeter, "tracing_agent.client", "tracing_agent.ctr", "tracing_agent.addr"}, nil
 }
