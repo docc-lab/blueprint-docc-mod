@@ -17,7 +17,6 @@
 package tracingagent
 
 import (
-	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/address"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/pointer"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/ir"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/wiring"
@@ -74,41 +73,50 @@ import (
 
 func Agent(spec wiring.WiringSpec, tracingAgentName string) string {
 	// The nodes that we are defining
-	tracingAgentAddr := tracingAgentName + ".addr"
+	// tracingAgentAddr := tracingAgentName + ".addr"
 	tracingAgentCtr := tracingAgentName + ".ctr"
 	tracingAgentClient := tracingAgentName + ".client"
 
-	// Define the Zipkin collector container
+	// Define the tracing agent service node
 	spec.Define(tracingAgentCtr, &TracingAgentServiceNode{}, func(ns wiring.Namespace) (ir.IRNode, error) {
-		tracingAgent, err := newTracingAgentServiceNode(tracingAgentCtr)
-		if err != nil {
-			return nil, err
-		}
+		// tracingAgent, err := newTracingAgentServiceNode(tracingAgentCtr)
+		return newTracingAgentServiceNode(tracingAgentCtr)
+		// if err != nil {
+		// 	return nil, err
+		// }
 
-		err = address.Bind[*TracingAgentServiceNode](ns, tracingAgentAddr, tracingAgent, &tracingAgent.BindAddr)
-		return tracingAgent, err
+		// err = address.Bind[*TracingAgentServiceNode](ns, tracingAgentAddr, tracingAgent, &tracingAgent.BindAddr)
+		// return tracingAgent, err
 	})
 
-	// Create a pointer to the Zipkin collector container
+	// Create a pointer to the tracing agent service node
 	ptr := pointer.CreatePointer[*TracingAgentClient](spec, tracingAgentName, tracingAgentCtr)
 
-	// Define the address that points to the Zipkin collector container
-	address.Define[*TracingAgentServiceNode](spec, tracingAgentAddr, tracingAgentCtr)
+	// // Define the address that points to the tracing agent service node
+	// address.Define[*TracingAgentServiceNode](spec, tracingAgentAddr, tracingAgentCtr)
 
 	// Add the address to the pointer
-	ptr.AddAddrModifier(spec, tracingAgentAddr)
+	// ptr.AddAddrModifier(spec, tracingAgentAddr)
+	ptr.AddDstModifier(spec, tracingAgentCtr)
 
-	// Define the Zipkin collector client and add it to the client side of the pointer
+	// Add the client as a source modifier (so the pointer resolves to the client)
 	clientNext := ptr.AddSrcModifier(spec, tracingAgentClient)
+
+	// Define the tracing agent client node, linking directly to the service node
 	spec.Define(tracingAgentClient, &TracingAgentClient{}, func(ns wiring.Namespace) (ir.IRNode, error) {
-		addr, err := address.Dial[*TracingAgentServiceNode](ns, clientNext)
+		// Get the actual tracing agent service node from the namespace
+		var tracingAgentService ir.IRNode
+		err := ns.Get(clientNext, &tracingAgentService)
 		if err != nil {
 			return nil, err
 		}
 
-		return newTracingAgentClient(tracingAgentName, addr.Dial)
+		// // clientNext is used to maintain the pointer chain for containerization
+		// _ = clientNext // keep for pointer chain compatibility
+
+		return newTracingAgentClient(tracingAgentName, tracingAgentService)
 	})
 
-	// Return the pointer; anybody who wants to access the Zipkin collector instance should do so through the pointer
+	// Return the pointer; anybody who wants to access the tracing agent instance should do so through the pointer
 	return tracingAgentName
 }

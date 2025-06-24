@@ -18,10 +18,12 @@ type TracingAgentClient struct {
 
 	ClientName   string
 	TracingAgent ir.IRNode
-	Spec         *workflowspec.Service
+	// TracingAgentAddr ir.IRNode
+	Spec *workflowspec.Service
 }
 
 func newTracingAgentClient(name string, tracingAgent ir.IRNode) (*TracingAgentClient, error) {
+	// func newTracingAgentClient(name string, tracingAgent ir.IRNode, taAddr ir.IRNode) (*TracingAgentClient, error) {
 	spec, err := workflowspec.GetService[tracingagent.TracingAgentClient]()
 	if err != nil {
 		return nil, err
@@ -30,7 +32,8 @@ func newTracingAgentClient(name string, tracingAgent ir.IRNode) (*TracingAgentCl
 	node := &TracingAgentClient{
 		ClientName:   name,
 		TracingAgent: tracingAgent,
-		Spec:         spec,
+		// TracingAgentAddr: taAddr,
+		Spec: spec,
 	}
 
 	return node, err
