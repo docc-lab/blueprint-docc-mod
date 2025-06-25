@@ -26,6 +26,7 @@ type OTCollectorContainer struct {
 	BindAddr           *address.BindConfig
 	Iface              *goparser.ParsedInterface
 	CentralBackendAddr *address.DialConfig
+	ExporterType       string // "otlp", "zipkin", "jaeger", etc. Defaults to "otlp"
 }
 
 // OpenTelemetry Collector interface exposed to the application.
@@ -42,7 +43,7 @@ func (j *OTCollectorInterface) GetMethods() []service.Method {
 	return j.Wrapped.GetMethods()
 }
 
-func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig) (*OTCollectorContainer, error) {
+func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig, exporterType ...string) (*OTCollectorContainer, error) {
 	spec, err := workflowspec.GetService[otelcol.OTCollectorTracer]()
 	if err != nil {
 		return nil, err
@@ -53,6 +54,12 @@ func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig
 		Iface:              spec.Iface,
 		CentralBackendAddr: centralBackendAddr,
 	}
+
+	// Set exporter type if provided, otherwise defaults to "otlp"
+	if len(exporterType) > 0 {
+		collector.ExporterType = exporterType[0]
+	}
+
 	return collector, nil
 }
 
@@ -113,10 +120,32 @@ func (node *OTCollectorContainer) generateArtifacts(workspace *otCollectorWorksp
 	return workspace.Finish()
 }
 
-// generateConfig creates the OpenTelemetry collector configuration
+// generateConfig generates the OpenTelemetry collector configuration
 func (node *OTCollectorContainer) generateConfig() string {
+	exporterType := node.ExporterType
+	if exporterType == "" {
+		exporterType = "otlp" // Default to otlp
+	}
+
 	// Get the backend address name for environment variable substitution
 	backendEnvVarName := linux.EnvVar(node.CentralBackendAddr.Name())
+
+	var exporterConfig string
+	switch exporterType {
+	case "zipkin":
+		exporterConfig = fmt.Sprintf(`  zipkin:
+    endpoint: "http://${%s}/api/v2/spans"`, backendEnvVarName)
+	case "jaeger":
+		exporterConfig = fmt.Sprintf(`  jaeger:
+    endpoint: "${%s}"`, backendEnvVarName)
+	case "otlp":
+		fallthrough
+	default:
+		exporterConfig = fmt.Sprintf(`  otlp:
+    endpoint: "${%s}"
+    tls:
+      insecure: true`, backendEnvVarName)
+	}
 
 	return fmt.Sprintf(`receivers:
   otlp:
@@ -130,18 +159,15 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  otlp:
-    endpoint: "${%s}"
-    tls:
-      insecure: true
-    protocol: grpc
+%s
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp]`, backendEnvVarName)
+      exporters: [%s]
+`, exporterConfig, exporterType)
 }
 
 // generateDockerfile creates a Dockerfile for the OpenTelemetry collector

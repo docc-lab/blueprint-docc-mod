@@ -34,7 +34,11 @@ import (
 //
 //	jaeger := jaeger.Collector(spec, "jaeger")
 //	collector := otelcol.Collector(spec, "otelcol", jaeger)
-func Collector(spec wiring.WiringSpec, collectorName string, backendRef string) string {
+//
+//	// Or with specific exporter type:
+//	collector := otelcol.Collector(spec, "otelcol", jaeger, "jaeger")
+//	collector := otelcol.Collector(spec, "otelcol", zipkin, "zipkin")
+func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, exporterType ...string) string {
 	// The nodes that we are defining
 	collectorAddr := collectorName + ".addr"
 	collectorCtr := collectorName + ".ctr"
@@ -51,7 +55,7 @@ func Collector(spec wiring.WiringSpec, collectorName string, backendRef string) 
 			return nil, err
 		}
 
-		otelcol, err := newOTCollectorContainer(collectorCtr, backendDialConfig)
+		otelcol, err := newOTCollectorContainer(collectorCtr, backendDialConfig, exporterType...)
 		if err != nil {
 			return nil, err
 		}

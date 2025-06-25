@@ -33,7 +33,7 @@ var FancierDocker = cmdbuilder.SpecOption{
 func makeFancierDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Define the trace collector, which will be used by all services
 	zipkin_collector := zipkin.Collector(spec, "zipkin")
-	trace_collector := otelcol.Collector(spec, "otelcol", zipkin_collector)
+	trace_collector := otelcol.Collector(spec, "otelcol", zipkin_collector, "zipkin")
 
 	// Modifiers that will be applied to all services
 	applyDockerDefaults := func(serviceName string, exposeHTTP bool) {
