@@ -63,12 +63,23 @@ def update_image_references(output_dir, registry_url):
                     if 'image' in container:
                         # Get the original image name
                         original_image = container['image']
-                        # Extract the service name (remove any existing registry prefix)
-                        service_name = original_image.split('/')[-1].split(':')[0]
-                        # Create new image name with registry
-                        new_image = f"{registry_url}/{service_name}:latest"
-                        print(f"[DEBUG] Updating image {original_image} -> {new_image}")
-                        container['image'] = new_image
+                        # Only update if not already using the registry
+                        if not original_image.startswith(f"{registry_url}/"):
+                            # Use the same logic as build_and_push_images
+                            if ':' in original_image:
+                                # Image has a tag, split on the last colon to separate name from tag
+                                image_name_with_namespace, original_tag = original_image.rsplit(':', 1)
+                                # Replace slashes with dashes and underscores with dashes in the image name
+                                image_name = image_name_with_namespace.replace('/', '-').replace('_', '-')
+                                # Use the original tag
+                                new_image = f"{registry_url}/{image_name}:{original_tag}"
+                            else:
+                                # No tag specified, replace slashes and underscores with dashes, use latest
+                                image_name = original_image.replace('/', '-').replace('_', '-')
+                                new_image = f"{registry_url}/{image_name}:latest"
+                            
+                            print(f"[DEBUG] Updating image {original_image} -> {new_image}")
+                            container['image'] = new_image
         
         # Write back the updated content
         with open(yaml_file, 'w') as f:
@@ -116,9 +127,22 @@ def build_and_push_images(services, registry_url, docker_compose_dir):
                 original_image = service_config['image']
                 # Only retag/push if not already using the registry
                 if not original_image.startswith(f"{registry_url}/"):
-                    # Use only the last part after the last slash, replace underscores with dashes
-                    image_name = original_image.split('/')[-1].replace('_', '-')
-                    full_image_name = f"{registry_url}/{image_name}:latest"
+                    # Extract the image name and tag properly
+                    # Handle cases like "jaegertracing/all-in-one:latest"
+                    
+                    # Check if there's already a tag
+                    if ':' in original_image:
+                        # Image has a tag, split on the last colon to separate name from tag
+                        image_name_with_namespace, original_tag = original_image.rsplit(':', 1)
+                        # Replace slashes with dashes and underscores with dashes in the image name
+                        image_name = image_name_with_namespace.replace('/', '-').replace('_', '-')
+                        # Use the original tag
+                        full_image_name = f"{registry_url}/{image_name}:{original_tag}"
+                    else:
+                        # No tag specified, replace slashes and underscores with dashes, use latest
+                        image_name = original_image.replace('/', '-').replace('_', '-')
+                        full_image_name = f"{registry_url}/{image_name}:latest"
+                    
                     print(f"[INFO] Pulling official image for {service_name}: {original_image}")
                     pull_cmd = ['docker', 'pull', original_image]
                     result = subprocess.run(pull_cmd, capture_output=True, text=True)

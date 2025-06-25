@@ -123,6 +123,9 @@ func (node *OTCollectorContainer) generateArtifacts(workspace *otCollectorWorksp
 // generateConfig generates the OpenTelemetry collector configuration
 func (node *OTCollectorContainer) generateConfig() string {
 	exporterType := node.ExporterType
+	if exporterType == "jaeger" {
+		exporterType = "otlp"
+	}
 	if exporterType == "" {
 		exporterType = "otlp" // Default to otlp
 	}
@@ -136,7 +139,7 @@ func (node *OTCollectorContainer) generateConfig() string {
 		exporterConfig = fmt.Sprintf(`  zipkin:
     endpoint: "http://${%s}/api/v2/spans"`, backendEnvVarName)
 	case "jaeger":
-		exporterConfig = fmt.Sprintf(`  jaeger:
+		exporterConfig = fmt.Sprintf(`  otlp:
     endpoint: "${%s}"`, backendEnvVarName)
 	case "otlp":
 		fallthrough

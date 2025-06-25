@@ -47,12 +47,25 @@ func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, 
 	// Define the OpenTelemetry collector container
 	spec.Define(collectorCtr, &OTCollectorContainer{}, func(ns wiring.Namespace) (ir.IRNode, error) {
 		// Resolve the backend address generically without hardcoding types
-		backendDialName := backendRef + ".dial_addr"
-
-		// Get the dial config directly from the namespace
 		var backendDialConfig *address.DialConfig
-		if err := ns.Get(backendDialName, &backendDialConfig); err != nil {
-			return nil, err
+
+		// Check if this is a Jaeger backend and we're using "jaeger" exporter type
+		if len(exporterType) > 0 && exporterType[0] == "jaeger" {
+			// Try to get the OTLP address first
+			otlpDialName := backendRef + ".otlp.dial_addr"
+			if err := ns.Get(otlpDialName, &backendDialConfig); err != nil {
+				// Fall back to regular address if OTLP address not available
+				backendDialName := backendRef + ".dial_addr"
+				if err := ns.Get(backendDialName, &backendDialConfig); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			// Use regular address for other cases
+			backendDialName := backendRef + ".dial_addr"
+			if err := ns.Get(backendDialName, &backendDialConfig); err != nil {
+				return nil, err
+			}
 		}
 
 		otelcol, err := newOTCollectorContainer(collectorCtr, backendDialConfig, exporterType...)
