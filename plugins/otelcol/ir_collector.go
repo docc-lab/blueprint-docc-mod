@@ -14,6 +14,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/workflow/workflowspec"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 	"golang.org/x/exp/slog"
+	"gopkg.in/yaml.v3"
 )
 
 // Blueprint IR node that represents the OpenTelemetry Collector container
@@ -27,6 +28,9 @@ type OTCollectorContainer struct {
 	Iface              *goparser.ParsedInterface
 	CentralBackendAddr *address.DialConfig
 	ExporterType       string // "otlp", "zipkin", "jaeger", etc. Defaults to "otlp"
+	// New fields for dynamic configuration
+	BaseImage        string // Docker base image to use
+	CustomConfigPath string // Path to custom YAML config file
 }
 
 // OpenTelemetry Collector interface exposed to the application.
@@ -53,11 +57,28 @@ func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig
 		CollectorName:      name,
 		Iface:              spec.Iface,
 		CentralBackendAddr: centralBackendAddr,
+		// Set default values for new fields
+		BaseImage: "otel/opentelemetry-collector-contrib",
 	}
 
 	// Set exporter type if provided, otherwise defaults to "otlp"
 	if len(exporterType) > 0 {
 		collector.ExporterType = exporterType[0]
+	}
+
+	return collector, nil
+}
+
+// newOTCollectorContainerWithConfig creates a new OTCollectorContainer with custom configuration
+func newOTCollectorContainerWithConfig(name string, centralBackendAddr *address.DialConfig, customConfigPath string, baseImage string, exporterType ...string) (*OTCollectorContainer, error) {
+	collector, err := newOTCollectorContainer(name, centralBackendAddr, exporterType...)
+	if err != nil {
+		return nil, err
+	}
+
+	collector.CustomConfigPath = customConfigPath
+	if baseImage != "" {
+		collector.BaseImage = baseImage
 	}
 
 	return collector, nil
@@ -106,7 +127,19 @@ func (node *OTCollectorContainer) AddContainerArtifacts(target docker.ContainerW
 // generateArtifacts creates the OpenTelemetry collector artifacts
 func (node *OTCollectorContainer) generateArtifacts(workspace *otCollectorWorkspace) error {
 	// Generate the configuration file using Blueprint's template system
-	configContent := node.generateConfig()
+	var configContent string
+	if node.CustomConfigPath != "" {
+		// Read and process the custom config file
+		content, err := os.ReadFile(node.CustomConfigPath)
+		if err != nil {
+			return fmt.Errorf("failed to read custom config file %s: %w", node.CustomConfigPath, err)
+		}
+		configContent = node.processCustomConfig(string(content))
+	} else {
+		// Generate the configuration file using Blueprint's template system
+		configContent = node.generateConfig()
+	}
+
 	if err := workspace.WriteConfigFile(configContent); err != nil {
 		return err
 	}
@@ -173,16 +206,123 @@ service:
 `, exporterConfig, exporterType)
 }
 
+// processCustomConfig processes a custom configuration file by merging it with dynamic exporter configuration
+func (node *OTCollectorContainer) processCustomConfig(customConfig string) string {
+	// Parse the custom YAML config
+	var config map[string]interface{}
+	if err := yaml.Unmarshal([]byte(customConfig), &config); err != nil {
+		// If parsing fails, fall back to the original config
+		return customConfig
+	}
+
+	// Determine exporter type
+	exporterType := node.ExporterType
+	if exporterType == "jaeger" {
+		exporterType = "otlp"
+	}
+	if exporterType == "" {
+		exporterType = "otlp"
+	}
+
+	// Get the backend address name for environment variable substitution
+	backendEnvVarName := linux.EnvVar(node.CentralBackendAddr.Name())
+
+	// Always replace receivers with the standard OTLP receiver
+	config["receivers"] = map[string]interface{}{
+		"otlp": map[string]interface{}{
+			"protocols": map[string]interface{}{
+				"grpc": map[string]interface{}{
+					"endpoint": "0.0.0.0:4317",
+				},
+			},
+		},
+	}
+
+	// Get or create exporters section
+	exporters, exists := config["exporters"]
+	if !exists {
+		exporters = make(map[string]interface{})
+		config["exporters"] = exporters
+	}
+	exportersMap := exporters.(map[string]interface{})
+
+	// Add the dynamic exporter based on type
+	switch exporterType {
+	case "zipkin":
+		exportersMap["zipkin"] = map[string]interface{}{
+			"endpoint": fmt.Sprintf("http://${%s}/api/v2/spans", backendEnvVarName),
+		}
+	case "otlp":
+		exportersMap["otlp"] = map[string]interface{}{
+			"endpoint": fmt.Sprintf("${%s}", backendEnvVarName),
+			"tls": map[string]interface{}{
+				"insecure": true,
+			},
+		}
+	}
+
+	// Update service pipeline to include the dynamic exporter
+	if service, exists := config["service"]; exists {
+		if serviceMap, ok := service.(map[string]interface{}); ok {
+			if pipelines, exists := serviceMap["pipelines"]; exists {
+				if pipelinesMap, ok := pipelines.(map[string]interface{}); ok {
+					if traces, exists := pipelinesMap["traces"]; exists {
+						if tracesMap, ok := traces.(map[string]interface{}); ok {
+							// Update receivers to use otlp
+							tracesMap["receivers"] = []string{"otlp"}
+
+							// Update exporters to include the dynamic exporter
+							if exporters, exists := tracesMap["exporters"]; exists {
+								if exportersList, ok := exporters.([]interface{}); ok {
+									// Add the dynamic exporter if not already present
+									hasDynamicExporter := false
+									for _, exp := range exportersList {
+										if exp == exporterType {
+											hasDynamicExporter = true
+											break
+										}
+									}
+									if !hasDynamicExporter {
+										exportersList = append(exportersList, exporterType)
+										tracesMap["exporters"] = exportersList
+									}
+								}
+							} else {
+								// Create exporters list if it doesn't exist
+								tracesMap["exporters"] = []string{exporterType}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Marshal back to YAML
+	out, err := yaml.Marshal(config)
+	if err != nil {
+		// If marshaling fails, fall back to the original config
+		return customConfig
+	}
+
+	return string(out)
+}
+
 // generateDockerfile creates a Dockerfile for the OpenTelemetry collector
 func (node *OTCollectorContainer) generateDockerfile() string {
-	return `FROM otel/opentelemetry-collector
+	baseImage := node.BaseImage
+	if baseImage == "" {
+		baseImage = "otel/opentelemetry-collector-contrib" // fallback default
+	}
+
+	return fmt.Sprintf(`FROM %s
 
 # Copy the configuration file
 COPY config.yaml /etc/otelcol/config.yaml
 
 # Set the command to use the configuration file
 CMD ["--config", "/etc/otelcol/config.yaml"]
-`
+`, baseImage)
 }
 
 // Implements docker.ProvidesContainerInstance

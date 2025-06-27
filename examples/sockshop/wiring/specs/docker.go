@@ -47,7 +47,13 @@ var Docker = cmdbuilder.SpecOption{
 func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Define the trace collector, which will be used by all services
 	jaeger_collector := jaeger.Collector(spec, "jaeger")
-	trace_collector := otelcol.Collector(spec, "otelcol", jaeger_collector, "jaeger")
+	// trace_collector := otelcol.Collector(spec, "otelcol", jaeger_collector, "jaeger")
+	trace_collector := otelcol.CollectorWithConfig(
+		spec, "otelcol",
+		jaeger_collector,
+		"/Users/tomislavzm/PhD.nosync/DOCC_Lab/Infra/opentelemetry-collector-contrib/test-config.yaml",
+		"localhost:42069/otelcontribcol:latest",
+		"jaeger")
 
 	// trace_collector := tracingagent.Agent(spec, "tracing_agent")
 
