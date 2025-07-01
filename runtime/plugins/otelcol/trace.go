@@ -3,8 +3,8 @@ package otelcol
 
 import (
 	"context"
+	"fmt"
 
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -18,13 +18,17 @@ type OTCollectorTracer struct {
 // Returns a new instance of OTCollectorTracer.
 // Configures opentelemetry to export traces to the OpenTelemetry collector hosted at address `addr`.
 func NewOTCollectorTracer(ctx context.Context, addr string) (*OTCollectorTracer, error) {
-	exp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(addr), otlptracegrpc.WithInsecure())
+	// Create real-time span processor for partial spans (START/END events)
+	spanProcessor, err := NewRealTimeSpanProcessor(ctx, addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create real-time span processor: %w", err)
 	}
 
+	// exp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(addr), otlptracegrpc.WithInsecure())
+
+	// Create tracer provider with the real-time span processor
 	tp := tracesdk.NewTracerProvider(
-		tracesdk.WithBatcher(exp),
+		tracesdk.WithSpanProcessor(spanProcessor),
 	)
 	return &OTCollectorTracer{tp}, nil
 }
