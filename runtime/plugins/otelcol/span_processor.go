@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -178,7 +179,7 @@ func (p *RealTimeSpanProcessor) createEndEventSpan(s sdktrace.ReadOnlySpan) *tra
 }
 
 // convertResourceToProto converts an OpenTelemetry resource to protobuf format
-// using the same approach as the official OTLP exporter
+// using the same approach as the official OTLP exporter, but with service name fixing
 func (p *RealTimeSpanProcessor) convertResourceToProto(resource interface{}) *resourcepb.Resource {
 	if resource == nil {
 		return &resourcepb.Resource{}
@@ -195,9 +196,36 @@ func (p *RealTimeSpanProcessor) convertResourceToProto(resource interface{}) *re
 
 	// Convert attributes using the iterator
 	attrs := p.convertAttributeIterator(iter)
+
+	// Fix service name if it contains "unknown_service:" prefix
+	attrs = p.fixServiceName(attrs)
+
 	return &resourcepb.Resource{
 		Attributes: attrs,
 	}
+}
+
+// fixServiceName replaces "unknown_service:" prefix with proper service names
+func (p *RealTimeSpanProcessor) fixServiceName(attrs []*commonpb.KeyValue) []*commonpb.KeyValue {
+	for i, attr := range attrs {
+		if attr.Key == "service.name" {
+			serviceName := attr.Value.GetStringValue()
+			if strings.HasPrefix(serviceName, "unknown_service:") {
+				// Extract the actual service name from the instrumentation scope
+				// The format is typically "unknown_service:service_name_proc"
+				parts := strings.SplitN(serviceName, ":", 2)
+				if len(parts) == 2 {
+					// Remove "_proc" suffix if present (Blueprint convention)
+					cleanName := strings.TrimSuffix(parts[1], "_proc")
+					attrs[i] = &commonpb.KeyValue{
+						Key:   "service.name",
+						Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: cleanName}},
+					}
+				}
+			}
+		}
+	}
+	return attrs
 }
 
 // convertAttributeIterator converts an attribute iterator to protobuf format
