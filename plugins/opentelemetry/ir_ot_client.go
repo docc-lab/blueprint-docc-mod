@@ -147,6 +147,7 @@ func generateClientHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 	}
 
 	server.Imports.AddPackages("context")
+	server.Imports.AddPackages("go.opentelemetry.io/otel/trace")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile := filepath.Join(server.Package.Path, impl.Name+".go")
@@ -194,7 +195,7 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
-	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}")
+	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, string(trace_ctx))

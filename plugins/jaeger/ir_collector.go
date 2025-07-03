@@ -70,5 +70,18 @@ func (node *JaegerCollectorContainer) AddContainerInstance(target docker.Contain
 	node.UIBindAddr.Port = 16686
 	node.BindAddr.Port = 14268
 	node.OTLPBindAddr.Port = 4317
-	return target.DeclarePrebuiltInstance(node.CollectorName, "jaegertracing/all-in-one:latest", node.BindAddr, node.UIBindAddr, node.OTLPBindAddr)
+
+	// Declare the prebuilt instance
+	err := target.DeclarePrebuiltInstance(node.CollectorName, "jaegertracing/all-in-one:latest", node.BindAddr, node.UIBindAddr, node.OTLPBindAddr)
+	if err != nil {
+		return err
+	}
+
+	// Add clock skew adjustment environment variable
+	err = target.SetEnvironmentVariable(node.CollectorName, "QUERY_MAX_CLOCK_SKEW_ADJUSTMENT", "1m")
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

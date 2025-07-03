@@ -254,7 +254,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
-	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}")
+	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindServer))
 	defer span.End()
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
