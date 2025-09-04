@@ -1,20 +1,32 @@
 package linuxgen
 
-import "github.com/blueprint-uservices/blueprint/plugins/golang/gogen"
+import (
+	"github.com/blueprint-uservices/blueprint/plugins/golang/gogen"
+	"runtime"
+)
 
 /*
 If the goproc is being deployed to Docker, we can provide some custom
 build commands to add to the Dockerfile
 */
 func GenerateDockerfileBuildCommands(goProcName string) (string, error) {
+	goVersion := getGoVersionNumber()
+	
 	args := dockerfileBuildTemplateArgs{
 		ProcName: goProcName,
+		GoVersion: goVersion,
 	}
 	return gogen.ExecuteTemplate("dockerfile_buildgoproc", dockerfileBuildTemplate, args)
 }
 
+func getGoVersionNumber() string {
+	version := runtime.Version()
+	return version[2:]
+}
+
 type dockerfileBuildTemplateArgs struct {
 	ProcName string
+	GoVersion string
 }
 
 var dockerfileBuildTemplate = `
@@ -22,7 +34,7 @@ var dockerfileBuildTemplate = `
 #  custom docker build commands provided by goproc.Process {{.ProcName}}
 #
 
-FROM golang:1.22-bookworm AS {{.ProcName}}
+FROM golang:{{.GoVersion}}-bookworm AS {{.ProcName}}
 
 COPY ./{{.ProcName}} /src
 
