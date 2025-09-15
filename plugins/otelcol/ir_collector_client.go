@@ -16,17 +16,19 @@ import (
 type OTCollectorClient struct {
 	golang.Node
 	golang.Instantiable
-	ClientName string
-	ServerDial *address.DialConfig
-	Spec       *workflowspec.Service
+	ClientName      string
+	ServerDial      *address.DialConfig
+	IPDiscoveryPort int
+	Spec            *workflowspec.Service
 }
 
-func newOTCollectorClient(name string, addr *address.DialConfig) (*OTCollectorClient, error) {
+func newOTCollectorClient(name string, addr *address.DialConfig, ipDiscoveryPort int) (*OTCollectorClient, error) {
 	spec, err := workflowspec.GetService[otelcol.OTCollectorTracer]()
 	node := &OTCollectorClient{
-		ClientName: name,
-		ServerDial: addr,
-		Spec:       spec,
+		ClientName:      name,
+		ServerDial:      addr,
+		IPDiscoveryPort: ipDiscoveryPort,
+		Spec:            spec,
 	}
 	return node, err
 }
@@ -50,7 +52,10 @@ func (node *OTCollectorClient) AddInstantiation(builder golang.NamespaceBuilder)
 
 	slog.Info(fmt.Sprintf("Instantiating OTCollectorClient %v in %v/%v", node.ClientName, builder.Info().Package.PackageName, builder.Info().FileName))
 
-	return builder.DeclareConstructor(node.ClientName, node.Spec.Constructor.AsConstructor(), []ir.IRNode{node.ServerDial})
+	// Create IRValue for IP discovery port
+	ipDiscoveryPortValue := &ir.IRValue{Value: fmt.Sprintf("%d", node.IPDiscoveryPort)}
+
+	return builder.DeclareConstructor(node.ClientName, node.Spec.Constructor.AsConstructor(), []ir.IRNode{node.ServerDial, ipDiscoveryPortValue})
 }
 
 // Implements service.ServiceNode

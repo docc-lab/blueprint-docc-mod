@@ -1,0 +1,519 @@
+{
+  "endpoints": {
+    "user_management": {
+      "description": "User profile and account management",
+      "endpoints": [
+        {
+          "endpoint": "GET /user/profile",
+          "description": "Get user profile with preferences",
+          "business_purpose": "Display user profile information",
+          "workflow_id": "get_user_profile"
+        },
+        {
+          "endpoint": "PUT /user/profile",
+          "description": "Update user profile and preferences",
+          "business_purpose": "Profile information update",
+          "workflow_id": "update_user_profile"
+        },
+        {
+          "endpoint": "GET /user/addresses",
+          "description": "Get user addresses with validation",
+          "business_purpose": "Display user address book",
+          "workflow_id": "get_user_addresses"
+        },
+        {
+          "endpoint": "POST /user/addresses",
+          "description": "Add new address with validation",
+          "business_purpose": "Add new shipping/billing address",
+          "workflow_id": "add_user_address"
+        },
+        {
+          "endpoint": "DELETE /user/addresses/{id}",
+          "description": "Remove user address",
+          "business_purpose": "Delete address from user's address book",
+          "workflow_id": "remove_user_address"
+        },
+        {
+          "endpoint": "GET /user/orders",
+          "description": "Get user order history",
+          "business_purpose": "Display user's past orders",
+          "workflow_id": "get_user_orders"
+        },
+        {
+          "endpoint": "GET /user/wishlist",
+          "description": "Get user wishlist items",
+          "business_purpose": "Display user's saved items",
+          "workflow_id": "get_user_wishlist"
+        }
+      ]
+    },
+    "product_catalog": {
+      "description": "Product browsing, search, and discovery",
+      "endpoints": [
+        {
+          "endpoint": "GET /products",
+          "description": "Product listing with filtering and pagination",
+          "business_purpose": "Browse product catalog",
+          "workflow_id": "product_listing"
+        },
+        {
+          "endpoint": "GET /products/{id}",
+          "description": "Product details with inventory and pricing",
+          "business_purpose": "View detailed product information",
+          "workflow_id": "product_details"
+        },
+        {
+          "endpoint": "GET /products/search",
+          "description": "Product search with advanced filtering",
+          "business_purpose": "Search products by criteria",
+          "workflow_id": "product_search"
+        },
+        {
+          "endpoint": "GET /categories",
+          "description": "Category listing with hierarchy",
+          "business_purpose": "Browse product categories",
+          "workflow_id": "category_listing"
+        },
+        {
+          "endpoint": "GET /categories/{id}/products",
+          "description": "Products by category with filtering",
+          "business_purpose": "Browse products in category",
+          "workflow_id": "category_products"
+        },
+        {
+          "endpoint": "GET /brands",
+          "description": "Brand listing with product counts",
+          "business_purpose": "Browse product brands",
+          "workflow_id": "brand_listing"
+        },
+        {
+          "endpoint": "GET /brands/{id}/products",
+          "description": "Products by brand with filtering",
+          "business_purpose": "Browse products by brand",
+          "workflow_id": "brand_products"
+        },
+        {
+          "endpoint": "GET /products/{id}/reviews",
+          "description": "Product reviews and ratings",
+          "business_purpose": "Display product reviews",
+          "workflow_id": "product_reviews"
+        },
+        {
+          "endpoint": "POST /products/{id}/reviews",
+          "description": "Submit product review",
+          "business_purpose": "Add user review for product",
+          "workflow_id": "submit_product_review"
+        }
+      ]
+    },
+    "shopping_cart": {
+      "description": "Shopping cart management",
+      "endpoints": [
+        {
+          "endpoint": "GET /cart",
+          "description": "Get shopping cart with current items",
+          "business_purpose": "View current cart contents",
+          "workflow_id": "get_cart"
+        },
+        {
+          "endpoint": "POST /cart/items",
+          "description": "Add item to shopping cart",
+          "business_purpose": "Add product to cart",
+          "workflow_id": "add_to_cart"
+        },
+        {
+          "endpoint": "PUT /cart/items/{id}",
+          "description": "Update cart item quantity",
+          "business_purpose": "Modify item quantity in cart",
+          "workflow_id": "update_cart_item"
+        },
+        {
+          "endpoint": "DELETE /cart/items/{id}",
+          "description": "Remove item from cart",
+          "business_purpose": "Remove product from cart",
+          "workflow_id": "remove_from_cart"
+        },
+        {
+          "endpoint": "POST /cart/clear",
+          "description": "Clear entire shopping cart",
+          "business_purpose": "Empty cart contents",
+          "workflow_id": "clear_cart"
+        },
+        {
+          "endpoint": "POST /cart/apply-coupon",
+          "description": "Apply coupon to cart",
+          "business_purpose": "Apply discount coupon to cart",
+          "workflow_id": "apply_cart_coupon"
+        }
+      ]
+    },
+    "wishlist": {
+      "description": "Wishlist management",
+      "endpoints": [
+        {
+          "endpoint": "GET /wishlist",
+          "description": "Get user wishlist with product details",
+          "business_purpose": "View saved items",
+          "workflow_id": "get_wishlist"
+        },
+        {
+          "endpoint": "POST /wishlist/items",
+          "description": "Add item to wishlist",
+          "business_purpose": "Save product to wishlist",
+          "workflow_id": "add_to_wishlist"
+        },
+        {
+          "endpoint": "DELETE /wishlist/items/{id}",
+          "description": "Remove item from wishlist",
+          "business_purpose": "Remove product from wishlist",
+          "workflow_id": "remove_from_wishlist"
+        },
+        {
+          "endpoint": "POST /wishlist/items/{id}/move-to-cart",
+          "description": "Move wishlist item to cart",
+          "business_purpose": "Convert wishlist item to cart item",
+          "workflow_id": "move_to_cart"
+        }
+      ]
+    },
+    "checkout": {
+      "description": "Checkout and order processing",
+      "endpoints": [
+        {
+          "endpoint": "POST /checkout/initiate",
+          "description": "Start checkout process with validation",
+          "business_purpose": "Begin checkout workflow",
+          "workflow_id": "initiate_checkout"
+        },
+        {
+          "endpoint": "POST /checkout/validate",
+          "description": "Validate checkout data and availability",
+          "business_purpose": "Pre-checkout validation",
+          "workflow_id": "validate_checkout"
+        },
+        {
+          "endpoint": "POST /checkout/process",
+          "description": "Process complete checkout with payment",
+          "business_purpose": "Complete order processing",
+          "workflow_id": "process_checkout"
+        },
+        {
+          "endpoint": "GET /checkout/shipping-options",
+          "description": "Get available shipping options",
+          "business_purpose": "Display shipping choices",
+          "workflow_id": "get_shipping_options"
+        },
+        {
+          "endpoint": "GET /checkout/tax-estimate",
+          "description": "Calculate tax for checkout",
+          "business_purpose": "Tax calculation for order",
+          "workflow_id": "calculate_tax"
+        },
+        {
+          "endpoint": "POST /checkout/guest",
+          "description": "Guest checkout process",
+          "business_purpose": "Checkout without account creation",
+          "workflow_id": "guest_checkout"
+        }
+      ]
+    },
+    "orders": {
+      "description": "Order management and tracking",
+      "endpoints": [
+        {
+          "endpoint": "GET /orders",
+          "description": "Get user order history",
+          "business_purpose": "View past orders",
+          "workflow_id": "get_order_history"
+        },
+        {
+          "endpoint": "GET /orders/{id}",
+          "description": "Get order details with tracking",
+          "business_purpose": "View specific order details",
+          "workflow_id": "get_order_details"
+        },
+        {
+          "endpoint": "POST /orders/{id}/cancel",
+          "description": "Cancel order with validation",
+          "business_purpose": "Cancel pending order",
+          "workflow_id": "cancel_order"
+        },
+        {
+          "endpoint": "POST /orders/{id}/return",
+          "description": "Initiate return process",
+          "business_purpose": "Start return workflow",
+          "workflow_id": "initiate_return"
+        },
+        {
+          "endpoint": "GET /orders/{id}/tracking",
+          "description": "Get order tracking information",
+          "business_purpose": "Display shipping tracking details",
+          "workflow_id": "get_order_tracking"
+        },
+        {
+          "endpoint": "POST /orders/{id}/reorder",
+          "description": "Reorder previous order",
+          "business_purpose": "Recreate order from previous purchase",
+          "workflow_id": "reorder"
+        }
+      ]
+    },
+    "payments": {
+      "description": "Payment processing and management",
+      "endpoints": [
+        {
+          "endpoint": "POST /payments/process",
+          "description": "Process payment for order",
+          "business_purpose": "Complete payment transaction",
+          "workflow_id": "process_payment"
+        },
+        {
+          "endpoint": "GET /payments/methods",
+          "description": "Get available payment methods",
+          "business_purpose": "Display payment options",
+          "workflow_id": "get_payment_methods"
+        },
+        {
+          "endpoint": "POST /payments/refund",
+          "description": "Process payment refund",
+          "business_purpose": "Refund payment to customer",
+          "workflow_id": "process_refund"
+        },
+        {
+          "endpoint": "GET /payments/history",
+          "description": "Get payment history",
+          "business_purpose": "Display payment transaction history",
+          "workflow_id": "get_payment_history"
+        },
+        {
+          "endpoint": "POST /payments/save-method",
+          "description": "Save payment method for future use",
+          "business_purpose": "Store payment method securely",
+          "workflow_id": "save_payment_method"
+        }
+      ]
+    },
+    "returns": {
+      "description": "Return and refund management",
+      "endpoints": [
+        {
+          "endpoint": "POST /returns/initiate",
+          "description": "Initiate return request",
+          "business_purpose": "Start return process for order",
+          "workflow_id": "initiate_return"
+        },
+        {
+          "endpoint": "GET /returns/{id}/status",
+          "description": "Get return status",
+          "business_purpose": "Check return processing status",
+          "workflow_id": "get_return_status"
+        },
+        {
+          "endpoint": "POST /returns/{id}/cancel",
+          "description": "Cancel return request",
+          "business_purpose": "Cancel pending return",
+          "workflow_id": "cancel_return"
+        },
+        {
+          "endpoint": "GET /returns/history",
+          "description": "Get return history",
+          "business_purpose": "Display past returns",
+          "workflow_id": "get_return_history"
+        }
+      ]
+    },
+    "notifications": {
+      "description": "User notifications and alerts",
+      "endpoints": [
+        {
+          "endpoint": "GET /notifications",
+          "description": "Get user notifications",
+          "business_purpose": "Display user notifications",
+          "workflow_id": "get_notifications"
+        },
+        {
+          "endpoint": "POST /notifications/{id}/read",
+          "description": "Mark notification as read",
+          "business_purpose": "Update notification read status",
+          "workflow_id": "mark_notification_read"
+        },
+        {
+          "endpoint": "GET /notifications/preferences",
+          "description": "Get notification preferences",
+          "business_purpose": "Display notification settings",
+          "workflow_id": "get_notification_preferences"
+        },
+        {
+          "endpoint": "PUT /notifications/preferences",
+          "description": "Update notification preferences",
+          "business_purpose": "Modify notification settings",
+          "workflow_id": "update_notification_preferences"
+        }
+      ]
+    },
+    "admin_management": {
+      "description": "Administrative operations",
+      "endpoints": [
+        {
+          "endpoint": "GET /admin/products",
+          "description": "Admin product management",
+          "business_purpose": "Manage product catalog",
+          "workflow_id": "admin_product_management"
+        },
+        {
+          "endpoint": "POST /admin/products",
+          "description": "Create new product",
+          "business_purpose": "Add new product to catalog",
+          "workflow_id": "admin_create_product"
+        },
+        {
+          "endpoint": "PUT /admin/products/{id}",
+          "description": "Update product information",
+          "business_purpose": "Modify existing product",
+          "workflow_id": "admin_update_product"
+        },
+        {
+          "endpoint": "DELETE /admin/products/{id}",
+          "description": "Delete product",
+          "business_purpose": "Remove product from catalog",
+          "workflow_id": "admin_delete_product"
+        },
+        {
+          "endpoint": "GET /admin/inventory",
+          "description": "Inventory management dashboard",
+          "business_purpose": "Monitor inventory levels",
+          "workflow_id": "admin_inventory_dashboard"
+        },
+        {
+          "endpoint": "POST /admin/inventory/adjust",
+          "description": "Adjust inventory levels",
+          "business_purpose": "Update stock quantities",
+          "workflow_id": "admin_adjust_inventory"
+        },
+        {
+          "endpoint": "GET /admin/orders",
+          "description": "Order management dashboard",
+          "business_purpose": "Monitor and manage orders",
+          "workflow_id": "admin_order_dashboard"
+        },
+        {
+          "endpoint": "PUT /admin/orders/{id}/status",
+          "description": "Update order status",
+          "business_purpose": "Change order processing status",
+          "workflow_id": "admin_update_order_status"
+        },
+        {
+          "endpoint": "GET /admin/users",
+          "description": "User management dashboard",
+          "business_purpose": "Monitor user accounts",
+          "workflow_id": "admin_user_dashboard"
+        },
+        {
+          "endpoint": "POST /admin/users/{id}/lock",
+          "description": "Lock user account",
+          "business_purpose": "Disable user account",
+          "workflow_id": "admin_lock_user"
+        },
+        {
+          "endpoint": "GET /admin/analytics",
+          "description": "Business analytics dashboard",
+          "business_purpose": "View business metrics",
+          "workflow_id": "admin_analytics_dashboard"
+        },
+        {
+          "endpoint": "GET /admin/reports/sales",
+          "description": "Sales reports",
+          "business_purpose": "Generate sales reports",
+          "workflow_id": "admin_sales_reports"
+        },
+        {
+          "endpoint": "GET /admin/reports/inventory",
+          "description": "Inventory reports",
+          "business_purpose": "Generate inventory reports",
+          "workflow_id": "admin_inventory_reports"
+        }
+      ]
+    },
+    "authentication": {
+      "description": "User authentication and session management",
+      "endpoints": [
+        {
+          "endpoint": "POST /auth/register",
+          "description": "User registration with email verification",
+          "business_purpose": "New user account creation",
+          "workflow_id": "user_registration"
+        },
+        {
+          "endpoint": "POST /auth/login",
+          "description": "User authentication with session creation",
+          "business_purpose": "User login and session management",
+          "workflow_id": "user_login"
+        },
+        {
+          "endpoint": "POST /auth/logout",
+          "description": "User logout with session cleanup",
+          "business_purpose": "Secure session termination",
+          "workflow_id": "user_logout"
+        },
+        {
+          "endpoint": "POST /auth/forgot-password",
+          "description": "Password reset request with email",
+          "business_purpose": "Password recovery process",
+          "workflow_id": "password_reset"
+        },
+        {
+          "endpoint": "POST /auth/verify-email",
+          "description": "Email verification for new accounts",
+          "business_purpose": "Verify user email address",
+          "workflow_id": "email_verification"
+        }
+      ]
+    },
+    "system_health": {
+      "description": "System monitoring and health checks",
+      "endpoints": [
+        {
+          "endpoint": "GET /health",
+          "description": "System health check",
+          "business_purpose": "Monitor system status",
+          "workflow_id": "health_check"
+        },
+        {
+          "endpoint": "GET /health/detailed",
+          "description": "Detailed system health with dependencies",
+          "business_purpose": "Comprehensive system monitoring",
+          "workflow_id": "detailed_health_check"
+        },
+        {
+          "endpoint": "GET /metrics",
+          "description": "System metrics and performance data",
+          "business_purpose": "Performance monitoring",
+          "workflow_id": "system_metrics"
+        },
+        {
+          "endpoint": "GET /metrics/business",
+          "description": "Business metrics and KPIs",
+          "business_purpose": "Business performance monitoring",
+          "workflow_id": "business_metrics"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_endpoints": 75,
+    "categories": {
+      "authentication": 5,
+      "user_management": 7,
+      "product_catalog": 9,
+      "shopping_cart": 6,
+      "wishlist": 4,
+      "checkout": 6,
+      "orders": 6,
+      "payments": 5,
+      "returns": 4,
+      "notifications": 4,
+      "admin_management": 14,
+      "system_health": 4
+    }
+  }
+} 

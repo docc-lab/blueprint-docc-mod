@@ -17,9 +17,9 @@ type OTCollectorTracer struct {
 
 // Returns a new instance of OTCollectorTracer.
 // Configures opentelemetry to export traces to the OpenTelemetry collector hosted at address `addr`.
-func NewOTCollectorTracer(ctx context.Context, addr string) (*OTCollectorTracer, error) {
+func NewOTCollectorTracer(ctx context.Context, addr string, ipDiscoveryPort string) (*OTCollectorTracer, error) {
 	// Create real-time span processor for partial spans (START/END events)
-	spanProcessor, err := NewRealTimeSpanProcessor(ctx, addr)
+	spanProcessor, err := NewRealTimeSpanProcessor(ctx, addr, ipDiscoveryPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create real-time span processor: %w", err)
 	}

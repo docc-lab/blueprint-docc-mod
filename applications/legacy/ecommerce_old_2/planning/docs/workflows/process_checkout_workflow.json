@@ -1,0 +1,349 @@
+{
+  "workflow_id": "process_checkout",
+  "endpoint": "POST /checkout/process",
+  "description": "Process complete checkout with payment",
+  "business_purpose": "Complete order processing",
+  "calls": [
+    {
+      "call_id": 0,
+      "service": "Checkout Service",
+      "operation": "process_checkout",
+      "depends_on": [],
+      "business_purpose": "Handle POST /checkout/process endpoint",
+      "children": [
+        {
+          "call_id": 0,
+          "service": "Authentication Service",
+          "operation": "validate_token",
+          "depends_on": [],
+          "business_purpose": "Validate user authentication token",
+          "children": []
+        },
+        {
+          "call_id": 1,
+          "service": "Authorization Service",
+          "operation": "check_checkout_permission",
+          "depends_on": [0],
+          "business_purpose": "Check if user has permission to checkout",
+          "children": []
+        },
+        {
+          "call_id": 2,
+          "service": "Checkout Validation Service",
+          "operation": "validate_checkout_data",
+          "depends_on": [1],
+          "business_purpose": "Validate checkout form data",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "User Validation Service",
+              "operation": "validate_user_data",
+              "depends_on": [],
+              "business_purpose": "Validate user information",
+              "children": []
+            },
+            {
+              "call_id": 1,
+              "service": "Address Service",
+              "operation": "validate_shipping_address",
+              "depends_on": [],
+              "business_purpose": "Validate shipping address format and availability",
+              "children": []
+            },
+            {
+              "call_id": 2,
+              "service": "Address Service",
+              "operation": "validate_billing_address",
+              "depends_on": [],
+              "business_purpose": "Validate billing address format",
+              "children": []
+            }
+          ]
+        },
+        {
+          "call_id": 3,
+          "service": "Shopping Cart Service",
+          "operation": "get_cart_items",
+          "depends_on": [2],
+          "business_purpose": "Retrieve current cart items",
+          "children": []
+        },
+        {
+          "call_id": 4,
+          "service": "Inventory Service",
+          "operation": "check_availability",
+          "depends_on": [3],
+          "business_purpose": "Check product availability and stock levels",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Stock Service",
+              "operation": "verify_stock_levels",
+              "depends_on": [],
+              "business_purpose": "Verify current stock levels for each item",
+              "children": []
+            },
+            {
+              "call_id": 1,
+              "service": "Inventory Validation Service",
+              "operation": "validate_reservations",
+              "depends_on": [0],
+              "business_purpose": "Validate inventory reservations",
+              "children": []
+            }
+          ]
+        },
+        {
+          "call_id": 5,
+          "service": "Pricing Service",
+          "operation": "calculate_total",
+          "depends_on": [3, 4],
+          "business_purpose": "Calculate order total with all costs",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Price Calculation Service",
+              "operation": "calculate_base_price",
+              "depends_on": [],
+              "business_purpose": "Calculate base price for all items",
+              "children": []
+            },
+            {
+              "call_id": 1,
+              "service": "Tax Service",
+              "operation": "calculate_tax",
+              "depends_on": [0],
+              "business_purpose": "Calculate applicable taxes",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Tax Validation Service",
+                  "operation": "validate_tax_rules",
+                  "depends_on": [],
+                  "business_purpose": "Validate tax rules for location",
+                  "children": []
+                },
+                {
+                  "call_id": 1,
+                  "service": "Tax Calculation Service",
+                  "operation": "compute_tax_amount",
+                  "depends_on": [0],
+                  "business_purpose": "Compute tax amount based on rules",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "call_id": 2,
+              "service": "Shipping Service",
+              "operation": "calculate_shipping",
+              "depends_on": [0],
+              "business_purpose": "Calculate shipping costs",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Shipping Validation Service",
+                  "operation": "validate_shipping_options",
+                  "depends_on": [],
+                  "business_purpose": "Validate available shipping options",
+                  "children": []
+                },
+                {
+                  "call_id": 1,
+                  "service": "Shipping Processing Service",
+                  "operation": "compute_shipping_cost",
+                  "depends_on": [0],
+                  "business_purpose": "Compute shipping cost for selected option",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "call_id": 3,
+              "service": "Discount Service",
+              "operation": "apply_discounts",
+              "depends_on": [0],
+              "business_purpose": "Apply applicable discounts and coupons",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Coupon Service",
+                  "operation": "validate_coupons",
+                  "depends_on": [],
+                  "business_purpose": "Validate coupon codes and eligibility",
+                  "children": []
+                },
+                {
+                  "call_id": 1,
+                  "service": "Discount Service",
+                  "operation": "apply_discount_rules",
+                  "depends_on": [0],
+                  "business_purpose": "Apply discount rules and calculations",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 6,
+          "service": "Payment Service",
+          "operation": "process_payment",
+          "depends_on": [5],
+          "business_purpose": "Process payment for the order",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Payment Validation Service",
+              "operation": "validate_payment_method",
+              "depends_on": [],
+              "business_purpose": "Validate payment method and details",
+              "children": []
+            },
+            {
+              "call_id": 1,
+              "service": "Payment Processing Service",
+              "operation": "authorize_payment",
+              "depends_on": [0],
+              "business_purpose": "Authorize payment with payment gateway",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Payment Gateway Service",
+                  "operation": "process_authorization",
+                  "depends_on": [],
+                  "business_purpose": "Process payment authorization with gateway",
+                  "children": []
+                },
+                {
+                  "call_id": 1,
+                  "service": "Payment History Service",
+                  "operation": "log_authorization",
+                  "depends_on": [0],
+                  "business_purpose": "Log payment authorization attempt",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "call_id": 2,
+              "service": "Payment Processing Service",
+              "operation": "capture_payment",
+              "depends_on": [1],
+              "business_purpose": "Capture authorized payment",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Payment Gateway Service",
+                  "operation": "process_capture",
+                  "depends_on": [],
+                  "business_purpose": "Process payment capture with gateway",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 7,
+          "service": "Order Service",
+          "operation": "create_order",
+          "depends_on": [4, 5, 6],
+          "business_purpose": "Create the order record",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Order Validation Service",
+              "operation": "validate_order_data",
+              "depends_on": [],
+              "business_purpose": "Validate complete order data",
+              "children": []
+            },
+            {
+              "call_id": 1,
+              "service": "Order Processing Service",
+              "operation": "create_order_record",
+              "depends_on": [0],
+              "business_purpose": "Create order record in database",
+              "children": []
+            },
+            {
+              "call_id": 2,
+              "service": "Order Tracking Service",
+              "operation": "initialize_tracking",
+              "depends_on": [1],
+              "business_purpose": "Initialize order tracking",
+              "children": []
+            }
+          ]
+        },
+        {
+          "call_id": 8,
+          "service": "Inventory Service",
+          "operation": "reserve_inventory",
+          "depends_on": [7],
+          "business_purpose": "Reserve inventory for the order",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Stock Service",
+              "operation": "reserve_stock",
+              "depends_on": [],
+              "business_purpose": "Reserve stock for ordered items",
+              "children": []
+            },
+            {
+              "call_id": 1,
+              "service": "Inventory Alert Service",
+              "operation": "check_low_stock",
+              "depends_on": [0],
+              "business_purpose": "Check if stock levels are low after reservation",
+              "children": []
+            }
+          ]
+        },
+        {
+          "call_id": 9,
+          "service": "Shopping Cart Service",
+          "operation": "clear_cart",
+          "depends_on": [7],
+          "business_purpose": "Clear the shopping cart after successful order",
+          "children": []
+        },
+        {
+          "call_id": 10,
+          "service": "Order History Service",
+          "operation": "log_order_creation",
+          "depends_on": [7, 8],
+          "business_purpose": "Log order creation for audit purposes",
+          "children": []
+        },
+        {
+          "call_id": 11,
+          "service": "Email Service",
+          "operation": "send_order_confirmation",
+          "depends_on": [7],
+          "business_purpose": "Send order confirmation email to customer",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Content Management Service",
+              "operation": "generate_order_email_template",
+              "depends_on": [],
+              "business_purpose": "Generate order confirmation email template",
+              "children": []
+            },
+            {
+              "call_id": 1,
+              "service": "Email Service",
+              "operation": "send_confirmation_email",
+              "depends_on": [0],
+              "business_purpose": "Send order confirmation email",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+} 

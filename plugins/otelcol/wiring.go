@@ -38,9 +38,10 @@ import (
 //	// Or with specific exporter type:
 //	collector := otelcol.Collector(spec, "otelcol", jaeger, "jaeger")
 //	collector := otelcol.Collector(spec, "otelcol", zipkin, "zipkin")
-func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, exporterType ...string) string {
+func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, ipDiscoveryPort int, exporterType ...string) string {
 	// The nodes that we are defining
 	collectorAddr := collectorName + ".addr"
+	collectorIPDiscoveryAddr := collectorName + ".ipdiscovery.addr"
 	collectorCtr := collectorName + ".ctr"
 	collectorClient := collectorName + ".client"
 
@@ -68,12 +69,19 @@ func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, 
 			}
 		}
 
-		otelcol, err := newOTCollectorContainer(collectorCtr, backendDialConfig, exporterType...)
+		otelcol, err := newOTCollectorContainer(collectorCtr, backendDialConfig, ipDiscoveryPort, exporterType...)
 		if err != nil {
 			return nil, err
 		}
 
 		err = address.Bind[*OTCollectorContainer](ns, collectorAddr, otelcol, &otelcol.BindAddr)
+		if err != nil {
+			return nil, err
+		}
+		err = address.Bind[*OTCollectorContainer](ns, collectorIPDiscoveryAddr, otelcol, &otelcol.IPDiscoveryBindAddr)
+		if err != nil {
+			return nil, err
+		}
 		return otelcol, err
 	})
 
@@ -81,9 +89,11 @@ func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, 
 	ptr := pointer.CreatePointer[*OTCollectorClient](spec, collectorName, collectorCtr)
 
 	// Define the address that points to the OpenTelemetry collector container
+	address.Define[*OTCollectorContainer](spec, collectorIPDiscoveryAddr, collectorCtr)
 	address.Define[*OTCollectorContainer](spec, collectorAddr, collectorCtr)
 
 	// Add the address to the pointer
+	ptr.AddAddrModifier(spec, collectorIPDiscoveryAddr)
 	ptr.AddAddrModifier(spec, collectorAddr)
 
 	// Define the OpenTelemetry collector client and add it to the client side of the pointer
@@ -94,7 +104,8 @@ func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, 
 			return nil, err
 		}
 
-		return newOTCollectorClient(collectorClient, addr.Dial)
+		// Use default IP discovery port 8080
+		return newOTCollectorClient(collectorClient, addr.Dial, ipDiscoveryPort)
 	})
 
 	// Return the pointer; anybody who wants to access the OpenTelemetry collector instance should do so through the pointer
@@ -111,9 +122,10 @@ func Collector(spec wiring.WiringSpec, collectorName string, backendRef string, 
 //
 //	// Or with specific exporter type:
 //	collector := otelcol.CollectorWithConfig(spec, "otelcol", jaeger, "/path/to/custom/config.yaml", "otel/opentelemetry-collector-contrib:latest", "jaeger")
-func CollectorWithConfig(spec wiring.WiringSpec, collectorName string, backendRef string, customConfigPath string, baseImage string, exporterType ...string) string {
+func CollectorWithConfig(spec wiring.WiringSpec, collectorName string, backendRef string, customConfigPath string, baseImage string, ipDiscoveryPort int, exporterType ...string) string {
 	// The nodes that we are defining
 	collectorAddr := collectorName + ".addr"
+	collectorIPDiscoveryAddr := collectorName + ".ipdiscovery.addr"
 	collectorCtr := collectorName + ".ctr"
 	collectorClient := collectorName + ".client"
 
@@ -141,12 +153,19 @@ func CollectorWithConfig(spec wiring.WiringSpec, collectorName string, backendRe
 			}
 		}
 
-		otelcol, err := newOTCollectorContainerWithConfig(collectorCtr, backendDialConfig, customConfigPath, baseImage, exporterType...)
+		otelcol, err := newOTCollectorContainerWithConfig(collectorCtr, backendDialConfig, customConfigPath, baseImage, ipDiscoveryPort, exporterType...)
 		if err != nil {
 			return nil, err
 		}
 
 		err = address.Bind[*OTCollectorContainer](ns, collectorAddr, otelcol, &otelcol.BindAddr)
+		if err != nil {
+			return nil, err
+		}
+		err = address.Bind[*OTCollectorContainer](ns, collectorIPDiscoveryAddr, otelcol, &otelcol.IPDiscoveryBindAddr)
+		if err != nil {
+			return nil, err
+		}
 		return otelcol, err
 	})
 
@@ -154,9 +173,13 @@ func CollectorWithConfig(spec wiring.WiringSpec, collectorName string, backendRe
 	ptr := pointer.CreatePointer[*OTCollectorClient](spec, collectorName, collectorCtr)
 
 	// Define the address that points to the OpenTelemetry collector container
+	// address.Define[*OTCollectorContainer](spec, collectorAddr, collectorCtr)
+	address.Define[*OTCollectorContainer](spec, collectorIPDiscoveryAddr, collectorCtr)
 	address.Define[*OTCollectorContainer](spec, collectorAddr, collectorCtr)
 
 	// Add the address to the pointer
+	// ptr.AddAddrModifier(spec, collectorAddr)
+	ptr.AddAddrModifier(spec, collectorIPDiscoveryAddr)
 	ptr.AddAddrModifier(spec, collectorAddr)
 
 	// Define the OpenTelemetry collector client and add it to the client side of the pointer
@@ -167,7 +190,7 @@ func CollectorWithConfig(spec wiring.WiringSpec, collectorName string, backendRe
 			return nil, err
 		}
 
-		return newOTCollectorClient(collectorClient, addr.Dial)
+		return newOTCollectorClient(collectorClient, addr.Dial, ipDiscoveryPort)
 	})
 
 	// Return the pointer; anybody who wants to access the OpenTelemetry collector instance should do so through the pointer

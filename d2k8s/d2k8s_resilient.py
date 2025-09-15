@@ -8,6 +8,38 @@ import re
 from pathlib import Path
 import glob
 import argparse
+import time
+import random
+
+def run_with_retry(cmd, max_retries=3, base_delay=5, timeout=300):
+    """Run a command with retry logic and exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            print(f"[DEBUG] Attempt {attempt + 1}/{max_retries}: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            if result.returncode == 0:
+                return result
+            else:
+                print(f"[WARNING] Attempt {attempt + 1} failed: {result.stderr.strip()}")
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    print(f"[INFO] Retrying in {delay:.1f} seconds...")
+                    time.sleep(delay)
+        except subprocess.TimeoutExpired:
+            print(f"[WARNING] Attempt {attempt + 1} timed out after {timeout} seconds")
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                print(f"[INFO] Retrying in {delay:.1f} seconds...")
+                time.sleep(delay)
+        except Exception as e:
+            print(f"[ERROR] Attempt {attempt + 1} failed with exception: {e}")
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                print(f"[INFO] Retrying in {delay:.1f} seconds...")
+                time.sleep(delay)
+    
+    # All attempts failed
+    return result if 'result' in locals() else None
 
 def parse_docker_compose(docker_compose_path):
     """Parse docker-compose file to get service definitions."""
@@ -109,17 +141,19 @@ def build_and_push_images(services, registry_url, docker_compose_dir):
                 print(f"[DEBUG] Image name: {full_image_name}")
 
                 build_cmd = ['docker', 'build', '-t', full_image_name, context]
-                result = subprocess.run(build_cmd, capture_output=True, text=True)
-                if result.returncode != 0:
-                    print(f"[ERROR] Failed to build {service_name}: {result.stderr}")
+                result = run_with_retry(build_cmd, max_retries=3, base_delay=10, timeout=600)
+                if not result or result.returncode != 0:
+                    error_msg = result.stderr if result else "Command failed completely"
+                    print(f"[ERROR] Failed to build {service_name} after retries: {error_msg}")
                     continue
                 print(f"[INFO] Successfully built {full_image_name}")
 
                 print(f"[INFO] Pushing {full_image_name}")
                 push_cmd = ['docker', 'push', full_image_name]
-                result = subprocess.run(push_cmd, capture_output=True, text=True)
-                if result.returncode != 0:
-                    print(f"[ERROR] Failed to push {service_name}: {result.stderr}")
+                result = run_with_retry(push_cmd, max_retries=3, base_delay=5, timeout=300)
+                if not result or result.returncode != 0:
+                    error_msg = result.stderr if result else "Command failed completely"
+                    print(f"[ERROR] Failed to push {service_name} after retries: {error_msg}")
                     continue
                 print(f"[INFO] Successfully pushed {full_image_name}")
             # If no build context but an image is specified, pull, tag, and push
@@ -145,9 +179,10 @@ def build_and_push_images(services, registry_url, docker_compose_dir):
                     
                     print(f"[INFO] Pulling official image for {service_name}: {original_image}")
                     pull_cmd = ['docker', 'pull', original_image]
-                    result = subprocess.run(pull_cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        print(f"[ERROR] Failed to pull {original_image}: {result.stderr}")
+                    result = run_with_retry(pull_cmd, max_retries=5, base_delay=10, timeout=600)
+                    if not result or result.returncode != 0:
+                        error_msg = result.stderr if result else "Command failed completely"
+                        print(f"[ERROR] Failed to pull {original_image} after retries: {error_msg}")
                         continue
                     print(f"[INFO] Tagging {original_image} as {full_image_name}")
                     tag_cmd = ['docker', 'tag', original_image, full_image_name]
@@ -157,9 +192,10 @@ def build_and_push_images(services, registry_url, docker_compose_dir):
                         continue
                     print(f"[INFO] Pushing {full_image_name}")
                     push_cmd = ['docker', 'push', full_image_name]
-                    result = subprocess.run(push_cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        print(f"[ERROR] Failed to push {full_image_name}: {result.stderr}")
+                    result = run_with_retry(push_cmd, max_retries=3, base_delay=5, timeout=300)
+                    if not result or result.returncode != 0:
+                        error_msg = result.stderr if result else "Command failed completely"
+                        print(f"[ERROR] Failed to push {full_image_name} after retries: {error_msg}")
                         continue
                     print(f"[INFO] Successfully pushed {full_image_name}")
                 else:

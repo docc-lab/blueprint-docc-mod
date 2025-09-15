@@ -3,10 +3,17 @@ package otelcol
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -30,65 +37,340 @@ type RealTimeSpanProcessor struct {
 	// Configuration
 	agentEndpoint string
 
+	// Agent IP discovery
+	aipLock sync.Mutex
+	agentIP string
+
+	// HTTP client for IP discovery
+	httpClient *http.Client
+
 	// Metrics for monitoring
 	startEventsSent   int64
 	endEventsSent     int64
 	completeSpansSent int64
+
+	startEventsBuf []*tracepb.ResourceSpans
+	sebLock        sync.Mutex
+	endEventsBuf   []*tracepb.ResourceSpans
+	eebLock        sync.Mutex
+
+	// IP Discovery Port
+	ipDiscoveryPort int
+
+	// Background processing
+	stopChan chan struct{}
+	wg       sync.WaitGroup
+}
+
+// IPResponse represents the response from the IP discovery endpoint
+type IPResponse struct {
+	IP string `json:"ip"`
 }
 
 // NewRealTimeSpanProcessor creates a new span processor that sends span data in real-time
-func NewRealTimeSpanProcessor(ctx context.Context, agentEndpoint string) (*RealTimeSpanProcessor, error) {
+func NewRealTimeSpanProcessor(ctx context.Context, agentEndpoint string, ipDiscoveryPort string) (*RealTimeSpanProcessor, error) {
+	slog.Info("🔵 Creating new RealTimeSpanProcessor", "agentEndpoint", agentEndpoint, "ipDiscoveryPort", ipDiscoveryPort)
+
 	// Create OTLP gRPC client using the official method
 	client := otlptracegrpc.NewClient(
 		otlptracegrpc.WithEndpoint(agentEndpoint),
 		otlptracegrpc.WithInsecure(),
 	)
 
+	slog.Info("🔵 OTLP client created, starting connection")
+
 	// Start the client to establish the connection
 	if err := client.Start(ctx); err != nil {
+		slog.Error("❌ Failed to start OTLP client", "error", err)
 		return nil, fmt.Errorf("failed to start OTLP client: %w", err)
 	}
 
-	return &RealTimeSpanProcessor{
-		client:        client,
-		agentEndpoint: agentEndpoint,
-	}, nil
+	slog.Info("🟢 OTLP client started successfully")
+
+	// Create HTTP client for IP discovery
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	ipDiscoveryPortInt, err := strconv.Atoi(ipDiscoveryPort)
+	if err != nil {
+		slog.Error("❌ Failed to convert ipDiscoveryPort to int", "error", err)
+		return nil, fmt.Errorf("failed to convert ipDiscoveryPort to int: %w", err)
+	}
+
+	processor := &RealTimeSpanProcessor{
+		client:          client,
+		agentEndpoint:   agentEndpoint,
+		httpClient:      httpClient,
+		ipDiscoveryPort: ipDiscoveryPortInt,
+		stopChan:        make(chan struct{}),
+	}
+
+	processor.aipLock.Lock()
+
+	slog.Info("🔵 About to fetch agent IP")
+
+	// Fetch agent IP - this is required before the processor can function
+	if err := processor.fetchAgentIP(ctx); err != nil {
+		slog.Error("❌ Failed to fetch agent IP", "error", err)
+		client.Stop(ctx)
+		return nil, fmt.Errorf("failed to fetch agent IP: %w", err)
+	}
+
+	// Start background goroutine for processing buffered events
+	processor.wg.Add(1)
+	go processor.processBufferedEvents()
+
+	slog.Info("🟢 RealTimeSpanProcessor created successfully", "agentIP", processor.agentIP)
+	return processor, nil
+}
+
+// getIPDiscoveryEndpoint converts the agent endpoint to the IP discovery endpoint
+func (p *RealTimeSpanProcessor) getIPDiscoveryEndpoint() string {
+	// Extract host from agent endpoint
+	if strings.Contains(p.agentEndpoint, ":") {
+		parts := strings.Split(p.agentEndpoint, ":")
+		if len(parts) >= 2 {
+			host := parts[0]
+			// Use configurable port for IP discovery (same host, different port)
+			return fmt.Sprintf("%s:%d", host, p.ipDiscoveryPort)
+		}
+	}
+	// Fallback to localhost with configurable port
+	return fmt.Sprintf("localhost:%d", p.ipDiscoveryPort)
+}
+
+// fetchAgentIP fetches the agent's IP address from the IP discovery endpoint
+func (p *RealTimeSpanProcessor) fetchAgentIP(ctx context.Context) error {
+	// Try to fetch IP from the discovery endpoint with retries
+	ip, err := p.fetchIPFromEndpointWithRetries(ctx)
+	if err != nil {
+		slog.Warn("Failed to fetch IP from discovery endpoint after retries, trying fallback methods", "error", err)
+
+		// Try fallback methods
+		ip, err = p.discoverIPFallback()
+		if err != nil {
+			return fmt.Errorf("failed to discover agent IP using all methods: %w", err)
+		}
+	}
+
+	p.agentIP = ip
+
+	slog.Info("Successfully discovered agent IP", "ip", ip)
+
+	p.aipLock.Unlock()
+
+	return nil
+}
+
+// fetchIPFromEndpoint fetches IP from the configured discovery endpoint
+func (p *RealTimeSpanProcessor) fetchIPFromEndpoint(ctx context.Context) (string, error) {
+	ipDiscoveryEndpoint := p.getIPDiscoveryEndpoint()
+	url := fmt.Sprintf("http://%s/getIP", ipDiscoveryEndpoint)
+
+	slog.Info("🔵 Attempting IP discovery", "url", url)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		slog.Error("❌ Failed to create HTTP request", "error", err)
+		return "", fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		slog.Error("❌ Failed to make HTTP request", "error", err)
+		return "", fmt.Errorf("failed to make HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	slog.Info("🔵 IP discovery response received", "status", resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("⚠️ IP discovery endpoint returned non-OK status", "status", resp.StatusCode)
+		return "", fmt.Errorf("IP discovery endpoint returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("❌ Failed to read response body", "error", err)
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var ipResp IPResponse
+	if err := json.Unmarshal(body, &ipResp); err != nil {
+		slog.Error("❌ Failed to parse IP response", "error", err, "body", string(body))
+		return "", fmt.Errorf("failed to parse IP response: %w", err)
+	}
+
+	if ipResp.IP == "" {
+		slog.Warn("⚠️ Empty IP address in response")
+		return "", fmt.Errorf("empty IP address in response")
+	}
+
+	slog.Info("🟢 IP discovery successful", "ip", ipResp.IP)
+	return ipResp.IP, nil
+}
+
+// fetchIPFromEndpointWithRetries fetches IP from the discovery endpoint with retries
+func (p *RealTimeSpanProcessor) fetchIPFromEndpointWithRetries(ctx context.Context) (string, error) {
+	ipDiscoveryEndpoint := p.getIPDiscoveryEndpoint()
+	url := fmt.Sprintf("http://%s/getIP", ipDiscoveryEndpoint)
+
+	// Retry loop with 1-second intervals
+	for attempt := 1; attempt <= 60; attempt++ { // Max 60 attempts (60 seconds)
+		slog.Debug("Attempting IP discovery", "attempt", attempt, "endpoint", url)
+
+		// Create a new request for each attempt
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create HTTP request: %w", err)
+		}
+
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			slog.Debug("IP discovery attempt failed, will retry", "attempt", attempt, "error", err)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return "", fmt.Errorf("failed to make HTTP request after %d attempts: %w", attempt, err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			slog.Debug("IP discovery endpoint returned non-OK status, will retry", "attempt", attempt, "status", resp.StatusCode)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return "", fmt.Errorf("IP discovery endpoint returned status %d after %d attempts", resp.StatusCode, attempt)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			slog.Debug("Failed to read response body, will retry", "attempt", attempt, "error", err)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return "", fmt.Errorf("failed to read response body after %d attempts: %w", attempt, err)
+		}
+
+		var ipResp IPResponse
+		if err := json.Unmarshal(body, &ipResp); err != nil {
+			slog.Debug("Failed to parse IP response, will retry", "attempt", attempt, "error", err)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return "", fmt.Errorf("failed to parse IP response after %d attempts: %w", attempt, err)
+		}
+
+		if ipResp.IP == "" {
+			slog.Debug("Empty IP address in response, will retry", "attempt", attempt)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return "", fmt.Errorf("empty IP address in response after %d attempts", attempt)
+		}
+
+		// Success! Return the IP
+		slog.Info("IP discovery successful", "attempt", attempt, "ip", ipResp.IP)
+		return ipResp.IP, nil
+	}
+
+	return "", fmt.Errorf("IP discovery failed after 60 attempts")
+}
+
+// discoverIPFallback uses fallback methods to discover IP when HTTP endpoint fails
+func (p *RealTimeSpanProcessor) discoverIPFallback() (string, error) {
+	slog.Info("🔵 Using fallback IP discovery methods")
+
+	// Try Kubernetes environment first
+	if podIP := os.Getenv("POD_IP"); podIP != "" {
+		slog.Info("🟢 Found POD_IP from environment", "ip", podIP)
+		return podIP, nil
+	}
+
+	// Try other environment variables
+	if hostIP := os.Getenv("HOST_IP"); hostIP != "" {
+		slog.Info("🟢 Found HOST_IP from environment", "ip", hostIP)
+		return hostIP, nil
+	}
+
+	slog.Info("🔵 Trying network interface discovery")
+
+	// Fall back to Go's standard library for Docker/other environments
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		slog.Error("❌ Failed to get interface addresses", "error", err)
+		return "", fmt.Errorf("failed to get interface addresses: %w", err)
+	}
+
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				slog.Info("🟢 Found local IP from network interface", "ip", ipnet.IP.String())
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+
+	slog.Error("❌ No local IP found from any method")
+	return "", fmt.Errorf("no local IP found")
+}
+
+// getAgentIP returns the agent's IP address, with thread-safe access
+func (p *RealTimeSpanProcessor) getAgentIP() string {
+	p.aipLock.Lock()
+	defer p.aipLock.Unlock()
+
+	return p.agentIP
 }
 
 // OnStart implements SpanProcessor.OnStart
 func (p *RealTimeSpanProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	// p.mu.Lock()
+	// defer p.mu.Unlock()
+
+	slog.Info("🔵 OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	// Create a START event span with only start time (no end time)
 	startSpan := p.createStartEventSpan(s)
 
-	// Send the START event
-	if err := p.sendSpanData([]*tracepb.ResourceSpans{startSpan}); err != nil {
-		slog.Error("Failed to send START event", "error", err, "span_name", s.Name())
-		return
-	}
+	slog.Info("🔵 About to buffer START event", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+
+	// Buffer the START event instead of sending it directly
+	p.sebLock.Lock()
+	p.startEventsBuf = append(p.startEventsBuf, startSpan)
+	p.sebLock.Unlock()
+
+	slog.Info("🟢 Successfully buffered START event", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	p.startEventsSent++
-	slog.Debug("🟢 Sent START event", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 }
 
 // OnEnd implements SpanProcessor.OnEnd
 func (p *RealTimeSpanProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	// p.mu.Lock()
+	// defer p.mu.Unlock()
+
+	slog.Info("🔴 OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	// Create an END event span with only trace ID, span ID, and end time
 	endSpan := p.createEndEventSpan(s)
 
-	// Send the END event
-	if err := p.sendSpanData([]*tracepb.ResourceSpans{endSpan}); err != nil {
-		slog.Error("Failed to send END event", "error", err, "span_name", s.Name())
-		return
-	}
+	slog.Info("🔴 About to buffer END event", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+
+	// Buffer the END event instead of sending it directly
+	p.eebLock.Lock()
+	p.endEventsBuf = append(p.endEventsBuf, endSpan)
+	p.eebLock.Unlock()
+
+	slog.Info("🟢 Successfully buffered END event", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	p.endEventsSent++
-	slog.Debug("🟢 Sent END event", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 }
 
 // createStartEventSpan creates a protobuf span for START events
@@ -103,6 +385,14 @@ func (p *RealTimeSpanProcessor) createStartEventSpan(s sdktrace.ReadWriteSpan) *
 			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: attr.Value.AsString()}},
 		}
 	}
+
+	// Add agent's own IP address as "upstream.ip" attribute for Agent Contact Protocol
+	agentIP := p.getAgentIP()
+	upstreamIPAttr := &commonpb.KeyValue{
+		Key:   "upstream.ip",
+		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: agentIP}},
+	}
+	attrsProto = append(attrsProto, upstreamIPAttr)
 
 	// Get trace and span IDs as byte arrays
 	traceID := s.SpanContext().TraceID()
@@ -281,13 +571,20 @@ func (p *RealTimeSpanProcessor) convertAttributeValue(v attribute.Value) *common
 
 // sendSpanData sends span data via the OTLP client
 func (p *RealTimeSpanProcessor) sendSpanData(spans []*tracepb.ResourceSpans) error {
-	return p.client.UploadTraces(context.Background(), spans)
+	slog.Info("🔵 About to send span data", "num_spans", len(spans))
+	err := p.client.UploadTraces(context.Background(), spans)
+	slog.Info("🟢 Span data sent successfully", "num_spans", len(spans))
+	return err
 }
 
 // Shutdown implements SpanProcessor.Shutdown
 func (p *RealTimeSpanProcessor) Shutdown(ctx context.Context) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	// p.mu.Lock()
+	// defer p.mu.Unlock()
+
+	// Stop the background goroutine
+	close(p.stopChan)
+	p.wg.Wait()
 
 	if p.client != nil {
 		if err := p.client.Stop(ctx); err != nil {
@@ -304,8 +601,8 @@ func (p *RealTimeSpanProcessor) Shutdown(ctx context.Context) error {
 
 // ForceFlush implements SpanProcessor.ForceFlush
 func (p *RealTimeSpanProcessor) ForceFlush(ctx context.Context) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	// p.mu.Lock()
+	// defer p.mu.Unlock()
 
 	// No ForceFlush needed for OTLP client; nothing to do
 	return nil
@@ -313,12 +610,55 @@ func (p *RealTimeSpanProcessor) ForceFlush(ctx context.Context) error {
 
 // GetStats returns statistics about the processor
 func (p *RealTimeSpanProcessor) GetStats() map[string]int64 {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	// p.mu.RLock()
+	// defer p.mu.RUnlock()
 
 	return map[string]int64{
 		"start_events_sent":   p.startEventsSent,
 		"end_events_sent":     p.endEventsSent,
 		"complete_spans_sent": p.completeSpansSent,
+	}
+}
+
+// processBufferedEvents runs in the background to periodically send buffered events
+func (p *RealTimeSpanProcessor) processBufferedEvents() {
+	defer p.wg.Done()
+
+	ticker := time.NewTicker(100 * time.Millisecond) // Send every 100ms
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.stopChan:
+			// Send any remaining buffered events before shutting down
+			p.flushAllBuffers()
+			return
+		case <-ticker.C:
+			// Send buffered events
+			go p.flushAllBuffers()
+		}
+	}
+}
+
+// flushAllBuffers sends all buffered start and end events
+func (p *RealTimeSpanProcessor) flushAllBuffers() {
+	// Get events from buffers and reset the buffers
+	p.sebLock.Lock()
+	p.eebLock.Lock()
+	startEvents := p.startEventsBuf
+	p.startEventsBuf = make([]*tracepb.ResourceSpans, 0, len(p.startEventsBuf)) // Reset length, keep capacity
+	endEvents := p.endEventsBuf
+	p.endEventsBuf = make([]*tracepb.ResourceSpans, 0, len(p.endEventsBuf)) // Reset length, keep capacity
+	p.eebLock.Unlock()
+	p.sebLock.Unlock()
+
+	allEvents := append(startEvents, endEvents...)
+
+	if len(allEvents) > 0 {
+		if err := p.sendSpanData(allEvents); err != nil {
+			slog.Error("Failed to send buffered events", "error", err, "count", len(allEvents))
+		} else {
+			slog.Debug("Successfully sent buffered events", "count", len(allEvents))
+		}
 	}
 }

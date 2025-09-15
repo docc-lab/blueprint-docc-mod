@@ -1,0 +1,55 @@
+{
+  "workflow_id": "get_product_details",
+  "endpoint": "GET /products/{productId}",
+  "description": "Get detailed product information",
+  "business_purpose": "Display product details to customer",
+
+  "calls": [
+    {
+      "call_id": 0,
+      "service": "Product Catalog Service",
+      "operation": "get_product",
+      "depends_on": [],
+      "business_purpose": "Retrieve basic product information"
+    },
+    {
+      "call_id": 1,
+      "service": "Product Cache Service",
+      "operation": "check_cache",
+      "depends_on": [],
+      "business_purpose": "Check if product data is cached"
+    },
+    {
+      "call_id": 2,
+      "service": "Product Validation Service",
+      "operation": "validate_product",
+      "depends_on": [0],
+      "business_purpose": "Validate product availability",
+      "children": [
+        {
+          "call_id": 0,
+          "service": "Inventory Service",
+          "operation": "check_inventory",
+          "depends_on": [],
+          "business_purpose": "Check inventory availability"
+        },
+        {
+          "call_id": 1,
+          "service": "Pricing Service",
+          "operation": "get_pricing",
+          "depends_on": [0],
+          "business_purpose": "Get product pricing",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Price Cache Service",
+              "operation": "check_price_cache",
+              "depends_on": [],
+              "business_purpose": "Check if pricing is cached"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+} 

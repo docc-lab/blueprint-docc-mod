@@ -1,0 +1,252 @@
+{
+  "workflow_id": "validate_checkout",
+  "endpoint": "POST /checkout/validate",
+  "description": "Validate checkout data and availability",
+  "business_purpose": "Pre-checkout validation",
+  "calls": [
+    {
+      "call_id": 0,
+      "service": "Checkout Service",
+      "operation": "validate_checkout",
+      "depends_on": [],
+      "business_purpose": "Handle POST /checkout/validate endpoint",
+      "children": [
+        {
+          "call_id": 0,
+          "service": "Authentication Service",
+          "operation": "validate_token",
+          "depends_on": [],
+          "business_purpose": "Validate user authentication token",
+          "children": []
+        },
+        {
+          "call_id": 1,
+          "service": "Checkout Validation Service",
+          "operation": "validate_checkout_data",
+          "depends_on": [0],
+          "business_purpose": "Validate checkout form data",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "User Validation Service",
+              "operation": "validate_user_data",
+              "depends_on": [],
+              "business_purpose": "Validate user information",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "User Profile Service",
+                  "operation": "get_user_profile",
+                  "depends_on": [],
+                  "business_purpose": "Get user profile for validation",
+                  "children": [
+                    {
+                      "call_id": 0,
+                      "service": "User Cache Service",
+                      "operation": "get_cached_profile",
+                      "depends_on": [],
+                      "business_purpose": "Get cached user profile data",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 2,
+          "service": "Shopping Cart Service",
+          "operation": "get_cart_items",
+          "depends_on": [1],
+          "business_purpose": "Retrieve current cart items",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Cart Validation Service",
+              "operation": "validate_cart",
+              "depends_on": [],
+              "business_purpose": "Validate cart contents",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Cart Cache Service",
+                  "operation": "get_cached_cart",
+                  "depends_on": [],
+                  "business_purpose": "Get cached cart data",
+                  "children": [
+                    {
+                      "call_id": 0,
+                      "service": "Cart Processing Service",
+                      "operation": "process_cart_data",
+                      "depends_on": [],
+                      "business_purpose": "Process cart data for validation",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 3,
+          "service": "Inventory Service",
+          "operation": "check_availability",
+          "depends_on": [2],
+          "business_purpose": "Check product availability and stock levels",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Stock Service",
+              "operation": "verify_stock_levels",
+              "depends_on": [],
+              "business_purpose": "Verify current stock levels for each item",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Inventory Validation Service",
+                  "operation": "validate_reservations",
+                  "depends_on": [],
+                  "business_purpose": "Validate inventory reservations",
+                  "children": [
+                    {
+                      "call_id": 0,
+                      "service": "Inventory Cache Service",
+                      "operation": "get_cached_inventory",
+                      "depends_on": [],
+                      "business_purpose": "Get cached inventory data",
+                      "children": [
+                        {
+                          "call_id": 0,
+                          "service": "Inventory Aggregation Service",
+                          "operation": "aggregate_inventory_data",
+                          "depends_on": [],
+                          "business_purpose": "Aggregate inventory data for validation",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 4,
+          "service": "Pricing Service",
+          "operation": "validate_pricing",
+          "depends_on": [3],
+          "business_purpose": "Validate pricing calculations",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Price Validation Service",
+              "operation": "validate_prices",
+              "depends_on": [],
+              "business_purpose": "Validate current prices",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Price Cache Service",
+                  "operation": "get_cached_prices",
+                  "depends_on": [],
+                  "business_purpose": "Get cached price data",
+                  "children": [
+                    {
+                      "call_id": 0,
+                      "service": "Price Calculation Service",
+                      "operation": "calculate_final_prices",
+                      "depends_on": [],
+                      "business_purpose": "Calculate final prices for validation",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 5,
+          "service": "Tax Service",
+          "operation": "validate_tax_calculation",
+          "depends_on": [4],
+          "business_purpose": "Validate tax calculations",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Tax Validation Service",
+              "operation": "validate_tax_rules",
+              "depends_on": [],
+              "business_purpose": "Validate tax rules for location",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Tax Cache Service",
+                  "operation": "get_cached_tax_data",
+                  "depends_on": [],
+                  "business_purpose": "Get cached tax data",
+                  "children": [
+                    {
+                      "call_id": 0,
+                      "service": "Tax Calculation Service",
+                      "operation": "compute_tax_amount",
+                      "depends_on": [],
+                      "business_purpose": "Compute tax amount for validation",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 6,
+          "service": "Shipping Service",
+          "operation": "validate_shipping",
+          "depends_on": [5],
+          "business_purpose": "Validate shipping options and costs",
+          "children": [
+            {
+              "call_id": 0,
+              "service": "Shipping Validation Service",
+              "operation": "validate_shipping_options",
+              "depends_on": [],
+              "business_purpose": "Validate available shipping options",
+              "children": [
+                {
+                  "call_id": 0,
+                  "service": "Shipping Cache Service",
+                  "operation": "get_cached_shipping_data",
+                  "depends_on": [],
+                  "business_purpose": "Get cached shipping data",
+                  "children": [
+                    {
+                      "call_id": 0,
+                      "service": "Shipping Processing Service",
+                      "operation": "compute_shipping_cost",
+                      "depends_on": [],
+                      "business_purpose": "Compute shipping cost for validation",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "call_id": 7,
+          "service": "Checkout History Service",
+          "operation": "log_validation_attempt",
+          "depends_on": [6],
+          "business_purpose": "Log checkout validation attempt",
+          "children": []
+        }
+      ]
+    }
+  ]
+} 

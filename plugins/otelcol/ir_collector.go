@@ -23,11 +23,13 @@ type OTCollectorContainer struct {
 	docker.ProvidesContainerImage
 	docker.ProvidesContainerInstance
 
-	CollectorName      string
-	BindAddr           *address.BindConfig
-	Iface              *goparser.ParsedInterface
-	CentralBackendAddr *address.DialConfig
-	ExporterType       string // "otlp", "zipkin", "jaeger", etc. Defaults to "otlp"
+	CollectorName       string
+	BindAddr            *address.BindConfig // OTLP port (4317)
+	IPDiscoveryPort     int                 // IP Discovery port (raw - 8080 default)
+	IPDiscoveryBindAddr *address.BindConfig // IP Discovery port (8080)
+	Iface               *goparser.ParsedInterface
+	CentralBackendAddr  *address.DialConfig
+	ExporterType        string // "otlp", "zipkin", "jaeger", etc. Defaults to "otlp"
 	// New fields for dynamic configuration
 	BaseImage        string // Docker base image to use
 	CustomConfigPath string // Path to custom YAML config file
@@ -47,7 +49,7 @@ func (j *OTCollectorInterface) GetMethods() []service.Method {
 	return j.Wrapped.GetMethods()
 }
 
-func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig, exporterType ...string) (*OTCollectorContainer, error) {
+func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig, ipDiscoveryPort int, exporterType ...string) (*OTCollectorContainer, error) {
 	spec, err := workflowspec.GetService[otelcol.OTCollectorTracer]()
 	if err != nil {
 		return nil, err
@@ -58,7 +60,8 @@ func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig
 		Iface:              spec.Iface,
 		CentralBackendAddr: centralBackendAddr,
 		// Set default values for new fields
-		BaseImage: "otel/opentelemetry-collector-contrib",
+		BaseImage:       "otel/opentelemetry-collector-contrib",
+		IPDiscoveryPort: ipDiscoveryPort,
 	}
 
 	// Set exporter type if provided, otherwise defaults to "otlp"
@@ -70,8 +73,8 @@ func newOTCollectorContainer(name string, centralBackendAddr *address.DialConfig
 }
 
 // newOTCollectorContainerWithConfig creates a new OTCollectorContainer with custom configuration
-func newOTCollectorContainerWithConfig(name string, centralBackendAddr *address.DialConfig, customConfigPath string, baseImage string, exporterType ...string) (*OTCollectorContainer, error) {
-	collector, err := newOTCollectorContainer(name, centralBackendAddr, exporterType...)
+func newOTCollectorContainerWithConfig(name string, centralBackendAddr *address.DialConfig, customConfigPath string, baseImage string, ipDiscoveryPort int, exporterType ...string) (*OTCollectorContainer, error) {
+	collector, err := newOTCollectorContainer(name, centralBackendAddr, ipDiscoveryPort, exporterType...)
 	if err != nil {
 		return nil, err
 	}
@@ -227,13 +230,19 @@ func (node *OTCollectorContainer) processCustomConfig(customConfig string) strin
 	// Get the backend address name for environment variable substitution
 	backendEnvVarName := linux.EnvVar(node.CentralBackendAddr.Name())
 
-	// Always replace receivers with the standard OTLP receiver
-	config["receivers"] = map[string]interface{}{
-		"otlp": map[string]interface{}{
-			"protocols": map[string]interface{}{
-				"grpc": map[string]interface{}{
-					"endpoint": "0.0.0.0:4317",
-				},
+	// Get or create receivers section, preserving existing custom receivers
+	receivers, exists := config["receivers"]
+	if !exists {
+		receivers = make(map[string]interface{})
+		config["receivers"] = receivers
+	}
+	receiversMap := receivers.(map[string]interface{})
+
+	// Add/update the OTLP receiver without overwriting custom receivers
+	receiversMap["otlp"] = map[string]interface{}{
+		"protocols": map[string]interface{}{
+			"grpc": map[string]interface{}{
+				"endpoint": "0.0.0.0:4317",
 			},
 		},
 	}
@@ -328,11 +337,12 @@ CMD ["--config", "/etc/otelcol/config.yaml"]
 // Implements docker.ProvidesContainerInstance
 func (node *OTCollectorContainer) AddContainerInstance(target docker.ContainerWorkspace) error {
 	node.BindAddr.Port = 4317
+	node.IPDiscoveryBindAddr.Port = uint16(node.IPDiscoveryPort)
 
 	// Declare the local image instance (built from our Dockerfile)
 	// Use CleanName for the container template name to match the directory name
 	cleanName := ir.CleanName(node.CollectorName)
-	err := target.DeclareLocalImage(node.CollectorName, cleanName, node.BindAddr, node.CentralBackendAddr)
+	err := target.DeclareLocalImage(node.CollectorName, cleanName, node.BindAddr, node.IPDiscoveryBindAddr, node.CentralBackendAddr)
 	if err != nil {
 		return err
 	}

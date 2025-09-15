@@ -1,0 +1,129 @@
+digraph ServiceGraphV2 {
+  rankdir=TB;
+  
+  // ===== API ROOTS (Single child each) =====
+  "Catalog-API" -> "Product-Resolution-Service";
+  "Cart-API" -> "Cart-Orchestration-Service";
+  "Checkout-API" -> "Checkout-Orchestration-Service";
+  "Order-API" -> "Order-History-Service";
+  "Profile-API" -> "Profile-Management-Service";
+  "Seller-API" -> "Seller-Portal-Service";
+  "Review-API" -> "Review-Processing-Service";
+  "Search-API" -> "Search-Orchestration-Service";
+
+  // Frontend (UI only, no internal calls)
+  "Frontend";
+
+  // ===== CONSOLIDATED PRODUCT CATALOG CHAIN (6 hops) =====
+  "Product-Resolution-Service" -> "Product-Configuration-Service";
+  "Product-Configuration-Service" -> "Product-Metadata-Aggregator";
+  "Product-Metadata-Aggregator" -> "Product-Content-Assembly-Service";
+  
+  // Fan-out from Product-Metadata-Aggregator to parallel services
+  "Product-Metadata-Aggregator" -> "Tag-Taxonomy-Service";
+  "Product-Metadata-Aggregator" -> "Inventory-Orchestrator";
+  
+  // Consolidated inventory chain (3 hops from Inventory-Orchestrator)
+  "Inventory-Orchestrator" -> "Inventory-Analysis-Service";
+  "Inventory-Analysis-Service" -> "Backorder-Analysis-Service";
+
+  // ===== CONSOLIDATED DYNAMIC PRICING CHAIN (4 hops) =====
+  // Triggered from multiple sources - creating convergence
+  "Product-Configuration-Service" -> "Price-Orchestration-Service";
+  "Cart-Pricing-Service" -> "Price-Orchestration-Service";
+  "Checkout-Pricing-Service" -> "Price-Orchestration-Service";
+  
+  // Consolidated pricing intelligence chain
+  "Price-Orchestration-Service" -> "Market-Intelligence-Service";
+  "Market-Intelligence-Service" -> "Price-Calculation-Service";
+  "Price-Calculation-Service" -> "Price-Assembly-Service";
+  
+  // Price assembly fans out to discount strategy
+  "Price-Assembly-Service" -> "Discount-Strategy-Service";
+
+  // ===== CONSOLIDATED CART MANAGEMENT CHAIN (3 hops) =====
+  "Cart-Orchestration-Service" -> "Cart-Management-Service";
+  "Cart-Management-Service" -> "Cart-Pricing-Service";
+
+  // ===== FINAL CONSOLIDATED SEARCH CHAIN (3 hops) =====
+  "Search-Orchestration-Service" -> "Search-Processing-Service";
+  "Search-Processing-Service" -> "Search-Results-Service";
+  
+  // Search connects back to product resolution for enrichment
+  "Search-Results-Service" -> "Product-Resolution-Service";
+
+  // ===== FINAL CONSOLIDATED CHECKOUT CHAIN (10+ hops) =====
+  "Checkout-Orchestration-Service" -> "Checkout-Validation-Service";
+  "Checkout-Validation-Service" -> "Address-Validation-Service";
+  "Address-Validation-Service" -> "Checkout-Pricing-Service";
+  
+  // Consolidated tax calculation chain (3 hops)
+  "Checkout-Pricing-Service" -> "Tax-Service";
+  "Tax-Service" -> "Tax-Assembly-Service";
+  
+  // Consolidated payment processing chain (3 hops)
+  "Tax-Assembly-Service" -> "Payment-Processing-Service";
+  "Payment-Processing-Service" -> "Payment-Settlement-Service";
+
+  // ===== CONSOLIDATED ORDER FULFILLMENT CHAIN (11+ hops) =====
+  "Payment-Settlement-Service" -> "Order-Orchestration-Service";
+  "Order-Orchestration-Service" -> "Order-Validation-Service";
+  "Order-Validation-Service" -> "Fulfillment-Planning-Service";
+  
+  // Consolidated fulfillment planning (3 hops)
+  "Fulfillment-Planning-Service" -> "Order-Batching-Service";
+  "Order-Batching-Service" -> "Resource-Allocation-Service";
+  
+  // Consolidated shipping coordination (3 hops)
+  "Resource-Allocation-Service" -> "Shipping-Orchestration-Service";
+  "Shipping-Orchestration-Service" -> "Carrier-Route-Service";
+  "Carrier-Route-Service" -> "Shipment-Delivery-Service";
+
+  // ===== ORDER TRACKING =====
+  "Order-History-Service" -> "Order-Status-Service";
+  "Order-Status-Service" -> "Order-Orchestration-Service";
+
+  // ===== CONSOLIDATED PROFILE MANAGEMENT CHAIN (3 hops) =====
+  "Profile-Management-Service" -> "Address-Processing-Service";
+  "Address-Processing-Service" -> "Geographic-Classification-Service";
+  
+  // Profile integration points
+  "Checkout-Validation-Service" -> "Profile-Management-Service";
+  "Address-Validation-Service" -> "Address-Processing-Service";
+  "Tax-Service" -> "Geographic-Classification-Service";
+
+  // ===== CONSOLIDATED SELLER MANAGEMENT CHAIN (3 hops) =====
+  "Seller-Portal-Service" -> "Listing-Processing-Service";
+  "Listing-Processing-Service" -> "Listing-Publication-Service";
+  
+  // Seller operations
+  "Seller-Portal-Service" -> "Seller-Order-Management-Service";
+  "Seller-Portal-Service" -> "Seller-Inventory-Service";
+  
+  // Seller integration points
+  "Listing-Publication-Service" -> "Product-Resolution-Service";
+  "Seller-Order-Management-Service" -> "Order-Orchestration-Service";
+  "Seller-Inventory-Service" -> "Inventory-Orchestrator";
+
+  // ===== CONSOLIDATED REVIEW MANAGEMENT CHAIN (2 hops) =====
+  "Review-Processing-Service" -> "Review-Assembly-Service";
+  
+  // ===== ADDITIONAL CONVERGENCE POINTS =====
+  // Multiple services feeding into inventory orchestrator
+  "Order-Batching-Service" -> "Inventory-Orchestrator";
+  "Listing-Processing-Service" -> "Inventory-Orchestrator";
+  
+  // ===== CROSS-DOMAIN INTEGRATIONS (Per Critic) =====
+  // Geographic intelligence enhancements
+  "Geographic-Classification-Service" -> "Carrier-Route-Service";
+  // Note: Geographic -> Tax-Coordination removed to avoid cycle
+  
+  // Seller analytics (rule-based)
+  "Seller-Portal-Service" -> "Review-Processing-Service";
+  "Listing-Processing-Service" -> "Market-Intelligence-Service";
+  "Seller-Inventory-Service" -> "Inventory-Analysis-Service";
+  
+  // Review integration (simple aggregation)
+  "Review-Processing-Service" -> "Search-Results-Service";
+  "Review-Assembly-Service" -> "Product-Metadata-Aggregator";
+} 
