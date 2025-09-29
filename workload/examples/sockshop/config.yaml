@@ -1,0 +1,83 @@
+# SockShop Workload Configuration Example
+# This file demonstrates how to configure the workload suite for SockShop testing
+
+# Frontend service configuration
+frontend:
+  url: "http://192.168.64.11:32170"
+  timeout: "30s"
+
+# Data initialization settings
+initialization:
+  catalogue_size: 100
+  user_count: 50
+  seed: 42
+  verbose: true
+
+# Workload execution settings
+workload:
+  concurrent_users: 10
+  duration: "5m"
+  think_time: "2s"
+  mix: "realistic"  # Options: realistic, browsing, purchasing, stress
+  
+# Output configuration
+output:
+  directory: "./results"
+  filename: "workload_stats.json"
+  verbose: true
+
+# Deep workflow testing configuration
+workflows:
+  realistic:
+    description: "Complete e-commerce workflows (browse → cart → register → order)"
+    service_hops:
+      browse_catalogue: 2      # Frontend → Catalogue
+      add_to_cart: 3          # Frontend → Catalogue → Cart
+      register_user: 2         # Frontend → User
+      add_address: 2           # Frontend → User
+      add_payment: 2           # Frontend → User
+      place_order: 6           # Frontend → Order → User → Cart → Payment → Shipping
+      check_orders: 2          # Frontend → Order
+  
+  browsing:
+    description: "Heavy catalogue browsing operations"
+    service_hops:
+      browse_catalogue: 2     # Frontend → Catalogue
+      browse_by_tags: 2       # Frontend → Catalogue
+      search_items: 2          # Frontend → Catalogue
+      get_item_details: 2      # Frontend → Catalogue
+  
+  purchasing:
+    description: "Focus on order processing workflows"
+    service_hops:
+      browse_catalogue: 2      # Frontend → Catalogue
+      add_to_cart: 3          # Frontend → Catalogue → Cart
+      register_user: 2         # Frontend → User
+      add_address: 2           # Frontend → User
+      add_payment: 2           # Frontend → User
+      place_order: 6           # Frontend → Order → User → Cart → Payment → Shipping
+  
+  stress:
+    description: "High-frequency requests with minimal think time"
+    service_hops:
+      browse_catalogue: 2      # Frontend → Catalogue
+      add_to_cart: 3          # Frontend → Catalogue → Cart
+      register_user: 2         # Frontend → User
+      place_order: 6           # Frontend → Order → User → Cart → Payment → Shipping
+
+# Research-specific settings
+research:
+  distributed_tracing:
+    enabled: true
+    span_reconstruction: true
+    agent_contact_protocol: true
+  
+  observability:
+    metrics_collection: true
+    latency_analysis: true
+    error_propagation: true
+  
+  performance:
+    bottleneck_detection: true
+    service_hop_analysis: true
+    concurrent_user_testing: true

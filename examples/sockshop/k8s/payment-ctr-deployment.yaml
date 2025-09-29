@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/sockshop/k8s
+    kompose.version: 1.31.2 (a92241f79)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: payment-ctr
+  name: payment-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: payment-ctr
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/sockshop/k8s
+        kompose.version: 1.31.2 (a92241f79)
+      creationTimestamp: null
+      labels:
+        io.kompose.network/docker-default: 'true'
+        io.kompose.service: payment-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_DIAL_ADDR
+          value: otelcol-ctr:4317
+        - name: PAYMENT_SERVICE_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        image: 10.10.1.1:30000/payment-ctr:latest
+        name: payment-ctr
+        ports:
+        - containerPort: 12345
+          hostIP: 0.0.0.0
+          hostPort: 12357
+          protocol: TCP
+        resources: {}
+      hostname: payment-ctr
+      restartPolicy: Always
+status: {}

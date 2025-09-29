@@ -247,9 +247,14 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{range $_, $f := .Service.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
 	if traceCtx != "" {
-		span_ctx_config, _ := backend.GetSpanContext(traceCtx)
+		span_ctx_config, baggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
+		
+		// Set baggage in context for span processor to read
+		if baggage != nil {
+			ctx = backend.SetBaggageInContext(ctx, baggage)
+		}
 	}
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)

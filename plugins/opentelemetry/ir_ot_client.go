@@ -148,6 +148,9 @@ func generateClientHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 
 	server.Imports.AddPackages("context")
 	server.Imports.AddPackages("go.opentelemetry.io/otel/trace")
+	server.Imports.AddPackages("go.opentelemetry.io/otel/sdk/trace")
+	server.Imports.AddPackages("github.com/blueprint-uservices/blueprint/runtime/core/backend")
+	server.Imports.AddPackages("strings")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile := filepath.Join(server.Package.Path, impl.Name+".go")
@@ -191,14 +194,30 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 {{$service := .Service.Name -}}
 {{$basename := .Service.BaseName -}}
 {{$receiver := .Name -}}
+{{$sdktrace := "trace2" -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
+	
+	// Extract baggage from span attributes by casting to ReadWriteSpan
+	baggage := make(map[string]string)
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
+		for _, attr := range rwSpan.Attributes() {
+			if strings.HasPrefix(string(attr.Key), "__bag.") {
+				key := strings.TrimPrefix(string(attr.Key), "__bag.")
+				baggage[key] = attr.Value.AsString()
+			}
+		}
+	}
+	
+	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
-	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, string(trace_ctx))
+	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
+	
+	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}

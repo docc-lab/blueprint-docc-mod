@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/sockshop/k8s
+    kompose.version: 1.31.2 (a92241f79)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: shipping-ctr
+  name: shipping-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: shipping-ctr
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/sockshop/k8s
+        kompose.version: 1.31.2 (a92241f79)
+      creationTimestamp: null
+      labels:
+        io.kompose.network/docker-default: 'true'
+        io.kompose.service: shipping-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_DIAL_ADDR
+          value: otelcol-ctr:4317
+        - name: SHIPPING_DB_DIAL_ADDR
+          value: shipping-db-ctr:27017
+        - name: SHIPPING_SERVICE_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: SHIPPING_SERVICE_GRPC_DIAL_ADDR
+          value: shipping-ctr:12345
+        image: 10.10.1.1:30000/shipping-ctr:latest
+        name: shipping-ctr
+        ports:
+        - containerPort: 12345
+          hostIP: 0.0.0.0
+          hostPort: 12359
+          protocol: TCP
+        resources: {}
+      hostname: shipping-ctr
+      restartPolicy: Always
+status: {}

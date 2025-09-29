@@ -19,10 +19,13 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 )
 
 // RealTimeSpanProcessor implements OpenTelemetry's SpanProcessor interface
@@ -334,7 +337,37 @@ func (p *RealTimeSpanProcessor) OnStart(parent context.Context, s sdktrace.ReadW
 	// p.mu.Lock()
 	// defer p.mu.Unlock()
 
-	slog.Info("🔵 OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	slog.Info("🔵 OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID(), "span_kind", s.SpanKind())
+
+	// Handle upstream.ip attribute based on span kind
+	if s.SpanKind() == trace.SpanKindClient {
+		// For client spans: add our collector's IP as upstream.ip for propagation
+		s.SetAttributes(attribute.String("__bag.upstream.ip", p.agentIP))
+		slog.Info("🔵 Added __bag.upstream.ip to client span", "upstream_ip", p.agentIP, "span_name", s.Name())
+	} else if s.SpanKind() == trace.SpanKindServer {
+		// For server spans: read upstream.ip from baggage in context
+		slog.Info("🔵 Processing upstream.ip insertion for server span", "span_name", s.Name(), "parent_nil", parent == nil)
+
+		if parent != nil {
+			slog.Info("🔵 Parent context is not nil, checking for baggage", "span_name", s.Name())
+
+			baggage := backend.GetBaggageFromContext(parent)
+			slog.Info("🔵 Retrieved baggage from context", "span_name", s.Name(), "baggage", baggage, "baggage_nil", baggage == nil)
+
+			if baggage != nil {
+				if upstreamIP, exists := baggage["upstream.ip"]; exists {
+					s.SetAttributes(attribute.String("upstream.ip", upstreamIP))
+					slog.Info("🔵 Added upstream.ip to server span from baggage", "upstream_ip", upstreamIP, "span_name", s.Name())
+				} else {
+					slog.Debug("🔵 No upstream.ip found in baggage for server span", "span_name", s.Name(), "baggage_keys", fmt.Sprintf("%v", baggage))
+				}
+			} else {
+				slog.Debug("🔵 No baggage found in context for server span", "span_name", s.Name())
+			}
+		} else {
+			slog.Debug("🔵 Parent context is nil for server span", "span_name", s.Name())
+		}
+	}
 
 	// Create a START event span with only start time (no end time)
 	startSpan := p.createStartEventSpan(s)
@@ -386,13 +419,7 @@ func (p *RealTimeSpanProcessor) createStartEventSpan(s sdktrace.ReadWriteSpan) *
 		}
 	}
 
-	// Add agent's own IP address as "upstream.ip" attribute for Agent Contact Protocol
-	agentIP := p.getAgentIP()
-	upstreamIPAttr := &commonpb.KeyValue{
-		Key:   "upstream.ip",
-		Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: agentIP}},
-	}
-	attrsProto = append(attrsProto, upstreamIPAttr)
+	// upstream.ip attribute is now handled in OnStart() method based on span kind
 
 	// Get trace and span IDs as byte arrays
 	traceID := s.SpanContext().TraceID()

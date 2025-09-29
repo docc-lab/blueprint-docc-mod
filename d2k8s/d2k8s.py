@@ -85,12 +85,21 @@ def update_image_references(output_dir, registry_url):
         with open(yaml_file, 'w') as f:
             yaml.dump(content, f, default_flow_style=False)
 
-def build_and_push_images(services, registry_url, docker_compose_dir):
-    """Build and push Docker images for all services, including pulling and retagging official images."""
+def build_and_push_images(services, registry_url, docker_compose_dir, selected_services=None):
+    """Build and push Docker images for selected services, including pulling and retagging official images."""
     original_dir = os.getcwd()
     try:
         os.chdir(docker_compose_dir)
-        for service_name, service_config in services.items():
+        
+        # Filter services if specific services are requested
+        if selected_services:
+            services_to_process = {k: v for k, v in services.items() if k in selected_services}
+            print(f"[INFO] Building only selected services: {list(services_to_process.keys())}")
+        else:
+            services_to_process = services
+            print(f"[INFO] Building all services: {list(services_to_process.keys())}")
+        
+        for service_name, service_config in services_to_process.items():
             # If build context is specified, build and push as before
             if 'build' in service_config:
                 build_context = service_config['build']
@@ -109,7 +118,8 @@ def build_and_push_images(services, registry_url, docker_compose_dir):
                 print(f"[DEBUG] Image name: {full_image_name}")
 
                 build_cmd = ['docker', 'build', '-t', full_image_name, context]
-                result = subprocess.run(build_cmd, capture_output=True, text=True)
+                # result = subprocess.run(build_cmd, capture_output=True, text=True)
+                result = subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if result.returncode != 0:
                     print(f"[ERROR] Failed to build {service_name}: {result.stderr}")
                     continue
@@ -117,7 +127,8 @@ def build_and_push_images(services, registry_url, docker_compose_dir):
 
                 print(f"[INFO] Pushing {full_image_name}")
                 push_cmd = ['docker', 'push', full_image_name]
-                result = subprocess.run(push_cmd, capture_output=True, text=True)
+                # result = subprocess.run(push_cmd, capture_output=True, text=True)
+                result = subprocess.run(push_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if result.returncode != 0:
                     print(f"[ERROR] Failed to push {service_name}: {result.stderr}")
                     continue
@@ -145,19 +156,22 @@ def build_and_push_images(services, registry_url, docker_compose_dir):
                     
                     print(f"[INFO] Pulling official image for {service_name}: {original_image}")
                     pull_cmd = ['docker', 'pull', original_image]
-                    result = subprocess.run(pull_cmd, capture_output=True, text=True)
+                    # result = subprocess.run(pull_cmd, capture_output=True, text=True)
+                    result = subprocess.run(pull_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     if result.returncode != 0:
                         print(f"[ERROR] Failed to pull {original_image}: {result.stderr}")
                         continue
                     print(f"[INFO] Tagging {original_image} as {full_image_name}")
                     tag_cmd = ['docker', 'tag', original_image, full_image_name]
-                    result = subprocess.run(tag_cmd, capture_output=True, text=True)
+                    # result = subprocess.run(tag_cmd, capture_output=True, text=True)
+                    result = subprocess.run(tag_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     if result.returncode != 0:
                         print(f"[ERROR] Failed to tag {original_image}: {result.stderr}")
                         continue
                     print(f"[INFO] Pushing {full_image_name}")
                     push_cmd = ['docker', 'push', full_image_name]
-                    result = subprocess.run(push_cmd, capture_output=True, text=True)
+                    # result = subprocess.run(push_cmd, capture_output=True, text=True)
+                    result = subprocess.run(push_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     if result.returncode != 0:
                         print(f"[ERROR] Failed to push {full_image_name}: {result.stderr}")
                         continue
@@ -332,6 +346,7 @@ def main():
     parser.add_argument('--registry', help='Docker registry URL (e.g., localhost:5000)', required=True)
     parser.add_argument('--skip-build', action='store_true', help='Skip building and pushing Docker images')
     parser.add_argument('--daemon-services', help='Comma-separated list of services to convert to DaemonSets')
+    parser.add_argument('--services', help='Comma-separated list of services to build (if not specified, all services will be built)')
     
     args = parser.parse_args()
     
@@ -344,6 +359,12 @@ def main():
     if args.daemon_services:
         daemon_services = [s.strip() for s in args.daemon_services.split(',')]
         print(f"[INFO] Services to be converted to DaemonSets: {daemon_services}")
+    
+    # Parse selected services if provided
+    selected_services = None
+    if args.services:
+        selected_services = [s.strip() for s in args.services.split(',')]
+        print(f"[INFO] Services to be built: {selected_services}")
     
     # Step 1: Run kompose conversion
     print("[INFO] Step 1: Converting docker-compose to Kubernetes manifests")
@@ -362,7 +383,7 @@ def main():
         print("[INFO] Step 4: Building and pushing Docker images")
         services = parse_docker_compose(args.docker_compose_file)
         docker_compose_dir = os.path.dirname(os.path.abspath(args.docker_compose_file))
-        build_and_push_images(services, args.registry, docker_compose_dir)
+        build_and_push_images(services, args.registry, docker_compose_dir, selected_services)
     
     print(f"[INFO] Kubernetes manifests have been written to {args.output_dir}")
 
