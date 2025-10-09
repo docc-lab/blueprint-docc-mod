@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"runtime"
+	"strings"
 
 	"path/filepath"
 
@@ -27,12 +27,6 @@ type WorkspaceBuilderImpl struct {
 	ModuleDirs       map[string]string // map from FQ module name to directory name within WorkspaceDir
 	Modules          map[string]string // map from directory name to FQ module name within WorkspaceDir
 	GeneratedModules map[string]string // map from directory name to FQ module name within WorkspaceDir
-}
-
-// getGoVersionNumber returns the Go version number without the "go" prefix
-func getGoVersionNumber() string {
-	version := runtime.Version()
-	return version[2:]
 }
 
 // Creates a golang workspace in the specified directory on the local filesystem.
@@ -98,7 +92,11 @@ func (workspace *WorkspaceBuilderImpl) CreateModule(moduleName string, moduleVer
 	workspace.GeneratedModules[moduleShortName] = moduleName
 
 	// Create the go.mod file
-	goVersion := getGoVersionNumber()
+	// modfileContents := fmt.Sprintf("module %v\n\ngo 1.22", moduleName)
+	goVersion := strings.TrimPrefix(runtime.Version(), "go")
+	if strings.Count(goVersion, ".") > 1 {
+		goVersion = goVersion[:strings.LastIndex(goVersion, ".")]
+	}
 	modfileContents := fmt.Sprintf("module %v\n\ngo %s", moduleName, goVersion)
 	modfile := filepath.Join(moduleDir, "go.mod")
 
@@ -175,13 +173,13 @@ func (workspace *WorkspaceBuilderImpl) readModfile(moduleSubDir string) (*modfil
 	return f, nil
 }
 
-var goWorkTemplate = `go {{ .GoVersion }}
+var goWorkTemplate = fmt.Sprintf(`go %s
 
 use (
 	{{ range $dirName, $moduleName := .Modules }}./{{ $dirName }}
 	{{ end }}
 )
-`
+`, strings.TrimPrefix(runtime.Version(), "go"))
 
 // This method should be called by plugins after all modules in a workspace have been combined.
 //
@@ -190,17 +188,8 @@ use (
 //   - updates the go.mod files of all contained modules with 'replace' directives for any required modules that exist in the workspace
 func (workspace *WorkspaceBuilderImpl) Finish() error {
 	// Generate the go.work file
-	goVersion := getGoVersionNumber()
-	templateData := struct {
-		Modules   map[string]string
-		GoVersion string
-	}{
-		Modules:   workspace.Modules,
-		GoVersion: goVersion,
-	}
-	
 	workFileName := filepath.Join(workspace.WorkspaceDir, "go.work")
-	err := ExecuteTemplateToFile("go.work", goWorkTemplate, templateData, workFileName)
+	err := ExecuteTemplateToFile("go.work", goWorkTemplate, workspace, workFileName)
 	if err != nil {
 		return err
 	}
