@@ -52,7 +52,7 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	trace_collector := otelcol.CollectorWithConfig(
 		spec, "otelcol",
 		jaeger_collector,
-		"/users/tomislav/opentelemetry-collector-contrib/test-config-3.yaml",
+		"/users/dhuye/opentelemetry-collector-contrib/test-config-bridges.yaml",
 		"10.10.1.1:30000/otelcontribcol:latest",
 		8080, "jaeger")
 

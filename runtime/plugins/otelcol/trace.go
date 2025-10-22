@@ -18,15 +18,24 @@ type OTCollectorTracer struct {
 // Returns a new instance of OTCollectorTracer.
 // Configures opentelemetry to export traces to the OpenTelemetry collector hosted at address `addr`.
 func NewOTCollectorTracer(ctx context.Context, addr string, ipDiscoveryPort string) (*OTCollectorTracer, error) {
-	// Create real-time span processor for partial spans (START/END events)
-	spanProcessor, err := NewRealTimeSpanProcessor(ctx, addr, ipDiscoveryPort)
+	// Mark ipDiscoveryPort as intentionally unused
+	_ = ipDiscoveryPort
+
+	// Create priority span processor for priority-based routing
+	spanProcessor, err := NewPriorityProcessor(ctx, addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create real-time span processor: %w", err)
+		return nil, fmt.Errorf("failed to create priority span processor: %w", err)
 	}
+
+	// Commented out: Real-time span processor for partial spans (START/END events)
+	// spanProcessor, err := NewRealTimeSpanProcessor(ctx, addr, ipDiscoveryPort)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create real-time span processor: %w", err)
+	// }
 
 	// exp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(addr), otlptracegrpc.WithInsecure())
 
-	// Create tracer provider with the real-time span processor
+	// Create tracer provider with the priority span processor
 	tp := tracesdk.NewTracerProvider(
 		tracesdk.WithSpanProcessor(spanProcessor),
 	)
