@@ -186,7 +186,7 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 		Name: wrapped.BaseName,
 	}
 
-	server.Imports.AddPackages("context", "go.opentelemetry.io/otel/trace", "github.com/blueprint-uservices/blueprint/runtime/core/backend")
+	server.Imports.AddPackages("context", "go.opentelemetry.io/otel/trace", "go.opentelemetry.io/otel/attribute", "github.com/blueprint-uservices/blueprint/runtime/core/backend", "strings", "go.opentelemetry.io/otel/sdk/trace", "fmt")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, "env.sh"))
 	outputFile := filepath.Join(server.Package.Path, "env.sh")
@@ -244,15 +244,18 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 
 {{$service := .Service.Name -}}
 {{$receiver := .Name -}}
+{{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+	var baggage map[string]string
 	if traceCtx != "" {
-		span_ctx_config, baggage, _ := backend.GetSpanContext(traceCtx)
+		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
 		
 		// Set baggage in context for span processor to read
-		if baggage != nil {
+		if upstreamBaggage != nil {
+			baggage = upstreamBaggage
 			ctx = backend.SetBaggageInContext(ctx, baggage)
 		}
 	}
@@ -261,6 +264,36 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindServer))
 	defer span.End()
+
+	// Extract new baggage from span attributes by casting to ReadWriteSpan
+	if baggage == nil {
+		baggage = make(map[string]string)
+	}
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
+		for _, attr := range rwSpan.Attributes() {
+			if strings.HasPrefix(string(attr.Key), "__bag.") {
+				key := strings.TrimPrefix(string(attr.Key), "__bag.")
+				// Convert value to string for baggage based on attribute type
+				switch attr.Value.Type() {
+				case attribute.INT64:
+					baggage[key] = fmt.Sprintf("%d", attr.Value.AsInt64())
+				case attribute.STRING:
+					baggage[key] = attr.Value.AsString()
+				default:
+					baggage[key] = attr.Value.AsString()
+				}
+			} else if strings.HasPrefix(string(attr.Key), "__bagdel.") {
+				key := strings.TrimPrefix(string(attr.Key), "__bagdel.")
+				delete(baggage, key)
+			}
+		}
+	}
+
+	// Update context with merged baggage BEFORE calling the service
+	if baggage != nil {
+		ctx = backend.SetBaggageInContext(ctx, baggage)
+	}
+	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)

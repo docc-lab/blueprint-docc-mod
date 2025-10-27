@@ -149,8 +149,10 @@ func generateClientHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 	server.Imports.AddPackages("context")
 	server.Imports.AddPackages("go.opentelemetry.io/otel/trace")
 	server.Imports.AddPackages("go.opentelemetry.io/otel/sdk/trace")
+	server.Imports.AddPackages("go.opentelemetry.io/otel/attribute")
 	server.Imports.AddPackages("github.com/blueprint-uservices/blueprint/runtime/core/backend")
 	server.Imports.AddPackages("strings")
+	server.Imports.AddPackages("fmt")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile := filepath.Join(server.Package.Path, impl.Name+".go")
@@ -197,18 +199,37 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
+	// Get baggage from context and create a copy to avoid mutating shared state
+	upstreamBaggage := backend.GetBaggageFromContext(ctx)
+	baggage := make(map[string]string)
+	if upstreamBaggage != nil {
+		for k, v := range upstreamBaggage {
+			baggage[k] = v
+		}
+	}
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 	
 	// Extract baggage from span attributes by casting to ReadWriteSpan
-	baggage := make(map[string]string)
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
-				baggage[key] = attr.Value.AsString()
+				// Convert value to string for baggage based on attribute type
+				switch attr.Value.Type() {
+				case attribute.INT64:
+					baggage[key] = fmt.Sprintf("%d", attr.Value.AsInt64())
+				case attribute.STRING:
+					baggage[key] = attr.Value.AsString()
+				default:
+					baggage[key] = attr.Value.AsString()
+				}
+			} else if strings.HasPrefix(string(attr.Key), "__bagdel.") {
+				key := strings.TrimPrefix(string(attr.Key), "__bagdel.")
+				delete(baggage, key)
 			}
 		}
 	}

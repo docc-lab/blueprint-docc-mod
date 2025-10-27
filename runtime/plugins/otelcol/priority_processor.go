@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bits-and-blooms/bloom"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -253,6 +255,18 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 
 	slog.Info("🔵 PriorityProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
+	// Handle depth tracking in baggage
+	depth := 0
+	baggage := backend.GetBaggageFromContext(parent)
+	if baggage != nil {
+		if depthStr, exists := baggage["depth"]; exists {
+			if depthInt, err := strconv.Atoi(depthStr); err == nil {
+				depth = depthInt + 1
+			}
+		}
+	}
+	s.SetAttributes(attribute.Int("__bag.depth", depth))
+
 	// Randomly assign priority (high=1, low=0) for now
 	priority := rand.Intn(2) // 0 or 1
 
@@ -266,7 +280,10 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 		s.SetAttributes(attribute.String("prio", "low"))
 	}
 
-	slog.Info("🔵 Set priority baggage and attribute", "priority", priority, "span_name", s.Name())
+	// Add depth attribute for verification (not baggage)
+	s.SetAttributes(attribute.Int("depth", depth))
+
+	slog.Info("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
 }
 
 // OnEnd implements SpanProcessor.OnEnd
@@ -279,6 +296,8 @@ func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	// Extract priority from span attributes
 	var priority int
 	var hasPriority bool
+	var depth int
+	var hasDepth bool
 
 	// Iterate through attributes to find __bag.prio
 	for _, attr := range s.Attributes() {
@@ -286,7 +305,10 @@ func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 			val := attr.Value.AsInt64()
 			priority = int(val)
 			hasPriority = true
-			break
+		} else if attr.Key == "__bag.depth" {
+			val := attr.Value.AsInt64()
+			depth = int(val)
+			hasDepth = true
 		}
 	}
 
@@ -295,9 +317,14 @@ func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 		priority = 0
 		slog.Warn("🔴 No priority found, defaulting to low priority", "span_name", s.Name())
 	}
+	if !hasDepth {
+		depth = 0
+		slog.Warn("🔴 No depth found, defaulting to 0", "span_name", s.Name())
+	}
 
 	slog.Info("🔴 Routing span based on priority",
 		"priority", priority,
+		"depth", depth,
 		"span_name", s.Name(),
 		"trace_id", s.SpanContext().TraceID(),
 		"span_id", s.SpanContext().SpanID())
