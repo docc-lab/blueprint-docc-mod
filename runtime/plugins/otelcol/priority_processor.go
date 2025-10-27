@@ -3,6 +3,7 @@ package otelcol
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -21,6 +22,11 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+)
+
+// Constants for baggage keys
+const (
+	BAG_BLOOM_FILTER = "__bag.bloom_filter"
 )
 
 type PriorityProcessor struct {
@@ -54,7 +60,7 @@ type PriorityProcessor struct {
 func NewPriorityProcessor(ctx context.Context, agentEndpoint string) (*PriorityProcessor, error) {
 	slog.Info("🔵 Creating new PriorityProcessor", "agentEndpoint", agentEndpoint)
 
-	bloomFilter := bloom.New(1000000, 7)
+	bloomFilter := bloom.New(10, 7)
 
 	// Extract host from agent endpoint
 	var host string
@@ -267,6 +273,47 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	}
 	s.SetAttributes(attribute.Int("__bag.depth", depth))
 
+	// Handle bloom filter in baggage
+	var bloomFilter *bloom.BloomFilter
+	var err error
+	
+	if baggage == nil {
+		baggage = make(map[string]string)
+	}
+	
+	// Check if bloom filter exists in baggage
+	if bfStr, exists := baggage[BAG_BLOOM_FILTER]; exists {
+		// Deserialize existing bloom filter
+		bloomFilter, err = deserializeBloomFilter(bfStr)
+		if err != nil {
+			slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
+			bloomFilter = createEmptyBloomFilter()
+		}
+	} else {
+		// Create new bloom filter
+		bloomFilter = createEmptyBloomFilter()
+	}
+	
+	// Add current span ID to bloom filter
+	spanID := s.SpanContext().SpanID().String()
+	bloomFilter.Add([]byte(spanID))
+	
+	// Serialize updated bloom filter
+	bfStr, err := serializeBloomFilter(bloomFilter)
+	if err != nil {
+		slog.Error("Failed to serialize bloom filter", "error", err)
+		return
+	}
+	
+	// Update baggage with bloom filter
+	baggage[BAG_BLOOM_FILTER] = bfStr
+	
+	// Set updated baggage in context
+	_ = backend.SetBaggageInContext(parent, baggage)
+	
+	// Set bloom filter as baggage attribute for propagation
+	s.SetAttributes(attribute.String("__bag.bloom_filter", bfStr))
+
 	// Randomly assign priority (high=1, low=0) for now
 	priority := rand.Intn(2) // 0 or 1
 
@@ -338,9 +385,8 @@ func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 		p.routeToLowPriorityPipeline(s)
 	}
 
-	// Note: __bag.prio attribute removal is handled in convertAttributes()
-	// to avoid inflating the exported span size. All baggage attributes
-	// (those starting with __bag.) are filtered out during conversion.
+	// Note: All baggage attributes (including __bag.prio and __bag.bloom_filter)
+	// are now exported as span attributes for analysis and debugging.
 }
 
 // routeToHighPriorityPipeline adds the span to the high priority buffer
@@ -554,6 +600,36 @@ func (p *PriorityProcessor) convertStringSlice(slice []string) []*commonpb.AnyVa
 	return values
 }
 
+// serializeBloomFilter converts a bloom filter to a base64-encoded string
+func serializeBloomFilter(bf *bloom.BloomFilter) (string, error) {
+	data, err := bf.GobEncode()
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// deserializeBloomFilter converts a base64-encoded string back to a bloom filter
+func deserializeBloomFilter(serialized string) (*bloom.BloomFilter, error) {
+	data, err := base64.StdEncoding.DecodeString(serialized)
+	if err != nil {
+		return nil, err
+	}
+	
+	bf := &bloom.BloomFilter{}
+	err = bf.GobDecode(data)
+	if err != nil {
+		return nil, err
+	}
+	
+	return bf, nil
+}
+
+// createEmptyBloomFilter creates a new empty bloom filter
+func createEmptyBloomFilter() *bloom.BloomFilter {
+	return bloom.New(10, 7) // Same parameters as existing
+}
+
 // convertSpanKind converts OpenTelemetry span kind to protobuf format
 func (p *PriorityProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_SpanKind {
 	switch kind {
@@ -580,26 +656,15 @@ func (p *PriorityProcessor) convertStatus(status sdktrace.Status) *tracepb.Statu
 	}
 }
 
-// convertAttributes converts span attributes to protobuf format, filtering out baggage attributes
+// convertAttributes converts span attributes to protobuf format, including all baggage attributes
 func (p *PriorityProcessor) convertAttributes(attrs []attribute.KeyValue) []*commonpb.KeyValue {
 	if len(attrs) == 0 {
 		return nil
 	}
 
-	// Filter out baggage attributes (those starting with __bag.)
-	filteredAttrs := make([]attribute.KeyValue, 0, len(attrs))
-	for _, attr := range attrs {
-		if !strings.HasPrefix(string(attr.Key), "__bag.") {
-			filteredAttrs = append(filteredAttrs, attr)
-		}
-	}
-
-	if len(filteredAttrs) == 0 {
-		return nil
-	}
-
-	protoAttrs := make([]*commonpb.KeyValue, len(filteredAttrs))
-	for i, attr := range filteredAttrs {
+	// Include all attributes (including baggage attributes)
+	protoAttrs := make([]*commonpb.KeyValue, len(attrs))
+	for i, attr := range attrs {
 		protoAttrs[i] = p.convertAttribute(attr)
 	}
 	return protoAttrs
@@ -616,7 +681,7 @@ func (p *PriorityProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Sp
 		protoEvents[i] = &tracepb.Span_Event{
 			TimeUnixNano: uint64(event.Time.UnixNano()),
 			Name:         event.Name,
-			Attributes:   p.convertAttributes(event.Attributes), // This will filter baggage attributes
+			Attributes:   p.convertAttributes(event.Attributes), // This will include all attributes
 		}
 	}
 	return protoEvents
@@ -636,7 +701,7 @@ func (p *PriorityProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_
 		protoLinks[i] = &tracepb.Span_Link{
 			TraceId:    traceID[:],
 			SpanId:     spanID[:],
-			Attributes: p.convertAttributes(link.Attributes), // This will filter baggage attributes
+			Attributes: p.convertAttributes(link.Attributes), // This will include all attributes
 		}
 	}
 	return protoLinks
