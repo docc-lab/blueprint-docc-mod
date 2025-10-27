@@ -273,45 +273,44 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	}
 	s.SetAttributes(attribute.Int("__bag.depth", depth))
 
-	// Handle bloom filter in baggage
+	// Handle bloom filter in baggage (same pattern as depth)
 	var bloomFilter *bloom.BloomFilter
 	var err error
-	
-	if baggage == nil {
-		baggage = make(map[string]string)
-	}
-	
-	// Check if bloom filter exists in baggage
-	if bfStr, exists := baggage[BAG_BLOOM_FILTER]; exists {
-		// Deserialize existing bloom filter
-		bloomFilter, err = deserializeBloomFilter(bfStr)
-		if err != nil {
-			slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
+
+	// Check if bloom filter exists in baggage (same as depth)
+	if baggage != nil {
+		if bfStr, exists := baggage["bloom_filter"]; exists {
+			// Deserialize existing bloom filter (like depth parsing)
+			bloomFilter, err = deserializeBloomFilter(bfStr)
+			if err != nil {
+				slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
+				bloomFilter = createEmptyBloomFilter()
+			}
+		} else {
+			// Create new bloom filter if none exists (like depth = 0)
 			bloomFilter = createEmptyBloomFilter()
 		}
 	} else {
-		// Create new bloom filter
+		// Create new bloom filter if no baggage (like depth = 0)
 		bloomFilter = createEmptyBloomFilter()
 	}
-	
-	// Add current span ID to bloom filter
+
+	// Add current span ID to bloom filter (like depth + 1)
 	spanID := s.SpanContext().SpanID().String()
 	bloomFilter.Add([]byte(spanID))
-	
+
+	parentSpan := trace.SpanFromContext(parent)
+	isRoot := !parentSpan.SpanContext().IsValid()
+	slog.Debug("🔵 Updated bloom filter for span", "span_id", spanID, "is_root", isRoot)
+
 	// Serialize updated bloom filter
 	bfStr, err := serializeBloomFilter(bloomFilter)
 	if err != nil {
 		slog.Error("Failed to serialize bloom filter", "error", err)
 		return
 	}
-	
-	// Update baggage with bloom filter
-	baggage[BAG_BLOOM_FILTER] = bfStr
-	
-	// Set updated baggage in context
-	_ = backend.SetBaggageInContext(parent, baggage)
-	
-	// Set bloom filter as baggage attribute for propagation
+
+	// Set bloom filter as baggage attribute for propagation (same as depth)
 	s.SetAttributes(attribute.String("__bag.bloom_filter", bfStr))
 
 	// Randomly assign priority (high=1, low=0) for now
@@ -323,6 +322,7 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	// Add priority attribute for verification (not baggage)
 	if priority == 1 {
 		s.SetAttributes(attribute.String("prio", "high"))
+		s.SetAttributes(attribute.String("bloom_filter", bfStr))
 	} else {
 		s.SetAttributes(attribute.String("prio", "low"))
 	}
@@ -615,19 +615,28 @@ func deserializeBloomFilter(serialized string) (*bloom.BloomFilter, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	bf := &bloom.BloomFilter{}
 	err = bf.GobDecode(data)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return bf, nil
 }
 
 // createEmptyBloomFilter creates a new empty bloom filter
 func createEmptyBloomFilter() *bloom.BloomFilter {
 	return bloom.New(10, 7) // Same parameters as existing
+}
+
+// getBaggageKeys returns the keys from a baggage map for logging
+func getBaggageKeys(baggage map[string]string) []string {
+	keys := make([]string, 0, len(baggage))
+	for k := range baggage {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // convertSpanKind converts OpenTelemetry span kind to protobuf format
