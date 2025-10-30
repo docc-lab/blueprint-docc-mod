@@ -29,6 +29,11 @@ const (
 	BAG_BLOOM_FILTER = "__bag.bloom_filter"
 )
 
+// Manual toggle: when true, both high and low priority spans are exported
+// via the high-priority OTLP client (single channel). When false, low
+// priority spans use a separate OTLP client/endpoint.
+const singleOTLPClient = true
+
 type PriorityProcessor struct {
 	mu sync.RWMutex
 
@@ -86,25 +91,32 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string) (*PriorityP
 		otlptracegrpc.WithInsecure(),
 	)
 
-	// Create low priority OTLP gRPC client
-	lowPrioClient := otlptracegrpc.NewClient(
-		otlptracegrpc.WithEndpoint(lowPrioEndpoint),
-		otlptracegrpc.WithInsecure(),
-	)
-
-	slog.Info("🔵 OTLP clients created, starting connections")
-
-	// Start the low priority client
-	if err := lowPrioClient.Start(ctx); err != nil {
-		slog.Error("❌ Failed to start low priority OTLP client", "error", err)
-		return nil, fmt.Errorf("failed to start low priority OTLP client: %w", err)
+	// Optionally create a separate low-priority client
+	var lowPrioClient otlptrace.Client
+	if !singleOTLPClient {
+		lowPrioClient = otlptracegrpc.NewClient(
+			otlptracegrpc.WithEndpoint(lowPrioEndpoint),
+			otlptracegrpc.WithInsecure(),
+		)
 	}
 
-	// Start the high priority client
+	slog.Info("🔵 OTLP clients created, starting connections", "singleOTLPClient", singleOTLPClient)
+
+	// Start the low priority client if using separate client
+	if !singleOTLPClient {
+		if err := lowPrioClient.Start(ctx); err != nil {
+			slog.Error("❌ Failed to start low priority OTLP client", "error", err)
+			return nil, fmt.Errorf("failed to start low priority OTLP client: %w", err)
+		}
+	}
+
+	// Start the high priority client (always)
 	if err := highPrioClient.Start(ctx); err != nil {
 		slog.Error("❌ Failed to start high priority OTLP client", "error", err)
 		// Clean up the low priority client if high priority fails
-		lowPrioClient.Stop(ctx)
+		if !singleOTLPClient && lowPrioClient != nil {
+			lowPrioClient.Stop(ctx)
+		}
 		return nil, fmt.Errorf("failed to start high priority OTLP client: %w", err)
 	}
 
@@ -243,8 +255,16 @@ func (p *PriorityProcessor) sendLowPriorityData(events []*tracepb.ResourceSpans)
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	slog.Debug("🔴 Calling UploadTraces for low priority", "count", len(events), "endpoint", "4319")
-	err := p.lowPrioClient.UploadTraces(ctx, events)
+	// Choose client based on mode
+	client := p.lowPrioClient
+	endpointLabel := "4319"
+	if singleOTLPClient {
+		client = p.highPrioClient
+		endpointLabel = "4317"
+	}
+
+	slog.Debug("🔴 Calling UploadTraces for low priority", "count", len(events), "endpoint", endpointLabel)
+	err := client.UploadTraces(ctx, events)
 	if err != nil {
 		slog.Error("❌ UploadTraces failed for low priority data", "error", err, "count", len(events))
 		return fmt.Errorf("failed to send low priority data: %w", err)
@@ -733,8 +753,10 @@ func (p *PriorityProcessor) Shutdown(ctx context.Context) error {
 	}
 
 	// Stop the low priority client
-	if err := p.lowPrioClient.Stop(ctx); err != nil {
-		slog.Error("❌ Failed to stop low priority client", "error", err)
+	if !singleOTLPClient && p.lowPrioClient != nil {
+		if err := p.lowPrioClient.Stop(ctx); err != nil {
+			slog.Error("❌ Failed to stop low priority client", "error", err)
+		}
 	}
 
 	slog.Info("✅ PriorityProcessor shutdown complete",
