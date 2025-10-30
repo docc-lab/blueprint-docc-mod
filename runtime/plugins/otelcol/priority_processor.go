@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+    "os"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,21 @@ const (
 	BAG_BLOOM_FILTER = "__bag.bloom_filter"
 )
 
+// Ancestry tagging keys
+const (
+    AncestryModeKey = "ancestry_mode"
+    AncestryKey     = "ancestry"
+)
+
+// AncestryMode selects the ancestry encoding strategy
+type AncestryMode string
+
+const (
+    AncestryModeBloom  AncestryMode = "bloom"
+    AncestryModeHash   AncestryMode = "hash"
+    AncestryModeHybrid AncestryMode = "hybrid"
+)
+
 // Manual toggle: when true, both high and low priority spans are exported
 // via the high-priority OTLP client (single channel). When false, low
 // priority spans use a separate OTLP client/endpoint.
@@ -43,6 +59,7 @@ type PriorityProcessor struct {
 
 	// Configuration
 	agentEndpoint string
+    ancestryMode  AncestryMode
 
 	bloomFilter *bloom.BloomFilter
 
@@ -122,13 +139,22 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string) (*PriorityP
 
 	slog.Info("✅ PriorityProcessor created successfully")
 
-	processor := &PriorityProcessor{
+    // Resolve ancestry mode from environment (default: bloom)
+    mode := AncestryMode(os.Getenv("ANCESTRY_MODE"))
+    if mode == "" {
+        mode = AncestryModeBloom
+    }
+
+    processor := &PriorityProcessor{
 		lowPrioClient:  lowPrioClient,
 		highPrioClient: highPrioClient,
 		agentEndpoint:  agentEndpoint,
 		bloomFilter:    bloomFilter,
 		stopChan:       make(chan struct{}),
+        ancestryMode:   mode,
 	}
+
+    slog.Info("🔵 Ancestry mode configured", "mode", mode)
 
 	// Start background workers for batch export
 	processor.wg.Add(2)
@@ -323,15 +349,13 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	isRoot := !parentSpan.SpanContext().IsValid()
 	slog.Debug("🔵 Updated bloom filter for span", "span_id", spanID, "is_root", isRoot)
 
-	// Serialize updated bloom filter
-	bfStr, err := serializeBloomFilter(bloomFilter)
-	if err != nil {
-		slog.Error("Failed to serialize bloom filter", "error", err)
-		return
-	}
-
-	// Set bloom filter as baggage attribute for propagation (same as depth)
-	s.SetAttributes(attribute.String("__bag.bloom_filter", bfStr))
+    // Serialize updated bloom filter and set baggage attribute for propagation
+    bfStr, err := serializeBloomFilter(bloomFilter)
+    if err != nil {
+        slog.Error("Failed to serialize bloom filter", "error", err)
+        return
+    }
+    s.SetAttributes(attribute.String("__bag.bloom_filter", bfStr))
 
 	// Randomly assign priority (high=1, low=0) for now
 	priority := rand.Intn(2) // 0 or 1
@@ -339,16 +363,34 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	// Set priority as baggage attribute for propagation
 	s.SetAttributes(attribute.Int("__bag.prio", priority))
 
-	// Add priority attribute for verification (not baggage)
-	if priority == 1 {
-		s.SetAttributes(attribute.String("prio", "high"))
-		s.SetAttributes(attribute.String("bloom_filter", bfStr))
-	} else {
-		s.SetAttributes(attribute.String("prio", "low"))
-	}
+    // Write ancestry tags (only ancestry_mode and ancestry payload)
+    ancestryPayload := ""
+    switch p.ancestryMode {
+    case AncestryModeBloom:
+        ancestryPayload = bfStr
+    case AncestryModeHash:
+        // TODO: implement hash array encoder later
+        ancestryPayload = ""
+    case AncestryModeHybrid:
+        // TODO: implement hybrid encoder later
+        ancestryPayload = ""
+    default:
+        ancestryPayload = bfStr
+    }
 
-	// Add depth attribute for verification (not baggage)
-	s.SetAttributes(attribute.Int("depth", depth))
+	// Add priority attribute for verification (not baggage)
+	// only add attributes to span for high priority spans.
+    if priority == 1 {
+        s.SetAttributes(attribute.String("prio", "high"))
+        s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
+        s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
+    } else {
+        s.SetAttributes(attribute.String("prio", "low"))
+    }
+
+    // Add depth attribute for verification (not baggage)
+    s.SetAttributes(attribute.Int("depth", depth))
+
 
 	slog.Info("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
 }
