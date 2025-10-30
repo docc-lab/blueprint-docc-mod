@@ -28,6 +28,7 @@ import (
 // Constants for baggage keys
 const (
 	BAG_BLOOM_FILTER = "__bag.bloom_filter"
+    BAG_HASH_ARRAY   = "__bag.hash_array"
 )
 
 // Ancestry tagging keys
@@ -142,7 +143,8 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string) (*PriorityP
     // Resolve ancestry mode from environment (default: bloom)
     mode := AncestryMode(os.Getenv("ANCESTRY_MODE"))
     if mode == "" {
-        mode = AncestryModeBloom
+        // mode = AncestryModeBloom
+		mode = AncestryModeHash
     }
 
     processor := &PriorityProcessor{
@@ -363,14 +365,31 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	// Set priority as baggage attribute for propagation
 	s.SetAttributes(attribute.Int("__bag.prio", priority))
 
+    // Build and propagate hash array (root -> ... -> current)
+    var hashArrayStr string
+    if baggage != nil {
+        parentValid := trace.SpanFromContext(parent).SpanContext().IsValid()
+        if parentValid {
+            if parentArrStr, exists := baggage["hash_array"]; exists && parentArrStr != "" {
+                hashArrayStr = parentArrStr + "," + spanID
+            } else {
+                hashArrayStr = spanID
+            }
+        } else {
+            hashArrayStr = spanID
+        }
+    } else {
+        hashArrayStr = spanID
+    }
+    s.SetAttributes(attribute.String(BAG_HASH_ARRAY, hashArrayStr))
+
     // Write ancestry tags (only ancestry_mode and ancestry payload)
     ancestryPayload := ""
     switch p.ancestryMode {
     case AncestryModeBloom:
         ancestryPayload = bfStr
     case AncestryModeHash:
-        // TODO: implement hash array encoder later
-        ancestryPayload = ""
+        ancestryPayload = hashArrayStr
     case AncestryModeHybrid:
         // TODO: implement hybrid encoder later
         ancestryPayload = ""
