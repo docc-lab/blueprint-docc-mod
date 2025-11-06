@@ -25,14 +25,14 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/simple"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
 	"github.com/blueprint-uservices/blueprint/plugins/workload"
-	"github.com/blueprint-uservices/blueprint/plugins/zipkin"
+	"github.com/blueprint-uservices/blueprint/plugins/jaeger"
 )
 
 // A wiring spec that deploys each service into its own Docker container and using gRPC to communicate between services.
 //
 // All RPC calls are retried up to 3 times.
 // RPC clients use a client pool with 10 clients.
-// All services are instrumented with OpenTelemetry and traces are exported to Zipkin
+// All services are instrumented with OpenTelemetry and traces are exported to Jaeger
 //
 // The user, cart, shipping, and orders services using separate MongoDB instances to store their data.
 // The catalogue service uses MySQL to store catalogue data.
@@ -45,7 +45,7 @@ var Docker = cmdbuilder.SpecOption{
 
 func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Define the trace collector, which will be used by all services
-	trace_collector := zipkin.Collector(spec, "zipkin")
+	trace_collector := jaeger.Collector(spec, "jaeger")
 
 	// Modifiers that will be applied to all services
 	applyDockerDefaults := func(serviceName string, useHTTP ...bool) {
@@ -103,5 +103,5 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 
 	// Instantiate starting with the frontend which will trigger all other services to be instantiated
 	// Also include the tests and wlgen
-	return []string{"frontend_ctr", wlgen, "gotests"}, nil
+	return []string{"frontend_ctr", wlgen, "gotests", "jaeger"}, nil
 }
