@@ -128,69 +128,117 @@ func generateAdditionalItems(ctx context.Context, client *client.HTTPClient) err
 	return nil
 }
 
+// UserInfo represents pre-generated user information
+type UserInfo struct {
+	FirstName  string
+	LastName   string
+	Username   string
+	Email      string
+	Password   string
+	HasAddress bool
+	HasCard    bool
+}
+
 func preCreateUsers(ctx context.Context, client *client.HTTPClient) error {
-	// Reset random seed to ensure deterministic user generation
-	rand.Seed(*seed)
+	// Create a local RNG instance with the seed to ensure deterministic user generation
+	// This isolates the RNG state from any other code that might use the global rand package
+	rng := rand.New(rand.NewSource(*seed))
 
 	// Generate realistic user data
 	firstNames := []string{"John", "Jane", "Michael", "Sarah", "David", "Emily", "Robert", "Jessica", "William", "Ashley", "James", "Amanda", "Christopher", "Jennifer", "Daniel", "Michelle", "Matthew", "Kimberly", "Anthony", "Donna"}
 	lastNames := []string{"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin"}
 	domains := []string{"gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "company.com", "university.edu"}
 
-	successCount := 0
+	// Step 1: Pre-generate ONLY basic user info (first name, last name, username, email)
+	fmt.Printf("  Pre-generating basic user information for %d users...\n", *userCount)
+	users := make([]UserInfo, *userCount)
 	for j := 0; j < *userCount; j++ {
-		firstName := firstNames[rand.Intn(len(firstNames))]
-		lastName := lastNames[rand.Intn(len(lastNames))]
+		firstName := firstNames[rng.Intn(len(firstNames))]
+		lastName := lastNames[rng.Intn(len(lastNames))]
 		username := fmt.Sprintf("%s%d", firstName, j+1)
-		email := fmt.Sprintf("%s.%s@%s", firstName, lastName, domains[rand.Intn(len(domains))])
-		password := "password123" // Same password for everyone
+		email := fmt.Sprintf("%s.%s@%s", firstName, lastName, domains[rng.Intn(len(domains))])
 
-		// Register user
-		userID, err := registerUser(ctx, client, username, password, email, firstName, lastName)
+		users[j] = UserInfo{
+			FirstName:  firstName,
+			LastName:   lastName,
+			Username:   username,
+			Email:      email,
+			Password:   "password123",
+			HasAddress: false, // Will be set in next step
+			HasCard:    false, // Will be set in next step
+		}
+	}
+
+	// Step 2: Loop through and determine which users get addresses and cards
+	fmt.Printf("  Determining addresses and payment cards for users...\n")
+	for j := 0; j < *userCount; j++ {
+		users[j].HasAddress = rng.Float32() < 0.7 // 70% chance
+		users[j].HasCard = rng.Float32() < 0.6    // 60% chance
+	}
+
+	// Step 3: Register all users
+	fmt.Printf("  Registering %d users...\n", *userCount)
+	successCount := 0
+	userIDs := make([]string, *userCount)
+	for j := 0; j < *userCount; j++ {
+		user := users[j]
+		userID, err := registerUser(ctx, client, user.Username, user.Password, user.Email, user.FirstName, user.LastName)
 		if err != nil {
 			if *verbose {
-				fmt.Printf("  Warning: Failed to create user %s: %v\n", username, err)
+				fmt.Printf("  Warning: Failed to create user %s: %v\n", user.Username, err)
 			}
 			continue
 		}
+		userIDs[j] = userID
 		successCount++
 
-		// Add address for some users (70% chance)
-		if rand.Float32() < 0.7 {
+		if j%10 == 0 {
+			fmt.Printf("  Registered user %d/%d (successful: %d)\n", j+1, *userCount, successCount)
+		}
+	}
+
+	// Step 4: Add addresses and cards for users that need them
+	fmt.Printf("  Adding addresses and payment cards...\n")
+	for j := 0; j < *userCount; j++ {
+		if userIDs[j] == "" {
+			continue // Skip failed registrations
+		}
+
+		user := users[j]
+		userID := userIDs[j]
+
+		// Add address if needed
+		if user.HasAddress {
 			address := map[string]interface{}{
 				"userID": userID,
 				"address": map[string]string{
-					"street":   fmt.Sprintf("%d %s St", rand.Intn(9999)+1, generateRandomStreetName()),
-					"number":   fmt.Sprintf("%d", rand.Intn(999)+1),
-					"city":     generateRandomCity(),
-					"postcode": fmt.Sprintf("%05d", rand.Intn(99999)),
+					"street":   fmt.Sprintf("%d %s St", rng.Intn(9999)+1, generateRandomStreetName(rng)),
+					"number":   fmt.Sprintf("%d", rng.Intn(999)+1),
+					"city":     generateRandomCity(rng),
+					"postcode": fmt.Sprintf("%05d", rng.Intn(99999)),
 					"country":  "United States",
 				},
 			}
 			_, err := client.PostJSON(ctx, "/PostAddress", address)
 			if err != nil && *verbose {
-				fmt.Printf("  Warning: Failed to add address for user %s: %v\n", username, err)
+				fmt.Printf("  Warning: Failed to add address for user %s: %v\n", user.Username, err)
 			}
 		}
 
-		// Add payment card for some users (60% chance)
-		if rand.Float32() < 0.6 {
+		// Add payment card if needed
+		if user.HasCard {
 			card := map[string]interface{}{
 				"userID": userID,
 				"card": map[string]string{
-					"longNum": generateRandomCardNumber(),
-					"expires": fmt.Sprintf("%02d/%02d", rand.Intn(12)+1, rand.Intn(10)+25),
-					"ccv":     fmt.Sprintf("%03d", rand.Intn(999)+1),
+					"longNum": generateRandomCardNumber(rng),
+					"expires": fmt.Sprintf("%02d/%02d", rng.Intn(12)+1, rng.Intn(10)+25),
+					"ccv":     fmt.Sprintf("%03d", rng.Intn(999)+1),
 				},
 			}
 			_, err := client.PostJSON(ctx, "/PostCard", card)
 			if err != nil && *verbose {
-				fmt.Printf("  Warning: Failed to add card for user %s: %v\n", username, err)
+				fmt.Printf("  Warning: Failed to add card for user %s: %v\n", user.Username, err)
 			}
-		}
-
-		if j%10 == 0 {
-			fmt.Printf("  Created user %d/%d (successful: %d)\n", j+1, *userCount, successCount)
 		}
 	}
 
@@ -272,23 +320,23 @@ func generateRandomPassword() string {
 	return string(password)
 }
 
-func generateRandomStreetName() string {
+func generateRandomStreetName(rng *rand.Rand) string {
 	streets := []string{"Main", "Oak", "Pine", "Maple", "Cedar", "Elm", "First", "Second", "Third", "Park", "Washington", "Lincoln", "Jefferson", "Madison", "Franklin"}
-	return streets[rand.Intn(len(streets))]
+	return streets[rng.Intn(len(streets))]
 }
 
-func generateRandomCity() string {
+func generateRandomCity(rng *rand.Rand) string {
 	cities := []string{"New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Austin", "Jacksonville", "Fort Worth", "Columbus", "Charlotte"}
-	return cities[rand.Intn(len(cities))]
+	return cities[rng.Intn(len(cities))]
 }
 
-func generateRandomCardNumber() string {
+func generateRandomCardNumber(rng *rand.Rand) string {
 	// Generate a realistic-looking card number (not a real one)
 	prefixes := []string{"4532", "5555", "4111", "6011", "3782"}
-	prefix := prefixes[rand.Intn(len(prefixes))]
+	prefix := prefixes[rng.Intn(len(prefixes))]
 	number := prefix
 	for i := 0; i < 12; i++ {
-		number += fmt.Sprintf("%d", rand.Intn(10))
+		number += fmt.Sprintf("%d", rng.Intn(10))
 	}
 	return number
 }

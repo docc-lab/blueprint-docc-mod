@@ -4,10 +4,12 @@ package otelcol
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
-	"math/rand"
-    "os"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,22 +30,22 @@ import (
 // Constants for baggage keys
 const (
 	BAG_BLOOM_FILTER = "__bag.bloom_filter"
-    BAG_HASH_ARRAY   = "__bag.hash_array"
+	BAG_HASH_ARRAY   = "__bag.hash_array"
 )
 
 // Ancestry tagging keys
 const (
-    AncestryModeKey = "ancestry_mode"
-    AncestryKey     = "ancestry"
+	AncestryModeKey = "ancestry_mode"
+	AncestryKey     = "ancestry"
 )
 
 // AncestryMode selects the ancestry encoding strategy
 type AncestryMode string
 
 const (
-    AncestryModeBloom  AncestryMode = "bloom"
-    AncestryModeHash   AncestryMode = "hash"
-    AncestryModeHybrid AncestryMode = "hybrid"
+	AncestryModeBloom  AncestryMode = "bloom"
+	AncestryModeHash   AncestryMode = "hash"
+	AncestryModeHybrid AncestryMode = "hybrid"
 )
 
 // Manual toggle: when true, both high and low priority spans are exported
@@ -60,7 +62,7 @@ type PriorityProcessor struct {
 
 	// Configuration
 	agentEndpoint string
-    ancestryMode  AncestryMode
+	ancestryMode  AncestryMode
 
 	bloomFilter *bloom.BloomFilter
 
@@ -77,10 +79,24 @@ type PriorityProcessor struct {
 	hepLock           sync.Mutex
 	lowPrioEventsBuf  []*tracepb.ResourceSpans
 	lepLock           sync.Mutex
+
+	// Config discovery
+	configDiscoveryPort int
+	httpClient          *http.Client
+	configMap           map[string]interface{}
+	configLock          sync.RWMutex
+
+	// Checkpoint distance (parsed from config, default: 1)
+	checkpointDistance int64
+}
+
+// ConfigResponse represents the response from the config discovery endpoint
+type ConfigResponse struct {
+	Config map[string]interface{} `json:"config"`
 }
 
 // Darby: this gets run once per service (when initialized)
-func NewPriorityProcessor(ctx context.Context, agentEndpoint string) (*PriorityProcessor, error) {
+func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDiscoveryPort string) (*PriorityProcessor, error) {
 	slog.Info("🔵 Creating new PriorityProcessor", "agentEndpoint", agentEndpoint)
 
 	bloomFilter := bloom.New(10, 7)
@@ -140,23 +156,49 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string) (*PriorityP
 
 	slog.Info("✅ PriorityProcessor created successfully")
 
-    // Resolve ancestry mode from environment (default: bloom)
-    mode := AncestryMode(os.Getenv("ANCESTRY_MODE"))
-    if mode == "" {
-        // mode = AncestryModeBloom
+	// Resolve ancestry mode from environment (default: bloom)
+	mode := AncestryMode(os.Getenv("ANCESTRY_MODE"))
+	if mode == "" {
+		// mode = AncestryModeBloom
 		mode = AncestryModeHash
-    }
-
-    processor := &PriorityProcessor{
-		lowPrioClient:  lowPrioClient,
-		highPrioClient: highPrioClient,
-		agentEndpoint:  agentEndpoint,
-		bloomFilter:    bloomFilter,
-		stopChan:       make(chan struct{}),
-        ancestryMode:   mode,
 	}
 
-    slog.Info("🔵 Ancestry mode configured", "mode", mode)
+	// Parse config discovery port
+	configDiscoveryPortInt, err := strconv.Atoi(configDiscoveryPort)
+	if err != nil {
+		slog.Error("❌ Failed to convert configDiscoveryPort to int", "error", err)
+		return nil, fmt.Errorf("failed to convert configDiscoveryPort to int: %w", err)
+	}
+
+	// Create HTTP client for config discovery
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	processor := &PriorityProcessor{
+		lowPrioClient:       lowPrioClient,
+		highPrioClient:      highPrioClient,
+		agentEndpoint:       agentEndpoint,
+		bloomFilter:         bloomFilter,
+		stopChan:            make(chan struct{}),
+		ancestryMode:        mode,
+		configDiscoveryPort: configDiscoveryPortInt,
+		httpClient:          httpClient,
+		configMap:           make(map[string]interface{}),
+		checkpointDistance:  1, // Default: every span is a checkpoint
+	}
+
+	slog.Info("🔵 Ancestry mode configured", "mode", mode)
+
+	// Fetch full config from config discovery endpoint
+	slog.Info("🔵 About to fetch full config")
+	if err := processor.fetchFullConfig(ctx); err != nil {
+		slog.Error("❌ Failed to fetch full config", "error", err)
+		// Don't fail initialization if config fetch fails - continue with empty config
+		slog.Warn("⚠️ Continuing with empty config map")
+	} else {
+		slog.Info("🟢 Successfully fetched full config", "config_keys", len(processor.configMap))
+	}
 
 	// Start background workers for batch export
 	processor.wg.Add(2)
@@ -319,6 +361,7 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 			}
 		}
 	}
+	depth %= int(p.checkpointDistance)
 	s.SetAttributes(attribute.Int("__bag.depth", depth))
 
 	// Handle bloom filter in baggage (same pattern as depth)
@@ -351,65 +394,89 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	isRoot := !parentSpan.SpanContext().IsValid()
 	slog.Debug("🔵 Updated bloom filter for span", "span_id", spanID, "is_root", isRoot)
 
-    // Serialize updated bloom filter and set baggage attribute for propagation
-    bfStr, err := serializeBloomFilter(bloomFilter)
-    if err != nil {
-        slog.Error("Failed to serialize bloom filter", "error", err)
-        return
-    }
-    s.SetAttributes(attribute.String("__bag.bloom_filter", bfStr))
+	// Serialize updated bloom filter and set baggage attribute for propagation
+	bfStr, err := serializeBloomFilter(bloomFilter)
+	if err != nil {
+		slog.Error("Failed to serialize bloom filter", "error", err)
+		return
+	}
+	s.SetAttributes(attribute.String("__bag.bloom_filter", bfStr))
 
-	// Randomly assign priority (high=1, low=0) for now
-	priority := rand.Intn(2) // 0 or 1
+	// Assign priority based on checkpoint distance (cpd) from config
+	// High priority (1) if depth % cpd == 0 (root span at depth 0 is always checkpointed)
+	// Low priority (0) otherwise
+	priority := 0
+
+	// Get checkpoint distance (already parsed and stored, no lock needed for read)
+	// cpd := p.checkpointDistance
+
+	// // Calculate priority: high priority if depth % cpd == 0
+	// if cpd > 0 && depth%int(cpd) == 0 {
+	// 	priority = 1
+	// }
+	if depth == 0 {
+		priority = 1
+	}
 
 	// Set priority as baggage attribute for propagation
 	s.SetAttributes(attribute.Int("__bag.prio", priority))
 
-    // Build and propagate hash array (root -> ... -> current)
-    var hashArrayStr string
-    if baggage != nil {
-        parentValid := trace.SpanFromContext(parent).SpanContext().IsValid()
-        if parentValid {
-            if parentArrStr, exists := baggage["hash_array"]; exists && parentArrStr != "" {
-                hashArrayStr = parentArrStr + "," + spanID
-            } else {
-                hashArrayStr = spanID
-            }
-        } else {
-            hashArrayStr = spanID
-        }
-    } else {
-        hashArrayStr = spanID
-    }
-    s.SetAttributes(attribute.String(BAG_HASH_ARRAY, hashArrayStr))
+	// Build and propagate hash array (root -> ... -> current)
+	var hashArrayStr string
+	if baggage != nil {
+		parentValid := trace.SpanFromContext(parent).SpanContext().IsValid()
+		if parentValid {
+			if parentArrStr, exists := baggage["hash_array"]; exists && parentArrStr != "" {
+				hashArrayStr = parentArrStr + "," + spanID
+			} else {
+				hashArrayStr = spanID
+			}
+		} else {
+			hashArrayStr = spanID
+		}
+	} else {
+		hashArrayStr = spanID
+	}
+	s.SetAttributes(attribute.String(BAG_HASH_ARRAY, hashArrayStr))
 
-    // Write ancestry tags (only ancestry_mode and ancestry payload)
-    ancestryPayload := ""
-    switch p.ancestryMode {
-    case AncestryModeBloom:
-        ancestryPayload = bfStr
-    case AncestryModeHash:
-        ancestryPayload = hashArrayStr
-    case AncestryModeHybrid:
-        // TODO: implement hybrid encoder later
-        ancestryPayload = ""
-    default:
-        ancestryPayload = bfStr
-    }
+	// Write ancestry tags (only ancestry_mode and ancestry payload)
+	ancestryPayload := ""
+	switch p.ancestryMode {
+	case AncestryModeBloom:
+		ancestryPayload = bfStr
+	case AncestryModeHash:
+		ancestryPayload = hashArrayStr
+	case AncestryModeHybrid:
+		// TODO: implement hybrid encoder later
+		ancestryPayload = ""
+	default:
+		ancestryPayload = bfStr
+	}
 
 	// Add priority attribute for verification (not baggage)
 	// only add attributes to span for high priority spans.
-    if priority == 1 {
-        s.SetAttributes(attribute.String("prio", "high"))
-        s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
-        s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
-    } else {
-        s.SetAttributes(attribute.String("prio", "low"))
-    }
+	if priority == 1 {
+		s.SetAttributes(attribute.String("prio", "high"))
+		s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
+		s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
 
-    // Add depth attribute for verification (not baggage)
-    s.SetAttributes(attribute.Int("depth", depth))
+		// reset bloom filter and hash array after each checkpoint
+		bloomFilter = createEmptyBloomFilter()
+		bloomFilter.Add([]byte(spanID))
+		bfStr, err = serializeBloomFilter(bloomFilter)
+		if err != nil {
+			slog.Error("Failed to serialize bloom filter", "error", err)
+			return
+		}
+		hashArrayStr = spanID
+		s.SetAttributes(attribute.String(BAG_BLOOM_FILTER, bfStr))
+		s.SetAttributes(attribute.String(BAG_HASH_ARRAY, spanID))
+	} else {
+		s.SetAttributes(attribute.String("prio", "low"))
+	}
 
+	// Add depth attribute for verification (not baggage)
+	s.SetAttributes(attribute.Int("depth", depth))
 
 	slog.Info("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
 }
@@ -795,6 +862,187 @@ func (p *PriorityProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_
 		}
 	}
 	return protoLinks
+}
+
+// getConfigDiscoveryEndpoint converts the agent endpoint to the config discovery endpoint
+func (p *PriorityProcessor) getConfigDiscoveryEndpoint() string {
+	// Extract host from agent endpoint
+	if strings.Contains(p.agentEndpoint, ":") {
+		parts := strings.Split(p.agentEndpoint, ":")
+		if len(parts) >= 2 {
+			host := parts[0]
+			// Use configurable port for config discovery (same host, different port)
+			return fmt.Sprintf("%s:%d", host, p.configDiscoveryPort)
+		}
+	}
+	// Fallback to localhost with configurable port
+	return fmt.Sprintf("localhost:%d", p.configDiscoveryPort)
+}
+
+// parseCheckpointDistance extracts and parses the checkpoint distance (cpd) from the config map
+func (p *PriorityProcessor) parseCheckpointDistance(config map[string]interface{}) int64 {
+	const defaultCPD = int64(1) // Default: every span is a checkpoint
+
+	if config == nil {
+		return defaultCPD
+	}
+
+	if cpdVal, exists := config["cpd"]; exists {
+		// Handle different possible types for cpd (int, int64, float64, string)
+		switch v := cpdVal.(type) {
+		case int64:
+			if v > 0 {
+				return v
+			}
+			slog.Warn("cpd must be positive, using default", "cpd", v)
+			return defaultCPD
+		case int:
+			if v > 0 {
+				return int64(v)
+			}
+			slog.Warn("cpd must be positive, using default", "cpd", v)
+			return defaultCPD
+		case float64:
+			cpd := int64(v)
+			if cpd > 0 && float64(cpd) == v {
+				return cpd
+			}
+			slog.Warn("cpd must be a positive integer, using default", "cpd", v)
+			return defaultCPD
+		case string:
+			parsed, err := strconv.ParseInt(v, 10, 64)
+			if err == nil {
+				if parsed > 0 {
+					return parsed
+				}
+				slog.Warn("cpd must be positive, using default", "cpd", v)
+				return defaultCPD
+			}
+			slog.Warn("Failed to parse cpd as int64, using default", "cpd", v, "error", err)
+			return defaultCPD
+		default:
+			slog.Warn("cpd has unexpected type, using default", "cpd", v, "type", fmt.Sprintf("%T", v))
+			return defaultCPD
+		}
+	}
+
+	// cpd not found in config, use default
+	return defaultCPD
+}
+
+// fetchFullConfig fetches the full config from the config discovery endpoint
+func (p *PriorityProcessor) fetchFullConfig(ctx context.Context) error {
+	// Try to fetch config from the discovery endpoint with retries
+	config, err := p.fetchFullConfigFromEndpointWithRetries(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch full config: %w", err)
+	}
+
+	// Parse checkpoint distance from config
+	cpd := p.parseCheckpointDistance(config)
+
+	// Log the full config as JSON
+	configJSON, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		slog.Warn("Failed to marshal config to JSON for logging", "error", err)
+	} else {
+		slog.Info("Fetched config JSON", "config", string(configJSON))
+	}
+
+	p.configLock.Lock()
+	p.configMap = config
+	p.checkpointDistance = cpd
+	p.configLock.Unlock()
+
+	slog.Info("Successfully discovered full config",
+		"config_keys", len(config),
+		"checkpoint_distance", cpd)
+	return nil
+}
+
+// fetchFullConfigFromEndpointWithRetries fetches config from the discovery endpoint with retries
+func (p *PriorityProcessor) fetchFullConfigFromEndpointWithRetries(ctx context.Context) (map[string]interface{}, error) {
+	configDiscoveryEndpoint := p.getConfigDiscoveryEndpoint()
+	url := fmt.Sprintf("http://%s/getFullConfig", configDiscoveryEndpoint)
+
+	// Retry loop with 1-second intervals
+	for attempt := 1; attempt <= 60; attempt++ { // Max 60 attempts (60 seconds)
+		slog.Debug("Attempting config discovery", "attempt", attempt, "endpoint", url)
+
+		// Create a new request for each attempt
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		}
+
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			slog.Debug("Config discovery attempt failed, will retry", "attempt", attempt, "error", err)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("failed to make HTTP request after %d attempts: %w", attempt, err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			slog.Debug("Config discovery endpoint returned non-OK status, will retry", "attempt", attempt, "status", resp.StatusCode)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("config discovery endpoint returned status %d after %d attempts", resp.StatusCode, attempt)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			slog.Debug("Failed to read response body, will retry", "attempt", attempt, "error", err)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("failed to read response body after %d attempts: %w", attempt, err)
+		}
+
+		var configResp ConfigResponse
+		if err := json.Unmarshal(body, &configResp); err != nil {
+			slog.Debug("Failed to parse config response, will retry", "attempt", attempt, "error", err)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("failed to parse config response after %d attempts: %w", attempt, err)
+		}
+
+		if configResp.Config == nil {
+			slog.Debug("Empty config in response, will retry", "attempt", attempt)
+			if attempt < 30 {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("empty config in response after %d attempts", attempt)
+		}
+
+		// Success! Return the config
+		slog.Info("Config discovery successful", "attempt", attempt, "config_keys", len(configResp.Config))
+		return configResp.Config, nil
+	}
+
+	return nil, fmt.Errorf("config discovery failed after 60 attempts")
+}
+
+// getConfigMap returns the config map, with thread-safe access
+func (p *PriorityProcessor) getConfigMap() map[string]interface{} {
+	p.configLock.RLock()
+	defer p.configLock.RUnlock()
+
+	// Return a copy to prevent external modification
+	result := make(map[string]interface{})
+	for k, v := range p.configMap {
+		result[k] = v
+	}
+	return result
 }
 
 // Shutdown implements SpanProcessor.Shutdown

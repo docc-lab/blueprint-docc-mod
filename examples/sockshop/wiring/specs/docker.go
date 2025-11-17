@@ -52,7 +52,7 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	trace_collector := otelcol.CollectorWithConfig(
 		spec, "otelcol",
 		jaeger_collector,
-		"/users/dhuye/opentelemetry-collector-contrib/test-config-bridges.yaml",
+		"/users/tomislav/opentelemetry-collector-contrib/test-config-bridges.yaml",
 		"10.10.1.1:30000/otelcontribcol:latest",
 		8080, "jaeger")
 
@@ -60,7 +60,7 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	applyDockerDefaults := func(serviceName string, useHTTP ...bool) {
 		// Golang-level modifiers that add functionality
 		retries.AddRetries(spec, serviceName, 3)
-		clientpool.Create(spec, serviceName, 10)
+		clientpool.Create(spec, serviceName, 50)
 		opentelemetry.Instrument(spec, serviceName, trace_collector)
 		// opentelemetry.Instrument(spec, serviceName)
 		if len(useHTTP) > 0 && useHTTP[0] {

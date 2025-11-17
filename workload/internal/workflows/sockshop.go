@@ -21,8 +21,10 @@ type SockShopWorkflow struct {
 
 // NewSockShopWorkflow creates a new SockShop workflow instance
 func NewSockShopWorkflow(baseURL string, stats *metrics.StatsCollector, verbose bool) *SockShopWorkflow {
+	// Use a much longer timeout (5 minutes) to prevent premature timeouts under high load
+	// The context cancellation will handle stopping requests when the workload duration expires
 	return &SockShopWorkflow{
-		client:  client.NewHTTPClientWithVerbose(baseURL, 30*time.Second, verbose),
+		client:  client.NewHTTPClientWithVerbose(baseURL, 5*time.Minute, verbose),
 		stats:   stats,
 		verbose: verbose,
 	}
@@ -67,181 +69,202 @@ const (
 )
 
 // RunWorkflow executes a specific workflow type for a user session
-func (w *SockShopWorkflow) RunWorkflow(ctx context.Context, session *UserSession, workflowType WorkflowType) {
+// stopChan signals when no new work should be started (allows ongoing work to complete)
+func (w *SockShopWorkflow) RunWorkflow(ctx context.Context, stopChan <-chan struct{}, session *UserSession, workflowType WorkflowType) {
 	switch workflowType {
 	case RealisticWorkflow:
-		w.runRealisticWorkflow(ctx, session)
+		w.runRealisticWorkflow(ctx, stopChan, session)
 	case BrowsingWorkflow:
-		w.runBrowsingWorkflow(ctx, session)
+		w.runBrowsingWorkflow(ctx, stopChan, session)
 	case PurchasingWorkflow:
-		w.runPurchasingWorkflow(ctx, session)
+		w.runPurchasingWorkflow(ctx, stopChan, session)
 	case StressWorkflow:
-		w.runStressWorkflow(ctx, session)
+		w.runStressWorkflow(ctx, stopChan, session)
 	default:
-		w.runRealisticWorkflow(ctx, session)
+		w.runRealisticWorkflow(ctx, stopChan, session)
 	}
 }
 
 // runRealisticWorkflow implements a realistic e-commerce workflow
-func (w *SockShopWorkflow) runRealisticWorkflow(ctx context.Context, session *UserSession) {
+func (w *SockShopWorkflow) runRealisticWorkflow(ctx context.Context, stopChan <-chan struct{}, session *UserSession) {
 	for {
+		// Check if we should stop starting new work (but allow ongoing work to complete)
 		select {
-		case <-ctx.Done():
-			return
+		case <-stopChan:
+			return // No new work should start, exit the loop
 		default:
-			// Step 1: Login to get the actual userID
-			userID, err := w.loginUser(ctx, session.Username, session.Password)
-			if err != nil {
+		}
+
+		// Record the start of a workload iteration
+		w.stats.RecordWorkloadStart()
+
+		// Step 1: Login to get the actual userID
+		userID, err := w.loginUser(ctx, session.Username, session.Password)
+		if err != nil {
+			if w.verbose {
+				fmt.Printf("❌ LOGIN FAILED! Username: %s, Error: %v\n", session.Username, err)
+			}
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		session.UserID = userID // Store the actual database userID
+
+		if w.verbose {
+			fmt.Printf("✅ LOGIN SUCCESS! Username: %s, UserID: %s\n", session.Username, userID)
+		}
+
+		// Step 2: Generate new session for fresh cart
+		w.generateNewSession(ctx, session)
+		if w.verbose {
+			fmt.Printf("🛒 NEW CART SESSION: %s\n", session.ID)
+		}
+
+		// Step 3: Browse catalogue
+		w.browseCatalogue(ctx, session)
+		time.Sleep(1 * time.Second)
+
+		// Step 4: Add items to cart
+		cartSessionID := w.addToCart(ctx, session)
+		time.Sleep(1 * time.Second)
+
+		// Step 5: Add address and payment method (only if not already done)
+		var addressID, cardID string
+		if session.AddressID == "" || session.CardID == "" {
+			addressID, cardID = w.addAddressAndPayment(ctx, session)
+			if addressID == "" || cardID == "" {
 				if w.verbose {
-					fmt.Printf("❌ LOGIN FAILED! Username: %s, Error: %v\n", session.Username, err)
+					fmt.Printf("❌ Failed to add address/payment for user %s\n", session.Username)
 				}
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			session.UserID = userID // Store the actual database userID
-
-			if w.verbose {
-				fmt.Printf("✅ LOGIN SUCCESS! Username: %s, UserID: %s\n", session.Username, userID)
-			}
-
-			// Step 2: Generate new session for fresh cart
-			w.generateNewSession(ctx, session)
-			if w.verbose {
-				fmt.Printf("🛒 NEW CART SESSION: %s\n", session.ID)
-			}
-
-			// Step 3: Browse catalogue
-			w.browseCatalogue(ctx, session)
-			time.Sleep(1 * time.Second)
-
-			// Step 4: Add items to cart
-			cartSessionID := w.addToCart(ctx, session)
-			time.Sleep(1 * time.Second)
-
-			// Step 5: Add address and payment method (only if not already done)
-			var addressID, cardID string
-			if session.AddressID == "" || session.CardID == "" {
-				addressID, cardID = w.addAddressAndPayment(ctx, session)
-				if addressID == "" || cardID == "" {
-					if w.verbose {
-						fmt.Printf("❌ Failed to add address/payment for user %s\n", session.Username)
-					}
-					time.Sleep(2 * time.Second)
-					continue
-				}
-				session.AddressID = addressID
-				session.CardID = cardID
-			} else {
-				addressID = session.AddressID
-				cardID = session.CardID
-			}
-
-			// Step 6: Place order
-			orderID := w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
-			if orderID == "" {
-				if w.verbose {
-					fmt.Printf("❌ Failed to place order for user %s\n", session.Username)
-				}
-			} else {
-				session.Orders = append(session.Orders, orderID)
-				if w.verbose {
-					fmt.Printf("✅ ORDER PLACED! User: %s, OrderID: %s\n", session.Username, orderID)
-				}
-			}
-
-			// Step 7: Check order status
-			w.getOrders(ctx, session)
-			time.Sleep(1 * time.Second)
-
-			// Think time between complete workflows
-			time.Sleep(3 * time.Second)
+			session.AddressID = addressID
+			session.CardID = cardID
+		} else {
+			addressID = session.AddressID
+			cardID = session.CardID
 		}
+
+		// Step 6: Place order
+		orderID := w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
+		if orderID == "" {
+			if w.verbose {
+				fmt.Printf("❌ Failed to place order for user %s\n", session.Username)
+			}
+		} else {
+			session.Orders = append(session.Orders, orderID)
+			if w.verbose {
+				fmt.Printf("✅ ORDER PLACED! User: %s, OrderID: %s\n", session.Username, orderID)
+			}
+		}
+
+		// Step 7: Check order status
+		w.getOrders(ctx, session)
+		time.Sleep(1 * time.Second)
+
+		// Think time between complete workflows
+		time.Sleep(3 * time.Second)
 	}
 }
 
 // runBrowsingWorkflow implements a heavy browsing workflow
-func (w *SockShopWorkflow) runBrowsingWorkflow(ctx context.Context, session *UserSession) {
+func (w *SockShopWorkflow) runBrowsingWorkflow(ctx context.Context, stopChan <-chan struct{}, session *UserSession) {
 	for {
+		// Check if we should stop starting new work (but allow ongoing work to complete)
 		select {
-		case <-ctx.Done():
-			return
+		case <-stopChan:
+			return // No new work should start, exit the loop
 		default:
-			// Browse by tags (2 hops: Frontend → Catalogue)
-			w.browseByTags(ctx, session)
-
-			// Search for specific items (2 hops: Frontend → Catalogue)
-			w.searchItems(ctx, session)
-
-			// Get item details (2 hops: Frontend → Catalogue)
-			w.getItemDetails(ctx, session)
-
-			time.Sleep(1 * time.Second)
 		}
+
+		// Record the start of a workload iteration
+		w.stats.RecordWorkloadStart()
+
+		// Browse by tags (2 hops: Frontend → Catalogue)
+		w.browseByTags(ctx, session)
+
+		// Search for specific items (2 hops: Frontend → Catalogue)
+		w.searchItems(ctx, session)
+
+		// Get item details (2 hops: Frontend → Catalogue)
+		w.getItemDetails(ctx, session)
+
+		time.Sleep(1 * time.Second)
 	}
 }
 
 // runPurchasingWorkflow implements a heavy purchasing workflow
-func (w *SockShopWorkflow) runPurchasingWorkflow(ctx context.Context, session *UserSession) {
+func (w *SockShopWorkflow) runPurchasingWorkflow(ctx context.Context, stopChan <-chan struct{}, session *UserSession) {
 	for {
+		// Check if we should stop starting new work (but allow ongoing work to complete)
 		select {
-		case <-ctx.Done():
-			return
+		case <-stopChan:
+			return // No new work should start, exit the loop
 		default:
-			// Quick browse and add to cart
-			w.browseCatalogue(ctx, session)
-			w.addToCart(ctx, session)
-
-			// Login to get userID
-			userID, err := w.loginUser(ctx, session.Username, session.Password)
-			if err == nil {
-				session.UserID = userID // Store the actual database userID
-			}
-			w.addAddressAndPayment(ctx, session)
-
-			// Place multiple orders
-			for i := 0; i < 3; i++ {
-				if len(session.Cart) > 0 {
-					addressID, cardID := w.addAddressAndPayment(ctx, session)
-					cartSessionID := w.addToCart(ctx, session)
-					w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
-				}
-			}
-
-			time.Sleep(1 * time.Second)
 		}
+
+		// Record the start of a workload iteration
+		w.stats.RecordWorkloadStart()
+
+		// Quick browse and add to cart
+		w.browseCatalogue(ctx, session)
+		w.addToCart(ctx, session)
+
+		// Login to get userID
+		userID, err := w.loginUser(ctx, session.Username, session.Password)
+		if err == nil {
+			session.UserID = userID // Store the actual database userID
+		}
+		w.addAddressAndPayment(ctx, session)
+
+		// Place multiple orders
+		for i := 0; i < 3; i++ {
+			if len(session.Cart) > 0 {
+				addressID, cardID := w.addAddressAndPayment(ctx, session)
+				cartSessionID := w.addToCart(ctx, session)
+				w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
+			}
+		}
+
+		time.Sleep(1 * time.Second)
 	}
 }
 
 // runStressWorkflow implements a stress testing workflow
-func (w *SockShopWorkflow) runStressWorkflow(ctx context.Context, session *UserSession) {
+func (w *SockShopWorkflow) runStressWorkflow(ctx context.Context, stopChan <-chan struct{}, session *UserSession) {
 	iteration := 0
 	for {
+		// Check if we should stop starting new work (but allow ongoing work to complete)
 		select {
-		case <-ctx.Done():
+		case <-stopChan:
 			if w.verbose {
 				fmt.Printf("🛑 Stress workflow completed after %d iterations\n", iteration)
 			}
-			return
+			return // No new work should start, exit the loop
 		default:
-			iteration++
-			if w.verbose && iteration%10 == 0 {
-				fmt.Printf("🔄 Stress workflow iteration %d\n", iteration)
-			}
-
-			// Rapid-fire operations
-			w.browseCatalogue(ctx, session)
-			w.addToCart(ctx, session)
-			userID, err := w.loginUser(ctx, session.Username, session.Password)
-			if err == nil {
-				session.UserID = userID // Store the actual database userID
-			}
-			addressID, cardID := w.addAddressAndPayment(ctx, session)
-			cartSessionID := w.addToCart(ctx, session)
-			w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
-
-			// Minimal think time for stress testing
-			time.Sleep(100 * time.Millisecond)
 		}
+
+		iteration++
+		// Record the start of a workload iteration
+		w.stats.RecordWorkloadStart()
+
+		if w.verbose && iteration%10 == 0 {
+			fmt.Printf("🔄 Stress workflow iteration %d\n", iteration)
+		}
+
+		// Rapid-fire operations
+		w.browseCatalogue(ctx, session)
+		w.addToCart(ctx, session)
+		userID, err := w.loginUser(ctx, session.Username, session.Password)
+		if err == nil {
+			session.UserID = userID // Store the actual database userID
+		}
+		addressID, cardID := w.addAddressAndPayment(ctx, session)
+		cartSessionID := w.addToCart(ctx, session)
+		w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
+
+		// Minimal think time for stress testing
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

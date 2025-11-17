@@ -17,12 +17,11 @@ type OTCollectorTracer struct {
 
 // Returns a new instance of OTCollectorTracer.
 // Configures opentelemetry to export traces to the OpenTelemetry collector hosted at address `addr`.
-func NewOTCollectorTracer(ctx context.Context, addr string, ipDiscoveryPort string) (*OTCollectorTracer, error) {
-	// Mark ipDiscoveryPort as intentionally unused
-	_ = ipDiscoveryPort
-
+// The ipDiscoveryPort parameter is used as the config discovery port for fetching configuration.
+func NewOTCollectorTracer(ctx context.Context, addr string, additionalPort string) (*OTCollectorTracer, error) {
 	// Create priority span processor for priority-based routing
-	spanProcessor, err := NewPriorityProcessor(ctx, addr)
+	// ipDiscoveryPort is used as configDiscoveryPort for fetching full config
+	spanProcessor, err := NewPriorityProcessor(ctx, addr, additionalPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create priority span processor: %w", err)
 	}
