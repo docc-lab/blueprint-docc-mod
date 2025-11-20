@@ -8,8 +8,8 @@ set -e
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Directory variables (relative to script location)
-SOCKSHOP_DIR="$SCRIPT_DIR/blueprint-docc-mod/examples/sockshop"
+# Directory variables (relative to script location - go up one level from k8s-convert)
+SOCKSHOP_DIR="$SCRIPT_DIR/../examples/sockshop"
 
 echo "==== Cleanup: Starting Fresh Deployment ===="
 echo "[INFO] This script will remove all Kubernetes resources and build artifacts"
@@ -32,10 +32,10 @@ fi
 # Also try to delete common sockshop services individually (in case manifests don't exist)
 echo "[INFO] Cleaning up individual sockshop services..."
 kubectl delete service,deployment,statefulset -l app=sockshop --ignore-not-found=true || true
-kubectl delete service,deployment frontend-ctr --ignore-not-found=true || true
-kubectl delete service,deployment jaeger-ctr --ignore-not-found=true || true
-kubectl delete service,deployment cart-ctr --ignore-not-found=true || true
-kubectl delete service,deployment catalogue-ctr --ignore-not-found=true || true
+# Delete all sockshop services and deployments
+for svc in frontend-ctr jaeger-ctr cart-ctr cart-db-ctr catalogue-ctr catalogue-db-ctr order-ctr order-db-ctr payment-ctr shipping-ctr shipping-db-ctr user-ctr user-db-ctr; do
+    kubectl delete service,deployment $svc --ignore-not-found=true || true
+done
 
 echo "[SUCCESS] Sockshop resources removed"
 
@@ -53,59 +53,61 @@ else
     echo "[INFO] Build directory does not exist, skipping"
 fi
 
-###### Step 3: Clean Registry Images (Optional) ######
+###### Step 3: Clean Local Docker Registry ######
 echo ""
-echo "==== Step 3: Cleaning Registry Images (Optional) ===="
-echo "[INFO] Note: This will remove all images from the registry"
-read -p "Do you want to clean registry images? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "[INFO] Cleaning registry images..."
+echo "==== Step 3: Cleaning Local Docker Registry ===="
+echo "[INFO] Cleaning registry images and container..."
+
+# Check for Docker container registry
+DOCKER_REGISTRY=$(docker ps --format "{{.Names}}" | grep -i registry | grep -v k8s_POD | head -1 || echo "")
+
+if [ -n "$DOCKER_REGISTRY" ]; then
+    echo "[INFO] Docker container registry found: $DOCKER_REGISTRY"
+    echo "[INFO] Stopping and removing Docker registry container..."
     
-    # Get registry pod name
-    REGISTRY_POD=$(kubectl get pods -n registry -l app=docker-registry -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    # Stop the container
+    docker stop $DOCKER_REGISTRY 2>/dev/null || true
     
-    if [ -n "$REGISTRY_POD" ]; then
-        # Delete all images via registry API
-        echo "[INFO] Deleting all images from registry..."
-        # Note: This requires the registry to have delete enabled (which it does in registry-deployment.yaml)
-        # We could curl the registry API to delete, but it's safer to just leave images
-        # Or we can delete the PVC to force a fresh start
-        read -p "Delete registry PVC to completely reset registry? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            kubectl delete pvc registry-pvc -n registry --ignore-not-found=true
-            kubectl delete deployment docker-registry -n registry --ignore-not-found=true
-            echo "[INFO] Registry PVC and deployment deleted. They will be recreated by full-deploy.sh"
-        fi
-    else
-        echo "[INFO] Registry pod not found, skipping registry cleanup"
-    fi
+    # Remove the container
+    docker rm $DOCKER_REGISTRY 2>/dev/null || true
+    
+    # Remove associated volumes (this clears all registry data)
+    echo "[INFO] Removing registry volumes to clear all images..."
+    docker volume ls | grep -i registry | awk '{print $2}' | xargs -r docker volume rm 2>/dev/null || true
+    
+    echo "[SUCCESS] Docker registry container and data cleaned"
 else
-    echo "[INFO] Keeping registry images (they will be reused)"
+    echo "[INFO] No Docker registry container found, skipping registry cleanup"
 fi
 
-###### Step 4: Remove Node Labels (Optional) ######
-echo ""
-echo "==== Step 4: Removing Node Labels (Optional) ===="
-read -p "Do you want to remove node labels? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "[INFO] Removing workload labels from nodes..."
-    kubectl label nodes node-1 workload- --ignore-not-found=true || true
-    kubectl label nodes node-2 workload- --ignore-not-found=true || true
-    echo "[SUCCESS] Node labels removed"
-else
-    echo "[INFO] Keeping node labels (they will be overwritten by add-node-selectors.sh)"
+# Also clean up any Kubernetes registry if it exists (optional cleanup)
+REGISTRY_POD=$(kubectl get pods -n registry -l app=docker-registry -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$REGISTRY_POD" ]; then
+    echo "[INFO] Kubernetes registry also found, cleaning it up..."
+    kubectl delete service docker-registry -n registry --ignore-not-found=true || true
+    kubectl delete deployment docker-registry -n registry --ignore-not-found=true || true
+    kubectl delete pvc registry-pvc -n registry --ignore-not-found=true || true
+    echo "[SUCCESS] Kubernetes registry cleaned"
 fi
+
+###### Step 4: Remove Node Labels ######
+echo ""
+echo "==== Step 4: Removing Node Labels ===="
+echo "[INFO] Removing workload labels from nodes..."
+
+# Remove labels from node-2 (jaeger) and node-3 (sockshop) - matching add-node-selectors.sh
+kubectl label nodes node-2 workload- --ignore-not-found=true || true
+kubectl label nodes node-3 workload- --ignore-not-found=true || true
+
+echo "[SUCCESS] Node labels removed"
 
 ###### Step 5: Verify Cleanup ######
 echo ""
 echo "==== Step 5: Verifying Cleanup ===="
 echo "[INFO] Checking for remaining sockshop resources..."
 
-# Check for remaining pods
-REMAINING_PODS=$(kubectl get pods -o json | jq -r '.items[] | select(.metadata.name | contains("sockshop") or contains("frontend") or contains("cart") or contains("catalogue") or contains("jaeger")) | .metadata.name' 2>/dev/null || echo "")
+# Check for remaining pods (include all sockshop services)
+REMAINING_PODS=$(kubectl get pods -o json | jq -r '.items[] | select(.metadata.name | contains("sockshop") or contains("frontend") or contains("cart") or contains("catalogue") or contains("order") or contains("payment") or contains("shipping") or contains("user") or contains("jaeger")) | .metadata.name' 2>/dev/null || echo "")
 
 if [ -n "$REMAINING_PODS" ]; then
     echo "[WARNING] Some pods may still exist:"
@@ -122,6 +124,6 @@ echo ""
 echo "Summary of cleanup:"
 echo "- Sockshop Kubernetes resources: Deleted"
 echo "- Build artifacts: Removed"
-echo "- Registry images: $([ -n "$REGISTRY_POD" ] && echo "Kept (or deleted if you chose to)" || echo "N/A")"
-echo "- Node labels: $([ "$REPLY" =~ ^[Yy]$ ] && echo "Removed" || echo "Kept")"
+echo "- Registry: Cleaned (all images and resources removed)"
+echo "- Node labels: Removed"
 echo ""

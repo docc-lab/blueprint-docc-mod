@@ -8,51 +8,145 @@ if ! command -v kubectl >/dev/null 2>&1; then
   exit 1
 fi
 
-######## TODO: UPDATE this username and hostname #####
-# Optional config (override via env): SSH user and node hostname for tunneling
-SSH_USER=${SSH_USER:-"maxLliu"}
-NODE_HOST=${NODE_HOST:-"c220g1-031128.wisc.cloudlab.us"} # node-0 hostname where Jaeger runs
+echo "==== Discovering Services ===="
 
-echo "==== Discovering NodePorts ===="
+# Check if services exist (suppress output, only check exit code)
+JAEGER_EXISTS=$(kubectl get svc jaeger-ctr >/dev/null 2>&1 && echo "yes" || echo "no")
+FRONTEND_EXISTS=$(kubectl get svc frontend-ctr >/dev/null 2>&1 && echo "yes" || echo "no")
 
-# Fetch NodePorts for Jaeger UI (16686) and Frontend (12349)
-JAEGER_NODEPORT=$(kubectl get svc jaeger-ctr -o jsonpath='{.spec.ports[?(@.port==16686)].nodePort}' 2>/dev/null || true)
-FRONTEND_NODEPORT=$(kubectl get svc frontend-ctr -o jsonpath='{.spec.ports[?(@.port==12349)].nodePort}' 2>/dev/null || true)
-
-# Fallback: if selectors by port failed, list and try by name or first matching
-if [ -z "$JAEGER_NODEPORT" ]; then
-  JAEGER_NODEPORT=$(kubectl get svc jaeger-ctr -o jsonpath='{range .spec.ports[*]}{.port}:{.nodePort}{"\n"}{end}' 2>/dev/null | awk -F: '$1==16686 {print $2; exit}')
-fi
-if [ -z "$FRONTEND_NODEPORT" ]; then
-  FRONTEND_NODEPORT=$(kubectl get svc frontend-ctr -o jsonpath='{range .spec.ports[*]}{.port}:{.nodePort}{"\n"}{end}' 2>/dev/null | awk -F: '$1==12349 {print $2; exit}')
-fi
-
-if [ -z "$JAEGER_NODEPORT" ] || [ -z "$FRONTEND_NODEPORT" ]; then
-  echo "[ERROR] Could not determine NodePorts. Current service ports:"
-  echo "- jaeger-ctr:"; kubectl get svc jaeger-ctr -o jsonpath='{range .spec.ports[*]}{.port}:{.nodePort}{"\n"}{end}' 2>/dev/null || true
-  echo "- frontend-ctr:"; kubectl get svc frontend-ctr -o jsonpath='{range .spec.ports[*]}{.port}:{.nodePort}{"\n"}{end}' 2>/dev/null || true
+if [ "$FRONTEND_EXISTS" = "no" ]; then
+  echo "[ERROR] frontend-ctr service not found"
   exit 1
 fi
 
-echo "[INFO] Jaeger UI    port 16686 -> NodePort $JAEGER_NODEPORT"
-echo "[INFO] Frontend API port 12349 -> NodePort $FRONTEND_NODEPORT"
+# Get service ports dynamically (find the main port, not hardcode targetPort)
+# For frontend: find port that targets 2000, or use first port if not found
+FRONTEND_PORT=$(kubectl get svc frontend-ctr -o jsonpath='{.spec.ports[?(@.targetPort==2000)].port}' 2>/dev/null | head -1)
+if [ -z "$FRONTEND_PORT" ]; then
+  # Fallback: use first port
+  FRONTEND_PORT=$(kubectl get svc frontend-ctr -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)
+fi
+FRONTEND_TARGET_PORT=$(kubectl get svc frontend-ctr -o jsonpath='{.spec.ports[?(@.targetPort==2000)].targetPort}' 2>/dev/null | head -1 || echo "2000")
+
+# For jaeger: find port that targets 16686 (UI), or use first port if not found
+if [ "$JAEGER_EXISTS" = "yes" ]; then
+  JAEGER_UI_PORT=$(kubectl get svc jaeger-ctr -o jsonpath='{.spec.ports[?(@.targetPort==16686)].port}' 2>/dev/null | head -1)
+  if [ -z "$JAEGER_UI_PORT" ]; then
+    # Fallback: use first port
+    JAEGER_UI_PORT=$(kubectl get svc jaeger-ctr -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)
+  fi
+  JAEGER_UI_TARGET_PORT=$(kubectl get svc jaeger-ctr -o jsonpath='{.spec.ports[?(@.targetPort==16686)].targetPort}' 2>/dev/null | head -1 || echo "16686")
+fi
+
+# Get service type
+JAEGER_TYPE=$(kubectl get svc jaeger-ctr -o jsonpath='{.spec.type}' 2>/dev/null || echo "")
+FRONTEND_TYPE=$(kubectl get svc frontend-ctr -o jsonpath='{.spec.type}' 2>/dev/null || echo "")
+
+echo "[INFO] Frontend service found: port $FRONTEND_PORT (type: $FRONTEND_TYPE)"
+if [ "$JAEGER_EXISTS" = "yes" ]; then
+  echo "[INFO] Jaeger service found: UI port $JAEGER_UI_PORT (type: $JAEGER_TYPE)"
+else
+  echo "[INFO] Jaeger service not found (skipping)"
+fi
 echo ""
 
-# echo "==== Open in your laptop browser (two options) ===="
-# echo ""
-# echo "Option A: SSH tunnel (recommended)"
-# echo "- Jaeger:   ssh -L 16686:localhost:$JAEGER_NODEPORT $SSH_USER@$NODE_HOST -N"
-# echo "  Then open: http://localhost:16686"
-# echo "- Frontend: ssh -L 12349:localhost:$FRONTEND_NODEPORT $SSH_USER@$NODE_HOST -N"
-# echo "  Then open:"
-# echo "    • http://localhost:12349/ListItems?pageSize=100&pageNum=1"
-# echo "    • http://localhost:12349/LoadCatalogue"
-# echo ""
-# echo "Option B: Direct NodePort (if reachable)"
-echo "- Jaeger:   http://$NODE_HOST:$JAEGER_NODEPORT"
-echo "- Frontend:"
-echo "    • http://$NODE_HOST:$FRONTEND_NODEPORT/ListItems?pageSize=100&pageNum=1"
-echo "    • http://$NODE_HOST:$FRONTEND_NODEPORT/LoadCatalogue"
+# Convert to NodePort if not already
+if [ "$FRONTEND_TYPE" != "NodePort" ]; then
+  echo "[INFO] Converting frontend-ctr service to NodePort..."
+  kubectl patch service frontend-ctr -p '{"spec":{"type":"NodePort"}}'
+  FRONTEND_TYPE="NodePort"
+  # Wait a moment for the change to propagate
+  sleep 1
+fi
+
+if [ "$JAEGER_EXISTS" = "yes" ] && [ "$JAEGER_TYPE" != "NodePort" ]; then
+  echo "[INFO] Converting jaeger-ctr service to NodePort..."
+  kubectl patch service jaeger-ctr -p '{"spec":{"type":"NodePort"}}'
+  JAEGER_TYPE="NodePort"
+  # Wait a moment for the change to propagate
+  sleep 1
+fi
+
 echo ""
-# echo "[Note] You can override SSH user and node host:"
-# echo "       SSH_USER=youruser NODE_HOST=your.host ./access-frontend-laptop.sh"
+
+# Get node IPs for direct access (if NodePort)
+NODE_IPS=$(kubectl get nodes -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}' | head -1)
+
+# Get public hostname automatically (try hostname -f, fallback to env var or default)
+# Can be overridden via NODE_HOSTNAME env var
+if [ -z "$NODE_HOSTNAME" ]; then
+  NODE_HOSTNAME=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "")
+  if [ -z "$NODE_HOSTNAME" ] || [ "$NODE_HOSTNAME" = "localhost" ] || [ "$NODE_HOSTNAME" = "localhost.localdomain" ]; then
+    # Fallback to default if hostname is not useful
+    NODE_HOSTNAME="c220g2-011309.wisc.cloudlab.us"
+  fi
+fi
+
+echo "==== Access URLs ===="
+echo "[INFO] Using hostname: $NODE_HOSTNAME (override with NODE_HOSTNAME env var)"
+echo ""
+
+# Get NodePorts (refresh after potential conversion)
+if [ "$FRONTEND_TYPE" = "NodePort" ]; then
+  # Get NodePort for the port that targets the frontend targetPort
+  FRONTEND_NODEPORT=$(kubectl get svc frontend-ctr -o jsonpath="{.spec.ports[?(@.targetPort==$FRONTEND_TARGET_PORT)].nodePort}" 2>/dev/null | awk '{print $1}')
+  if [ -z "$FRONTEND_NODEPORT" ]; then
+    # Fallback: get NodePort for the service port we found
+    FRONTEND_NODEPORT=$(kubectl get svc frontend-ctr -o jsonpath="{.spec.ports[?(@.port==$FRONTEND_PORT)].nodePort}" 2>/dev/null | awk '{print $1}')
+  fi
+  if [ -z "$FRONTEND_NODEPORT" ]; then
+    # Final fallback: get first NodePort
+    FRONTEND_NODEPORT=$(kubectl get svc frontend-ctr -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null)
+  fi
+  echo "Frontend (NodePort: $FRONTEND_NODEPORT):"
+  echo ""
+  echo "  Public URL (if accessible):"
+  echo "    • http://$NODE_HOSTNAME:$FRONTEND_NODEPORT"
+  echo "    • http://$NODE_HOSTNAME:$FRONTEND_NODEPORT/ListItems?pageSize=100&pageNum=1"
+  echo "    • http://$NODE_HOSTNAME:$FRONTEND_NODEPORT/LoadCatalogue"
+  echo ""
+  echo "  Internal URL (from within cluster):"
+  echo "    • http://$NODE_IPS:$FRONTEND_NODEPORT"
+  echo "    • http://$NODE_IPS:$FRONTEND_NODEPORT/ListItems?pageSize=100&pageNum=1"
+  echo "    • http://$NODE_IPS:$FRONTEND_NODEPORT/LoadCatalogue"
+  echo ""
+else
+  # Use a dynamic local port based on service port to avoid conflicts
+  FRONTEND_LOCAL_PORT=${FRONTEND_PORT:-8080}
+  echo "Frontend (ClusterIP - use port-forward):"
+  echo "  Run: kubectl port-forward svc/frontend-ctr $FRONTEND_LOCAL_PORT:$FRONTEND_PORT"
+  echo "  Then access:"
+  echo "    • http://localhost:$FRONTEND_LOCAL_PORT/ListItems?pageSize=100&pageNum=1"
+  echo "    • http://localhost:$FRONTEND_LOCAL_PORT/LoadCatalogue"
+  echo ""
+fi
+
+if [ "$JAEGER_EXISTS" = "yes" ]; then
+  if [ "$JAEGER_TYPE" = "NodePort" ]; then
+    # Get NodePort for the port that targets the jaeger UI targetPort
+    JAEGER_NODEPORT=$(kubectl get svc jaeger-ctr -o jsonpath="{.spec.ports[?(@.targetPort==$JAEGER_UI_TARGET_PORT)].nodePort}" 2>/dev/null | awk '{print $1}')
+    if [ -z "$JAEGER_NODEPORT" ]; then
+      # Fallback: get NodePort for the service port we found
+      JAEGER_NODEPORT=$(kubectl get svc jaeger-ctr -o jsonpath="{.spec.ports[?(@.port==$JAEGER_UI_PORT)].nodePort}" 2>/dev/null | awk '{print $1}')
+    fi
+    if [ -z "$JAEGER_NODEPORT" ]; then
+      # Final fallback: get first NodePort
+      JAEGER_NODEPORT=$(kubectl get svc jaeger-ctr -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null)
+    fi
+    echo "Jaeger UI (NodePort: $JAEGER_NODEPORT):"
+    echo ""
+    echo "  Public URL (if accessible):"
+    echo "    • http://$NODE_HOSTNAME:$JAEGER_NODEPORT"
+    echo ""
+    echo "  Internal URL (from within cluster):"
+    echo "    • http://$NODE_IPS:$JAEGER_NODEPORT"
+    echo ""
+  else
+    # Use the target port as local port for jaeger (standard UI port)
+    JAEGER_LOCAL_PORT=${JAEGER_UI_TARGET_PORT:-16686}
+    echo "Jaeger UI (ClusterIP - use port-forward):"
+    echo "  Run: kubectl port-forward svc/jaeger-ctr $JAEGER_LOCAL_PORT:$JAEGER_UI_PORT"
+    echo "  Then access: http://localhost:$JAEGER_LOCAL_PORT"
+    echo ""
+  fi
+fi
