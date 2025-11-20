@@ -1,0 +1,22 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message PaymentService_Authorisation {
+    bool Authorised = 1;
+    string Message = 2;
+}
+
+message PaymentService_Authorise_Request {
+    float amount = 1;
+}
+
+message PaymentService_Authorise_Response {
+    PaymentService_Authorisation ret0 = 1;
+}
+
+service PaymentService {
+    rpc Authorise (PaymentService_Authorise_Request) returns (PaymentService_Authorise_Response) {}
+}
+

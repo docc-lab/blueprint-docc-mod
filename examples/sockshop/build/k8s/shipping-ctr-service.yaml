@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/maxLliu/blueprint-docc-mod/examples/sockshop/build/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: shipping-ctr
+  name: shipping-ctr
+spec:
+  ports:
+  - name: '12356'
+    port: 12356
+    targetPort: 12345
+  - name: '12345'
+    port: 12345
+    targetPort: 12345
+  selector:
+    io.kompose.service: shipping-ctr
