@@ -6,7 +6,7 @@ DURATION=60
 
 mkdir -p wrk_logs perf_logs
 
-for R in 1000 1500 2000 2500 3000; do
+for R in 2200 2400 2600 2800 3000 3200 3400 3600 3800 4000 4200 4400 4600 4800 5000; do
   echo "=== Testing R=$R ==="
 
   # 1) Start perf on node3
