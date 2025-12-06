@@ -1,0 +1,78 @@
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-eb-ctr:
+      requests_cpu: 5000
+      # limits_cpu: 2000
+  - hometimeline-cache-eb-ctr:
+      requests_cpu: 1000
+      # limits_cpu: 2000
+  - hometimeline-service-eb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - social-cache-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - social-db-eb-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+  - socialgraph-service-eb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - uniqueid-service-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usermention-service-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usertimeline-cache-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usertimeline-db-eb-ctr:
+      requests_cpu: 10000
+    #   limits_cpu: 2000
+  - usertimeline-service-eb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - wrk2api-service-eb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+node-2:
+  - media-service-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-cache-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-db-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-storage-service-eb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - text-service-eb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - urlshorten-db-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - urlshorten-service-eb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - user-service-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - user-cache-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - user-db-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - userid-service-eb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+node-3:
+  - jaeger-eb-ctr:
+

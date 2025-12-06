@@ -208,6 +208,10 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		}
 	}
 
+	if childCountPtr, ok := ctx.Value("childCount").(*int); ok {
+		*childCountPtr++
+	}
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))

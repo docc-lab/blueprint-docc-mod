@@ -88,6 +88,18 @@ class K8sConvert:
             if 'metadata' in content:
                 content['metadata']['namespace'] = self.namespace
 
+            # Deduplicate ports in Service manifests (kompose creates duplicates from expose + ports)
+            if content.get('kind') == 'Service' and 'spec' in content and 'ports' in content['spec']:
+                ports = content['spec']['ports']
+                seen_ports = {}
+                deduplicated = []
+                for port_entry in ports:
+                    port_key = (port_entry.get('port'), port_entry.get('targetPort'))
+                    if port_key not in seen_ports:
+                        seen_ports[port_key] = port_entry
+                        deduplicated.append(port_entry)
+                content['spec']['ports'] = deduplicated
+
             # Update image references if registry_url is provided
             if self.registry_url:
                 if content['kind'] in ['Deployment', 'StatefulSet', 'DaemonSet']:
@@ -349,6 +361,9 @@ class K8sConvert:
 
     def generate_service(self, svc_name: str, svc: Dict[str, Any], k8s_name: str):
         """Generate Kubernetes Service manifest."""
+        # Collect unique ports to avoid duplicates
+        unique_ports = set()
+        
         # Get the correct port for the service
         if self._is_database(svc):
             if self._is_mysql(svc):
@@ -357,19 +372,33 @@ class K8sConvert:
                 port = 27017
             else:
                 port = 8080
+            unique_ports.add(port)
         else:
-            # For non-database services, use the first exposed port
+            # For non-database services, collect all unique ports
             ports = svc.get('ports', [])
             if isinstance(ports, list) and ports:
-                # Handle both string format ("8080:8080") and dict format
-                port_str = ports[0]
-                if isinstance(port_str, str):
-                    _, container_port = port_str.split(':')
-                    port = int(container_port)
-                else:
-                    port = self._parse_port(port_str)['targetPort']
+                for port_str in ports:
+                    # Handle both string format ("8080:8080") and dict format
+                    if isinstance(port_str, str):
+                        _, container_port = port_str.split(':')
+                        unique_ports.add(int(container_port))
+                    else:
+                        parsed = self._parse_port(port_str)
+                        unique_ports.add(parsed['targetPort'])
             else:
-                port = 8080  # Default port for application services
+                unique_ports.add(8080)  # Default port for application services
+        
+        # Convert to sorted list for consistent output
+        port_list = sorted(list(unique_ports))
+        if not port_list:
+            port_list = [8080]  # Fallback to default
+        
+        # Generate service ports (use first unique port, or all if needed)
+        service_ports = [{
+            'port': port_list[0],
+            'targetPort': port_list[0],
+            'protocol': 'TCP'
+        }]
         
         service = {
             'apiVersion': 'v1',
@@ -382,11 +411,7 @@ class K8sConvert:
                 'selector': {
                     'app': k8s_name
                 },
-                'ports': [{
-                    'port': port,
-                    'targetPort': port,
-                    'protocol': 'TCP'
-                }]
+                'ports': service_ports
             }
         }
         write_yaml(service, os.path.join(self.output_dir, f'{k8s_name}-service.yaml'))

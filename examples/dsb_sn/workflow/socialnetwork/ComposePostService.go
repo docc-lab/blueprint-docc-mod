@@ -44,31 +44,47 @@ func (c *ComposePostServiceImpl) ComposePost(ctx context.Context, reqID int64, u
 	go func() {
 		defer wg.Done()
 		up_text, usermentions, urls, err1 = c.textService.ComposeText(ctx, reqID, text)
+		if err1 != nil {
+			log.Printf("ComposePost: ComposeText FAILED reqID=%d error=%v", reqID, err1)
+		}
 	}()
 	go func() {
 		defer wg.Done()
 		medias, err2 = c.mediaService.ComposeMedia(ctx, reqID, mediaTypes, mediaIDs)
+		if err2 != nil {
+			log.Printf("ComposePost: ComposeMedia FAILED reqID=%d error=%v", reqID, err2)
+		}
 	}()
 	go func() {
 		defer wg.Done()
 		uniqueID, err3 = c.uniqueIDService.ComposeUniqueId(ctx, reqID, postType)
+		if err3 != nil {
+			log.Printf("ComposePost: ComposeUniqueId FAILED reqID=%d error=%v", reqID, err3)
+		}
 	}()
 	go func() {
 		defer wg.Done()
 		creator, err4 = c.userService.ComposeCreatorWithUserId(ctx, reqID, userID, username)
+		if err4 != nil {
+			log.Printf("ComposePost: ComposeCreatorWithUserId FAILED reqID=%d error=%v", reqID, err4)
+		}
 	}()
 	wg.Wait()
 
 	if err1 != nil {
+		log.Printf("ComposePost: ComposeText FAILED reqID=%d error=%v", reqID, err1)
 		return -1, []int64{}, err1
 	}
 	if err2 != nil {
+		log.Printf("ComposePost: ComposeMedia FAILED reqID=%d error=%v", reqID, err2)
 		return -1, []int64{}, err2
 	}
 	if err3 != nil {
+		log.Printf("ComposePost: ComposeUniqueId FAILED reqID=%d error=%v", reqID, err3)
 		return -1, []int64{}, err3
 	}
 	if err4 != nil {
+		log.Printf("ComposePost: ComposeCreatorWithUserId FAILED reqID=%d error=%v", reqID, err4)
 		return -1, []int64{}, err4
 	}
 	var post Post
@@ -90,23 +106,36 @@ func (c *ComposePostServiceImpl) ComposePost(ctx context.Context, reqID int64, u
 	go func() {
 		defer wg2.Done()
 		err1 = c.postStorageService.StorePost(ctx, reqID, post)
+		if err1 != nil {
+			log.Printf("ComposePost: StorePost FAILED reqID=%d postID=%d error=%v", reqID, uniqueID, err1)
+		}
 	}()
 	go func() {
 		defer wg2.Done()
 		err2 = c.userTimelineService.WriteUserTimeline(ctx, reqID, uniqueID, userID, timestamp)
-		log.Println(err2)
+		if err2 != nil {
+			log.Printf("ComposePost: WriteUserTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err2)
+		}
 	}()
 	go func() {
 		defer wg2.Done()
 		err3 = c.homeTimelineService.WriteHomeTimeline(ctx, reqID, uniqueID, userID, timestamp, usermentionIds)
-		log.Println(err3)
+		if err3 != nil {
+			log.Printf("ComposePost: WriteHomeTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err3)
+		}
 	}()
 	wg2.Wait()
 	if err1 != nil {
+		log.Printf("ComposePost: StorePost FAILED reqID=%d postID=%d error=%v", reqID, uniqueID, err1)
 		return uniqueID, usermentionIds, err1
 	}
 	if err2 != nil {
+		log.Printf("ComposePost: WriteUserTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err2)
 		return uniqueID, usermentionIds, err2
 	}
-	return uniqueID, usermentionIds, err3
+	if err3 != nil {
+		log.Printf("ComposePost: WriteHomeTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err3)
+		return uniqueID, usermentionIds, err3
+	}
+	return uniqueID, usermentionIds, nil
 }

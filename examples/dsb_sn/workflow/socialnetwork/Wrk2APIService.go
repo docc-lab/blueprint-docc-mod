@@ -3,6 +3,7 @@ package socialnetwork
 import (
 	"context"
 	"errors"
+	"log"
 	"math/rand"
 	"time"
 )
@@ -94,5 +95,9 @@ func (w *Wrk2APIServiceImpl) ComposePost(ctx context.Context, userId int64, user
 		return -1, []int64{}, errors.New("Incomplete Arguments")
 	}
 	reqID := rand.Int63()
-	return w.composePostService.ComposePost(ctx, reqID, username, userId, text, media_ids, media_types, post_type)
+	postID, mentionedUsers, err := w.composePostService.ComposePost(ctx, reqID, username, userId, text, media_ids, media_types, post_type)
+	if err != nil {
+		log.Println("Error composing post:", err)
+	}
+	return postID, mentionedUsers, err
 }

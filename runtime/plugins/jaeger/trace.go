@@ -4,7 +4,7 @@ package jaeger
 import (
 	"context"
 
-	jaeger_exporter "go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -16,9 +16,9 @@ type JaegerTracer struct {
 }
 
 // Returns a new instance of JaegerTracer.
-// Configures opentelemetry to export jaeger traces to the jaeger collector hosted at address `addr`.
+// Configures opentelemetry to export jaeger traces to the jaeger collector hosted at address `addr` using OTLP/gRPC.
 func NewJaegerTracer(ctx context.Context, addr string) (*JaegerTracer, error) {
-	exp, err := jaeger_exporter.New(jaeger_exporter.WithCollectorEndpoint(jaeger_exporter.WithEndpoint("http://" + addr + "/api/traces")))
+	exp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(addr), otlptracegrpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}

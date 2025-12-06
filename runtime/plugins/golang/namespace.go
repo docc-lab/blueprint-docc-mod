@@ -81,6 +81,8 @@ type Namespace struct {
 	name       string
 	buildFuncs map[string]BuildFunc
 	built      map[string]any
+	// AI_ADDED: Mutex to protect concurrent access to the built map
+	builtMu sync.RWMutex // Protects concurrent access to the built map
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -353,8 +355,12 @@ func (b *NamespaceBuilder) checkRequired(parent *Namespace) error {
 }
 
 // Reports whether the namespace has a definition for name
+// AI_ADDED: Added mutex protection for concurrent access
 func (n *Namespace) has(name string) bool {
-	if _, isBuilt := n.built[name]; isBuilt {
+	n.builtMu.RLock()
+	_, isBuilt := n.built[name]
+	n.builtMu.RUnlock()
+	if isBuilt {
 		return true
 	}
 	if _, hasDef := n.buildFuncs[name]; hasDef {
@@ -364,15 +370,42 @@ func (n *Namespace) has(name string) bool {
 		return n.parent.has(name)
 	}
 	return false
+	// OLD CODE (commented out):
+	// if _, isBuilt := n.built[name]; isBuilt {
+	// 	return true
+	// }
+	// if _, hasDef := n.buildFuncs[name]; hasDef {
+	// 	return true
+	// }
+	// if n.parent != nil {
+	// 	return n.parent.has(name)
+	// }
+	// return false
 }
 
 // Gets a node from this namespace.  If the node hasn't been built yet,
 // it will be built.
+// AI_ADDED: Added mutex protection with double-check pattern to prevent concurrent map writes
 func (n *Namespace) Get(name string, receiver any) error {
-	if existing, exists := n.built[name]; exists {
+	// First check if already built (with read lock)
+	n.builtMu.RLock()
+	existing, exists := n.built[name]
+	n.builtMu.RUnlock()
+	if exists {
 		return backend.CopyResult(existing, receiver)
 	}
+
 	if build, exists := n.buildFuncs[name]; exists {
+		// Double-check pattern: acquire write lock and check again
+		n.builtMu.Lock()
+		// Check again after acquiring write lock (another goroutine might have built it)
+		if existing, exists := n.built[name]; exists {
+			n.builtMu.Unlock()
+			return backend.CopyResult(existing, receiver)
+		}
+
+		// Build the node (without holding the lock to avoid blocking other goroutines)
+		n.builtMu.Unlock()
 		built, err := build(n)
 		if err != nil {
 			slog.Error(fmt.Sprintf("%v error building %v", n.name, name))
@@ -385,7 +418,16 @@ func (n *Namespace) Get(name string, receiver any) error {
 				slog.Info(fmt.Sprintf("%v built %v (%v)", n.name, name, reflect.TypeOf(built)))
 			}
 		}
+
+		// Store the built node (with write lock)
+		n.builtMu.Lock()
+		// Double-check again in case another goroutine built it while we were building
+		if existing, exists := n.built[name]; exists {
+			n.builtMu.Unlock()
+			return backend.CopyResult(existing, receiver)
+		}
 		n.built[name] = built
+		n.builtMu.Unlock()
 
 		if runnable, isRunnable := built.(Runnable); isRunnable {
 			slog.Info(fmt.Sprintf("%v running %v", n.name, name))
@@ -414,6 +456,52 @@ func (n *Namespace) Get(name string, receiver any) error {
 		return n.parent.Get(name, receiver)
 	}
 	return fmt.Errorf("%v unknown %v", n.name, name)
+	// OLD CODE (commented out):
+	// if existing, exists := n.built[name]; exists {
+	// 	return backend.CopyResult(existing, receiver)
+	// }
+	// if build, exists := n.buildFuncs[name]; exists {
+	// 	built, err := build(n)
+	// 	if err != nil {
+	// 		slog.Error(fmt.Sprintf("%v error building %v", n.name, name))
+	// 		return err
+	// 	} else {
+	// 		switch v := built.(type) {
+	// 		case string:
+	// 			slog.Info(fmt.Sprintf("%v built %v (%v) = %v", n.name, name, reflect.TypeOf(built), v))
+	// 		default:
+	// 			slog.Info(fmt.Sprintf("%v built %v (%v)", n.name, name, reflect.TypeOf(built)))
+	// 		}
+	// 	}
+	// 	n.built[name] = built
+	//
+	// 	if runnable, isRunnable := built.(Runnable); isRunnable {
+	// 		slog.Info(fmt.Sprintf("%v running %v", n.name, name))
+	// 		n.wg.Add(1)
+	// 		if n.parent != nil {
+	// 			n.parent.wg.Add(1)
+	// 		}
+	// 		go func() {
+	// 			err := runnable.Run(n.ctx)
+	// 			if err != nil {
+	// 				slog.Error(fmt.Sprintf("%v error running node %v: %v", n.name, name, err.Error()))
+	// 				n.cancel()
+	// 			} else {
+	// 				slog.Info(fmt.Sprintf("%v %v exited", n.name, name))
+	// 			}
+	// 			n.wg.Done()
+	// 			if n.parent != nil {
+	// 				n.parent.wg.Done()
+	// 			}
+	// 		}()
+	// 	}
+	//
+	// 	return backend.CopyResult(built, receiver)
+	// }
+	// if n.parent != nil {
+	// 	return n.parent.Get(name, receiver)
+	// }
+	// return fmt.Errorf("%v unknown %v", n.name, name)
 }
 
 // ctx can be used by any [BuildFunc] that wants to start background goroutines,

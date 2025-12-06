@@ -36,6 +36,7 @@ func GenerateClient(builder golang.ModuleBuilder, service *gocode.ServiceInterfa
 		"context", "time", "errors",
 		"github.com/apache/thrift/lib/go/thrift",
 		innerPkgPath,
+		"golang.org/x/exp/slog",
 	)
 
 	slog.Info(fmt.Sprintf("Generating %v/%v.go", client.Package.PackageName, client.Name))
@@ -59,7 +60,7 @@ package {{.Package.ShortName}}
 
 type {{.Name}} struct {
 	{{.Imports.NameOf .Service.UserType}}
-	Client *{{.ImportPrefix}}.{{.Service.BaseName}}Client // The actual thrift-generated client
+	Client *{{.ImportPrefix}}.{{.Service.Name}}Client // The actual thrift-generated client
 	Timeout time.Duration
 	Address string
 }
@@ -73,7 +74,7 @@ func New_{{.Name}}(ctx context.Context, serverAddress string) (*{{.Name}}, error
 	transportFactory = thrift.NewTTransportFactory()
 	var transport thrift.TTransport
 	var err error
-	duration, err := time.ParseDuration("1s")
+	duration, err := time.ParseDuration("5s")
 	if err != nil {
 		return nil, err
 	}
@@ -85,14 +86,28 @@ func New_{{.Name}}(ctx context.Context, serverAddress string) (*{{.Name}}, error
 	if err != nil {
 		return nil, err
 	}
-	err = transport.Open()
+	// Retry connection establishment with exponential backoff
+	maxRetries := 50
+	retryDelay := 100 * time.Millisecond
+	for i := 0; i < maxRetries; i++ {
+		err = transport.Open()
+		if err == nil {
+			slog.Info("Transport opened", "address", handler.Address)
+			break
+		}
+		if i < maxRetries-1 {
+			slog.Warn("Failed to open transport, retrying", "address", handler.Address, "attempt", i+1, "error", err)
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 	iprot := protocolFactory.GetProtocol(transport)
 	oprot := protocolFactory.GetProtocol(transport)
 
-	client := {{.ImportPrefix}}.New{{.Service.BaseName}}Client(thrift.NewTStandardClient(iprot, oprot))
+	client := {{.ImportPrefix}}.New{{.Service.Name}}Client(thrift.NewTStandardClient(iprot, oprot))
 	handler.Client = client
 	handler.Timeout = duration
 	return handler, nil
@@ -112,9 +127,11 @@ func (client *{{$receiver}}) {{SignatureWithRetVars $f}} {
 
 	rsp, err := client.Client.{{$f.Name}}(ctx, req)
 	if err != nil {
-		err = ctx.Err()
-	}
-	if err != nil {
+		// If context was cancelled/timed out, prefer the context error for better error messages
+		// Otherwise, preserve the original error from the Thrift call
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+		}
 		return
 	}
 	if rsp == nil {

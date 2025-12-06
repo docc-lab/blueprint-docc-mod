@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,12 +25,11 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-type PriorityProcessor struct {
+type PathBridgeProcessor struct {
 	mu sync.RWMutex
 
 	// OTLP gRPC client for sending custom protobuf messages
-	highPrioClient otlptrace.Client
-	lowPrioClient  otlptrace.Client
+	client otlptrace.Client
 
 	// Configuration
 	agentEndpoint string
@@ -44,14 +42,13 @@ type PriorityProcessor struct {
 	wg       sync.WaitGroup
 
 	// Metrics for monitoring
-	highPrioEventsSent int64
-	lowPrioEventsSent  int64
+	eventsSent int64
 
-	// Buffers for batch export
-	highPrioEventsBuf []*tracepb.ResourceSpans
-	hepLock           sync.Mutex
-	lowPrioEventsBuf  []*tracepb.ResourceSpans
-	lepLock           sync.Mutex
+	// Buffer for batch export
+	eventsBuf  []*tracepb.ResourceSpans
+	eventsLock sync.Mutex
+
+	// AI_ADDED: Removed serverSideSpans map and ssLock - now using hasChildren attribute instead
 
 	// Config discovery
 	configDiscoveryPort int
@@ -64,8 +61,8 @@ type PriorityProcessor struct {
 }
 
 // Darby: this gets run once per service (when initialized)
-func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDiscoveryPort string) (*PriorityProcessor, error) {
-	slog.Info("🔵 Creating new PriorityProcessor", "agentEndpoint", agentEndpoint)
+func NewPathBridgeProcessor(ctx context.Context, agentEndpoint string, configDiscoveryPort string) (*PathBridgeProcessor, error) {
+	slog.Info("🔵 Creating new PathBridgeProcessor", "agentEndpoint", agentEndpoint)
 
 	bloomFilter := bloom.New(10, 7)
 
@@ -81,55 +78,33 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDisco
 		host = "localhost" // Fallback to localhost
 	}
 
-	// Create endpoints with different ports
-	highPrioEndpoint := fmt.Sprintf("%s:4317", host)
-	lowPrioEndpoint := fmt.Sprintf("%s:4319", host)
+	// Create endpoint
+	endpoint := fmt.Sprintf("%s:4317", host)
 
-	slog.Info("🔵 Using priority endpoints", "highPrio", highPrioEndpoint, "lowPrio", lowPrioEndpoint)
+	slog.Info("🔵 Using endpoint", "endpoint", endpoint)
 
-	// Create high priority OTLP gRPC client
-	highPrioClient := otlptracegrpc.NewClient(
-		otlptracegrpc.WithEndpoint(highPrioEndpoint),
+	// Create OTLP gRPC client
+	client := otlptracegrpc.NewClient(
+		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithInsecure(),
 	)
 
-	// Optionally create a separate low-priority client
-	var lowPrioClient otlptrace.Client
-	if !singleOTLPClient {
-		lowPrioClient = otlptracegrpc.NewClient(
-			otlptracegrpc.WithEndpoint(lowPrioEndpoint),
-			otlptracegrpc.WithInsecure(),
-		)
+	slog.Info("🔵 OTLP client created, starting connection")
+
+	// Start the client
+	if err := client.Start(ctx); err != nil {
+		slog.Error("❌ Failed to start OTLP client", "error", err)
+		return nil, fmt.Errorf("failed to start OTLP client: %w", err)
 	}
 
-	slog.Info("🔵 OTLP clients created, starting connections", "singleOTLPClient", singleOTLPClient)
-
-	// Start the low priority client if using separate client
-	if !singleOTLPClient {
-		if err := lowPrioClient.Start(ctx); err != nil {
-			slog.Error("❌ Failed to start low priority OTLP client", "error", err)
-			return nil, fmt.Errorf("failed to start low priority OTLP client: %w", err)
-		}
-	}
-
-	// Start the high priority client (always)
-	if err := highPrioClient.Start(ctx); err != nil {
-		slog.Error("❌ Failed to start high priority OTLP client", "error", err)
-		// Clean up the low priority client if high priority fails
-		if !singleOTLPClient && lowPrioClient != nil {
-			lowPrioClient.Stop(ctx)
-		}
-		return nil, fmt.Errorf("failed to start high priority OTLP client: %w", err)
-	}
-
-	slog.Info("✅ PriorityProcessor created successfully")
+	slog.Info("✅ PathBridgeProcessor created successfully")
 
 	// Resolve ancestry mode from environment (default: bloom)
-	mode := AncestryMode(os.Getenv("ANCESTRY_MODE"))
-	if mode == "" {
-		// mode = AncestryModeBloom
-		mode = AncestryModeHash
-	}
+	// mode := AncestryMode(os.Getenv("ANCESTRY_MODE"))
+	// if mode == "" {
+	// 	// mode = AncestryModeBloom
+	// 	mode = AncestryModeHash
+	// }
 
 	// Parse config discovery port
 	configDiscoveryPortInt, err := strconv.Atoi(configDiscoveryPort)
@@ -143,20 +118,19 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDisco
 		Timeout: 10 * time.Second,
 	}
 
-	processor := &PriorityProcessor{
-		lowPrioClient:       lowPrioClient,
-		highPrioClient:      highPrioClient,
+	processor := &PathBridgeProcessor{
+		client:              client,
 		agentEndpoint:       agentEndpoint,
 		bloomFilter:         bloomFilter,
 		stopChan:            make(chan struct{}),
-		ancestryMode:        mode,
+		ancestryMode:        AncestryModePB,
 		configDiscoveryPort: configDiscoveryPortInt,
 		httpClient:          httpClient,
 		configMap:           make(map[string]interface{}),
 		checkpointDistance:  1, // Default: every span is a checkpoint
 	}
 
-	slog.Info("🔵 Ancestry mode configured", "mode", mode)
+	slog.Info("🔵 Ancestry mode configured", "mode", AncestryModePB)
 
 	// Fetch full config from config discovery endpoint
 	slog.Info("🔵 About to fetch full config")
@@ -168,309 +142,96 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDisco
 		slog.Info("🟢 Successfully fetched full config", "config_keys", len(processor.configMap))
 	}
 
-	// Start background workers for batch export
-	if singleOTLPClient {
-		processor.wg.Add(1)
-		go processor.processHighPriorityEvents()
-	} else {
-		processor.wg.Add(2)
-		go processor.processHighPriorityEvents()
-		go processor.processLowPriorityEvents()
-	}
+	// Start background worker for batch export
+	processor.wg.Add(1)
+	go processor.processEvents()
 
 	return processor, nil
 }
 
-// processHighPriorityEvents runs in the background to periodically send high priority events
-func (p *PriorityProcessor) processHighPriorityEvents() {
+// processEvents runs in the background to periodically send events
+func (p *PathBridgeProcessor) processEvents() {
 	defer p.wg.Done()
 
-	ticker := time.NewTicker(100 * time.Millisecond) // Send every 50ms for high priority
+	ticker := time.NewTicker(1000 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-p.stopChan:
 			// Send any remaining buffered events before shutting down
-			p.flushHighPriorityBuffer()
+			p.flushBuffer()
 			return
 		case <-ticker.C:
 			// Send buffered events
-			go p.flushHighPriorityBuffer()
+			go p.flushBuffer()
 		}
 	}
 }
 
-// processLowPriorityEvents runs in the background to periodically send low priority events
-func (p *PriorityProcessor) processLowPriorityEvents() {
-	defer p.wg.Done()
-
-	slog.Info("🔴 Low priority worker started")
-	ticker := time.NewTicker(100 * time.Millisecond) // Send every 100ms for low priority
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-p.stopChan:
-			slog.Info("🔴 Low priority worker stopping, flushing remaining events")
-			// Send any remaining buffered events before shutting down
-			p.flushLowPriorityBuffer()
-			slog.Info("🔴 Low priority worker stopped")
-			return
-		case <-ticker.C:
-			// Send buffered events
-			go p.flushLowPriorityBuffer()
-		}
-	}
-}
-
-// flushHighPriorityBuffer sends all buffered high priority events
-func (p *PriorityProcessor) flushHighPriorityBuffer() {
+// flushBuffer sends all buffered events
+func (p *PathBridgeProcessor) flushBuffer() {
 	// Get events from buffer and reset the buffer
-	p.hepLock.Lock()
-	events := p.highPrioEventsBuf
-	p.highPrioEventsBuf = make([]*tracepb.ResourceSpans, 0, len(p.highPrioEventsBuf)) // Reset length, keep capacity
-	p.hepLock.Unlock()
+	p.eventsLock.Lock()
+	events := p.eventsBuf
+	p.eventsBuf = make([]*tracepb.ResourceSpans, 0, len(p.eventsBuf)) // Reset length, keep capacity
+	p.eventsLock.Unlock()
 
 	if len(events) > 0 {
-		if err := p.sendHighPriorityData(events); err != nil {
-			slog.Error("Failed to send high priority events", "error", err, "count", len(events))
+		if err := p.sendData(events); err != nil {
+			slog.Error("Failed to send events", "error", err, "count", len(events))
 		} else {
-			slog.Debug("Successfully sent high priority events", "count", len(events))
-			p.highPrioEventsSent += int64(len(events))
+			slog.Debug("Successfully sent events", "count", len(events))
+			p.eventsSent += int64(len(events))
 		}
 	}
 }
 
-// flushLowPriorityBuffer sends all buffered low priority events
-func (p *PriorityProcessor) flushLowPriorityBuffer() {
-	// Get events from buffer and reset the buffer
-	p.lepLock.Lock()
-	events := p.lowPrioEventsBuf
-	p.lowPrioEventsBuf = make([]*tracepb.ResourceSpans, 0, len(p.lowPrioEventsBuf)) // Reset length, keep capacity
-	p.lepLock.Unlock()
-
-	if len(events) > 0 {
-		slog.Info("🔴 Flushing low priority buffer", "count", len(events))
-		if err := p.sendLowPriorityData(events); err != nil {
-			slog.Error("❌ Failed to send low priority events", "error", err, "count", len(events))
-		} else {
-			slog.Info("✅ Successfully sent low priority events", "count", len(events))
-			p.lowPrioEventsSent += int64(len(events))
-		}
-	} else {
-		slog.Debug("🔴 Low priority buffer empty, nothing to flush")
-	}
-}
-
-// sendHighPriorityData sends data to the high priority endpoint
-func (p *PriorityProcessor) sendHighPriorityData(events []*tracepb.ResourceSpans) error {
+// sendData sends data to the endpoint
+func (p *PathBridgeProcessor) sendData(events []*tracepb.ResourceSpans) error {
 	if len(events) == 0 {
 		return nil
 	}
 
-	slog.Debug("🔵 Sending high priority data", "count", len(events))
+	slog.Debug("🔵 Sending data", "count", len(events))
 
-	// Create a context with timeout for high priority (shorter timeout for faster processing)
+	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	err := p.highPrioClient.UploadTraces(ctx, events)
+	err := p.client.UploadTraces(ctx, events)
 	if err != nil {
-		slog.Error("❌ Failed to send high priority data", "error", err, "count", len(events))
-		return fmt.Errorf("failed to send high priority data: %w", err)
+		slog.Error("❌ Failed to send data", "error", err, "count", len(events))
+		return fmt.Errorf("failed to send data: %w", err)
 	}
 
-	slog.Debug("✅ High priority data sent successfully", "count", len(events))
+	slog.Debug("✅ Data sent successfully", "count", len(events))
 	return nil
 }
-
-// sendLowPriorityData sends data to the low priority endpoint
-func (p *PriorityProcessor) sendLowPriorityData(events []*tracepb.ResourceSpans) error {
-	if len(events) == 0 {
-		slog.Debug("🔴 No low priority events to send")
-		return nil
-	}
-
-	slog.Info("🔴 Sending low priority data", "count", len(events))
-
-	// Create a context with timeout for low priority (longer timeout for reliability)
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	// Choose client based on mode
-	client := p.lowPrioClient
-	endpointLabel := "4319"
-	if singleOTLPClient {
-		client = p.highPrioClient
-		endpointLabel = "4317"
-	}
-
-	slog.Debug("🔴 Calling UploadTraces for low priority", "count", len(events), "endpoint", endpointLabel)
-	err := client.UploadTraces(ctx, events)
-	if err != nil {
-		slog.Error("❌ UploadTraces failed for low priority data", "error", err, "count", len(events))
-		return fmt.Errorf("failed to send low priority data: %w", err)
-	}
-
-	slog.Info("✅ Low priority data sent successfully", "count", len(events))
-	return nil
-}
-
-// // OnStart implements SpanProcessor.OnStart
-// func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
-// 	p.mu.Lock()
-// 	defer p.mu.Unlock()
-
-// 	slog.Info("🔵 PriorityProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
-
-// 	// Handle depth tracking in baggage
-// 	depth := 0
-// 	var bloomFilter *bloom.BloomFilter
-// 	var hashArrayStr string
-
-// 	baggage := backend.GetBaggageFromContext(parent)
-
-// 	if baggage != nil {
-// 		if depthStr, exists := baggage["depth"]; exists {
-// 			if depthInt, err := strconv.Atoi(depthStr); err == nil {
-// 				depth = depthInt + 1
-// 			}
-// 		}
-// 	}
-// 	depth %= int(p.checkpointDistance)
-// 	s.SetAttributes(attribute.Int("__bag.depth", depth))
-
-// 	// Handle bloom filter in baggage (same pattern as depth)
-// 	// var bloomFilter *bloom.BloomFilter
-// 	var err error
-
-// 	// Check if bloom filter exists in baggage (same as depth)
-// 	if baggage != nil {
-// 		// if bfStr, exists := baggage["bf"]; exists {
-// 		// 	// Deserialize existing bloom filter (like depth parsing)
-// 		// 	bloomFilter, err = deserializeBloomFilter(bfStr)
-// 		// 	if err != nil {
-// 		// 		slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
-// 		// 		bloomFilter = createEmptyBloomFilter()
-// 		// 	}
-// 		// } else {
-// 		// 	// Create new bloom filter if none exists (like depth = 0)
-// 		// 	bloomFilter = createEmptyBloomFilter()
-// 		// }
-// 		bloomFilter, err = deserializeBloomFilter(baggage["bf"])
-// 		if err != nil {
-// 			slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
-// 		}
-// 	} else {
-// 		// Create new bloom filter if no baggage (like depth = 0)
-// 		bloomFilter = createEmptyBloomFilter()
-// 	}
-
-// 	// Add current span ID to bloom filter (like depth + 1)
-// 	spanID := s.SpanContext().SpanID().String()
-// 	bloomFilter.Add([]byte(spanID))
-
-// 	parentSpan := trace.SpanFromContext(parent)
-// 	isRoot := !parentSpan.SpanContext().IsValid()
-// 	slog.Debug("🔵 Updated bloom filter for span", "span_id", spanID, "is_root", isRoot)
-
-// 	// Serialize updated bloom filter and set baggage attribute for propagation
-// 	bfStr, err := serializeBloomFilter(bloomFilter)
-// 	if err != nil {
-// 		slog.Error("Failed to serialize bloom filter", "error", err)
-// 		return
-// 	}
-// 	s.SetAttributes(attribute.String("__bag.bf", bfStr))
-
-// 	// Assign priority based on checkpoint distance (cpd) from config
-// 	// High priority (1) if depth % cpd == 0 (root span at depth 0 is always checkpointed)
-// 	// Low priority (0) otherwise
-// 	priority := 0
-
-// 	// Get checkpoint distance (already parsed and stored, no lock needed for read)
-// 	// cpd := p.checkpointDistance
-
-// 	// // Calculate priority: high priority if depth % cpd == 0
-// 	// if cpd > 0 && depth%int(cpd) == 0 {
-// 	// 	priority = 1
-// 	// }
-// 	if depth == 0 {
-// 		priority = 1
-// 	}
-
-// 	// Set priority as baggage attribute for propagation
-// 	s.SetAttributes(attribute.Int("__bag.prio", priority))
-
-// 	// Build and propagate hash array (root -> ... -> current)
-// 	// var hashArrayStr string
-// 	if baggage != nil {
-// 		if trace.SpanFromContext(parent).SpanContext().IsValid() {
-// 			if parentArrStr, exists := baggage["ha"]; exists && parentArrStr != "" {
-// 				hashArrayStr = parentArrStr + "," + spanID
-// 			} else {
-// 				hashArrayStr = spanID
-// 			}
-// 		} else {
-// 			hashArrayStr = spanID
-// 		}
-// 	} else {
-// 		hashArrayStr = spanID
-// 	}
-// 	s.SetAttributes(attribute.String(BAG_HASH_ARRAY, hashArrayStr))
-
-// 	// Write ancestry tags (only ancestry_mode and ancestry payload)
-// 	ancestryPayload := ""
-// 	switch p.ancestryMode {
-// 	case AncestryModeBloom:
-// 		ancestryPayload = bfStr
-// 	case AncestryModeHash:
-// 		ancestryPayload = hashArrayStr
-// 	case AncestryModeHybrid:
-// 		// TODO: implement hybrid encoder later
-// 		ancestryPayload = ""
-// 	default:
-// 		ancestryPayload = bfStr
-// 	}
-
-// 	// Add priority attribute for verification (not baggage)
-// 	// only add attributes to span for high priority spans.
-// 	if priority == 1 {
-// 		// s.SetAttributes(attribute.String("prio", "high"))
-// 		s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
-// 		s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
-
-// 		// reset bloom filter and hash array after each checkpoint
-// 		bloomFilter = createEmptyBloomFilter()
-// 		bloomFilter.Add([]byte(spanID))
-// 		bfStr, err = serializeBloomFilter(bloomFilter)
-// 		if err != nil {
-// 			slog.Error("Failed to serialize bloom filter", "error", err)
-// 			return
-// 		}
-// 		// hashArrayStr = spanID
-// 		s.SetAttributes(attribute.String(BAG_BLOOM_FILTER, bfStr))
-// 		s.SetAttributes(attribute.String(BAG_HASH_ARRAY, spanID))
-// 	}
-// 	// else {
-// 	// 	s.SetAttributes(attribute.String("prio", "low"))
-// 	// }
-
-// 	// Add depth attribute for verification (not baggage)
-// 	s.SetAttributes(attribute.Int("depth", depth))
-
-// 	slog.Info("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
-// }
 
 // OnStart implements SpanProcessor.OnStart
-func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
+func (p *PathBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 	// No mutex needed - checkpointDistance and ancestryMode are read-only after initialization
-	slog.Debug("🔵 PriorityProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	slog.Debug("🔵 PathBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+
+	parentSpan := trace.SpanFromContext(parent)
+
+	// if s.SpanKind() == trace.SpanKindServer {
+	// 	totalSpanID := s.SpanContext().TraceID().String() + ":" + s.SpanContext().SpanID().String()
+	// 	// AI_ADDED: No longer need to initialize map entry - using hasChildren attribute instead
+	// 	s.SetAttributes(attribute.String("selfTotalID", totalSpanID))
+	// } else {
+	// 	slog.Info("🔵 Client-side span", "span_name", s.Name())
+	// 	parentTotalSpanID := parentSpan.SpanContext().TraceID().String() + ":" + parentSpan.SpanContext().SpanID().String()
+	// 	// AI_ADDED: No longer need map-based counting - server template sets hasChildren attribute via context
+	// 	s.SetAttributes(attribute.String("parentTotalID", parentTotalSpanID))
+	// }
 
 	// Handle depth tracking in baggage
 	depth := 0
 	var bloomFilter *bloom.BloomFilter
-	var hashArrayStr string
+	// var hashArrayStr string
+	var err error
 
 	baggage := backend.GetBaggageFromContext(parent)
 
@@ -480,41 +241,47 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 				depth = depthInt + 1
 			}
 		}
-	}
-	depth %= int(p.checkpointDistance)
-	s.SetAttributes(attribute.Int("__bag.depth", depth))
 
-	// Handle bloom filter in baggage (same pattern as depth)
-	// var bloomFilter *bloom.BloomFilter
-	var err error
-
-	// Check if bloom filter exists in baggage (same as depth)
-	if baggage != nil {
-		// if bfStr, exists := baggage["bf"]; exists {
-		// 	// Deserialize existing bloom filter (like depth parsing)
-		// 	bloomFilter, err = deserializeBloomFilter(bfStr)
-		// 	if err != nil {
-		// 		slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
-		// 		bloomFilter = createEmptyBloomFilter()
-		// 	}
-		// } else {
-		// 	// Create new bloom filter if none exists (like depth = 0)
-		// 	bloomFilter = createEmptyBloomFilter()
-		// }
 		bloomFilter, err = deserializeBloomFilter(baggage["bf"])
 		if err != nil {
 			slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
 		}
 	} else {
-		// Create new bloom filter if no baggage (like depth = 0)
 		bloomFilter = createEmptyBloomFilter()
 	}
+
+	depth %= int(p.checkpointDistance)
+	s.SetAttributes(attribute.Int("__bag.depth", depth))
+
+	// // Handle bloom filter in baggage (same pattern as depth)
+	// // var bloomFilter *bloom.BloomFilter
+
+	// // Check if bloom filter exists in baggage (same as depth)
+	// if baggage != nil {
+	// 	// if bfStr, exists := baggage["bf"]; exists {
+	// 	// 	// Deserialize existing bloom filter (like depth parsing)
+	// 	// 	bloomFilter, err = deserializeBloomFilter(bfStr)
+	// 	// 	if err != nil {
+	// 	// 		slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
+	// 	// 		bloomFilter = createEmptyBloomFilter()
+	// 	// 	}
+	// 	// } else {
+	// 	// 	// Create new bloom filter if none exists (like depth = 0)
+	// 	// 	bloomFilter = createEmptyBloomFilter()
+	// 	// }
+	// 	bloomFilter, err = deserializeBloomFilter(baggage["bf"])
+	// 	if err != nil {
+	// 		slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
+	// 	}
+	// } else {
+	// 	// Create new bloom filter if no baggage (like depth = 0)
+	// 	bloomFilter = createEmptyBloomFilter()
+	// }
 
 	// Add current span ID to bloom filter (like depth + 1)
 	spanID := s.SpanContext().SpanID().String()
 	bloomFilter.Add([]byte(spanID))
 
-	parentSpan := trace.SpanFromContext(parent)
 	isRoot := !parentSpan.SpanContext().IsValid()
 	slog.Debug("🔵 Updated bloom filter for span", "span_id", spanID, "is_root", isRoot)
 
@@ -545,45 +312,26 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	// Set priority as baggage attribute for propagation
 	s.SetAttributes(attribute.Int("__bag.prio", priority))
 
-	// Build and propagate hash array (root -> ... -> current)
-	// var hashArrayStr string
-	if baggage != nil {
-		if trace.SpanFromContext(parent).SpanContext().IsValid() {
-			if parentArrStr, exists := baggage["ha"]; exists && parentArrStr != "" {
-				hashArrayStr = parentArrStr + "," + spanID
-			} else {
-				hashArrayStr = spanID
-			}
-		} else {
-			hashArrayStr = spanID
-		}
-	} else {
-		hashArrayStr = spanID
-	}
-	s.SetAttributes(attribute.String(BAG_HASH_ARRAY, hashArrayStr))
-
 	// Write ancestry tags (only ancestry_mode and ancestry payload)
-	ancestryPayload := ""
-	switch p.ancestryMode {
-	case AncestryModePB:
-		ancestryPayload = bfStr
-	case AncestryModeHash:
-		ancestryPayload = hashArrayStr
-	case AncestryModeHybrid:
-		// TODO: implement hybrid encoder later
-		ancestryPayload = ""
-	default:
-		ancestryPayload = bfStr
-	}
+	// ancestryPayload := ""
+	// switch p.ancestryMode {
+	// case AncestryModeBloom:
+	ancestryPayload := bfStr
+	// case AncestryModeHash:
+	// 	ancestryPayload = hashArrayStr
+	// case AncestryModeHybrid:
+	// 	// TODO: implement hybrid encoder later
+	// 	ancestryPayload = ""
+	// default:
+	// 	ancestryPayload = bfStr
+	// }
 
-	// Add priority attribute for verification (not baggage)
-	// only add attributes to span for high priority spans.
+	// Always set ancestry data - will be stripped for low-priority spans in convertAttributes
+	s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
+	s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
+
+	// Reset bloom filter and hash array after each checkpoint (only for high priority)
 	if priority == 1 {
-		// s.SetAttributes(attribute.String("prio", "high"))
-		s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
-		s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
-
-		// reset bloom filter and hash array after each checkpoint
 		bloomFilter = createEmptyBloomFilter()
 		bloomFilter.Add([]byte(spanID))
 		bfStr, err = serializeBloomFilter(bloomFilter)
@@ -591,9 +339,7 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 			slog.Error("Failed to serialize bloom filter", "error", err)
 			return
 		}
-		// hashArrayStr = spanID
 		s.SetAttributes(attribute.String(BAG_BLOOM_FILTER, bfStr))
-		s.SetAttributes(attribute.String(BAG_HASH_ARRAY, spanID))
 	}
 	// else {
 	// 	s.SetAttributes(attribute.String("prio", "low"))
@@ -606,17 +352,18 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 }
 
 // OnEnd implements SpanProcessor.OnEnd
-func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
+func (p *PathBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	// No mutex needed - only reading span attributes and routing to buffers (which have their own locks)
-	slog.Debug("🔴 PriorityProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	slog.Debug("🔴 PathBridgeProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	// Extract priority from span attributes
 	var priority int
 	var hasPriority bool
 	var depth int
 	var hasDepth bool
+	var hasChildren bool
 
-	// Iterate through attributes to find __bag.prio
+	// Iterate through attributes to find __bag.prio, __bag.depth, and hasChildren
 	for _, attr := range s.Attributes() {
 		if attr.Key == "__bag.prio" {
 			val := attr.Value.AsInt64()
@@ -626,9 +373,26 @@ func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 			val := attr.Value.AsInt64()
 			depth = int(val)
 			hasDepth = true
+		} else if attr.Key == "hasChildren" {
+			// AI_ADDED: Check for hasChildren attribute to determine if server span is a leaf
+			hasChildren = attr.Value.AsBool()
 		}
 	}
 
+	if s.SpanKind() == trace.SpanKindServer {
+		// AI_ADDED: Use hasChildren attribute instead of map-based counting
+		if hasChildren {
+			// Non-leaf server span - force to low priority (priority = 0)
+			slog.Info("🔵 Non-leaf server span (hasChildren=true)", "span_name", s.Name())
+			priority += 0
+		} else {
+			// Leaf server span - always checkpoint (priority = 1)
+			slog.Info("🔵 Leaf server span (hasChildren=false or missing)", "span_name", s.Name())
+			priority = 1
+		}
+	}
+
+	// if !hasPriority && priority == 0 {
 	if !hasPriority {
 		// Default to low priority if no priority found
 		priority = 0
@@ -646,54 +410,27 @@ func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 		"trace_id", s.SpanContext().TraceID(),
 		"span_id", s.SpanContext().SpanID())
 
-	// Route span to appropriate pipeline based on priority
-	if priority == 1 {
-		// High priority - add to high priority buffer
-		p.routeToHighPriorityPipeline(s)
-	} else {
-		// Low priority - add to low priority buffer
-		if singleOTLPClient {
-			p.routeToHighPriorityPipeline(s)
-		} else {
-			p.routeToLowPriorityPipeline(s)
-		}
-	}
+	// Route span to pipeline
+	p.routeToPipeline(s, priority == 1)
 
 	// Note: All baggage attributes (including __bag.prio and __bag.bloom_filter)
 	// are now exported as span attributes for analysis and debugging.
 }
 
-// routeToHighPriorityPipeline adds the span to the high priority buffer
-func (p *PriorityProcessor) routeToHighPriorityPipeline(s sdktrace.ReadOnlySpan) {
-	// Convert span to ResourceSpans and add to high priority buffer
-	resourceSpans := p.createResourceSpans(s)
+// routeToPipeline adds the span to the buffer
+func (p *PathBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, highPriority bool) {
+	// Convert span to ResourceSpans and add to buffer
+	resourceSpans := p.createResourceSpans(s, highPriority)
 
-	p.hepLock.Lock()
-	p.highPrioEventsBuf = append(p.highPrioEventsBuf, resourceSpans)
-	p.hepLock.Unlock()
+	p.eventsLock.Lock()
+	p.eventsBuf = append(p.eventsBuf, resourceSpans)
+	p.eventsLock.Unlock()
 
-	slog.Debug("🔴 Routed to high priority pipeline", "span_name", s.Name(), "buffer_size", len(p.highPrioEventsBuf))
-}
-
-// routeToLowPriorityPipeline adds the span to the low priority buffer
-func (p *PriorityProcessor) routeToLowPriorityPipeline(s sdktrace.ReadOnlySpan) {
-	// Convert span to ResourceSpans and add to low priority buffer
-	resourceSpans := p.createResourceSpans(s)
-
-	p.lepLock.Lock()
-	p.lowPrioEventsBuf = append(p.lowPrioEventsBuf, resourceSpans)
-	bufferSize := len(p.lowPrioEventsBuf)
-	p.lepLock.Unlock()
-
-	slog.Debug("🔴 Routed to low priority pipeline",
-		"span_name", s.Name(),
-		"trace_id", s.SpanContext().TraceID(),
-		"span_id", s.SpanContext().SpanID(),
-		"buffer_size", bufferSize)
+	slog.Debug("🔴 Routed to pipeline", "span_name", s.Name(), "buffer_size", len(p.eventsBuf))
 }
 
 // createResourceSpans converts a ReadOnlySpan to ResourceSpans protobuf format
-func (p *PriorityProcessor) createResourceSpans(s sdktrace.ReadOnlySpan) *tracepb.ResourceSpans {
+func (p *PathBridgeProcessor) createResourceSpans(s sdktrace.ReadOnlySpan, highPriority bool) *tracepb.ResourceSpans {
 	// Get trace and span IDs as byte arrays
 	traceID := s.SpanContext().TraceID()
 	spanID := s.SpanContext().SpanID()
@@ -707,7 +444,7 @@ func (p *PriorityProcessor) createResourceSpans(s sdktrace.ReadOnlySpan) *tracep
 		Name:              s.Name(),
 		Kind:              p.convertSpanKind(s.SpanKind()),
 		Status:            p.convertStatus(s.Status()),
-		Attributes:        p.convertAttributes(s.Attributes()),
+		Attributes:        p.convertAttributes(s.Attributes(), highPriority),
 		Events:            p.convertEvents(s.Events()),
 		Links:             p.convertLinks(s.Links()),
 	}
@@ -736,7 +473,7 @@ func (p *PriorityProcessor) createResourceSpans(s sdktrace.ReadOnlySpan) *tracep
 }
 
 // convertResourceToProto converts an OpenTelemetry resource to protobuf format
-func (p *PriorityProcessor) convertResourceToProto(resource interface{}) *resourcepb.Resource {
+func (p *PathBridgeProcessor) convertResourceToProto(resource interface{}) *resourcepb.Resource {
 	if resource == nil {
 		return &resourcepb.Resource{}
 	}
@@ -759,7 +496,7 @@ func (p *PriorityProcessor) convertResourceToProto(resource interface{}) *resour
 }
 
 // convertAttributeIterator converts an attribute iterator to protobuf format
-func (p *PriorityProcessor) convertAttributeIterator(iter attribute.Iterator) []*commonpb.KeyValue {
+func (p *PathBridgeProcessor) convertAttributeIterator(iter attribute.Iterator) []*commonpb.KeyValue {
 	if iter.Len() == 0 {
 		return nil
 	}
@@ -773,7 +510,7 @@ func (p *PriorityProcessor) convertAttributeIterator(iter attribute.Iterator) []
 }
 
 // convertAttribute converts a single attribute to protobuf format
-func (p *PriorityProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.KeyValue {
+func (p *PathBridgeProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.KeyValue {
 	return &commonpb.KeyValue{
 		Key:   string(kv.Key),
 		Value: p.convertAttributeValue(kv.Value),
@@ -781,7 +518,7 @@ func (p *PriorityProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.Ke
 }
 
 // convertAttributeValue converts an attribute value to protobuf format
-func (p *PriorityProcessor) convertAttributeValue(v attribute.Value) *commonpb.AnyValue {
+func (p *PathBridgeProcessor) convertAttributeValue(v attribute.Value) *commonpb.AnyValue {
 	av := new(commonpb.AnyValue)
 	switch v.Type() {
 	case attribute.STRING:
@@ -834,7 +571,7 @@ func (p *PriorityProcessor) convertAttributeValue(v attribute.Value) *commonpb.A
 }
 
 // Helper functions for slice conversions
-func (p *PriorityProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue {
+func (p *PathBridgeProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -844,7 +581,7 @@ func (p *PriorityProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue 
 	return values
 }
 
-func (p *PriorityProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValue {
+func (p *PathBridgeProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -854,7 +591,7 @@ func (p *PriorityProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValu
 	return values
 }
 
-func (p *PriorityProcessor) convertFloat64Slice(slice []float64) []*commonpb.AnyValue {
+func (p *PathBridgeProcessor) convertFloat64Slice(slice []float64) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -864,7 +601,7 @@ func (p *PriorityProcessor) convertFloat64Slice(slice []float64) []*commonpb.Any
 	return values
 }
 
-func (p *PriorityProcessor) convertStringSlice(slice []string) []*commonpb.AnyValue {
+func (p *PathBridgeProcessor) convertStringSlice(slice []string) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -875,7 +612,7 @@ func (p *PriorityProcessor) convertStringSlice(slice []string) []*commonpb.AnyVa
 }
 
 // convertSpanKind converts OpenTelemetry span kind to protobuf format
-func (p *PriorityProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_SpanKind {
+func (p *PathBridgeProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_SpanKind {
 	switch kind {
 	case trace.SpanKindInternal:
 		return tracepb.Span_SPAN_KIND_INTERNAL
@@ -893,7 +630,7 @@ func (p *PriorityProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_Sp
 }
 
 // convertStatus converts OpenTelemetry span status to protobuf format
-func (p *PriorityProcessor) convertStatus(status sdktrace.Status) *tracepb.Status {
+func (p *PathBridgeProcessor) convertStatus(status sdktrace.Status) *tracepb.Status {
 	return &tracepb.Status{
 		Code:    tracepb.Status_StatusCode(status.Code),
 		Message: status.Description,
@@ -901,7 +638,7 @@ func (p *PriorityProcessor) convertStatus(status sdktrace.Status) *tracepb.Statu
 }
 
 // convertAttributes converts span attributes to protobuf format, including all baggage attributes
-func (p *PriorityProcessor) convertAttributes(attrs []attribute.KeyValue) []*commonpb.KeyValue {
+func (p *PathBridgeProcessor) convertAttributes(attrs []attribute.KeyValue, highPriority bool) []*commonpb.KeyValue {
 	if len(attrs) == 0 {
 		return nil
 	}
@@ -909,13 +646,28 @@ func (p *PriorityProcessor) convertAttributes(attrs []attribute.KeyValue) []*com
 	// Include all attributes (including baggage attributes)
 	protoAttrs := make([]*commonpb.KeyValue, len(attrs))
 	for i, attr := range attrs {
-		protoAttrs[i] = p.convertAttribute(attr)
+		if strings.HasPrefix(string(attr.Key), "__bag.") {
+			continue
+		}
+		switch attr.Key {
+		case "depth", "hasChildren":
+			continue
+		}
+		if highPriority {
+			protoAttrs[i] = p.convertAttribute(attr)
+		} else {
+			switch attr.Key {
+			case AncestryKey, AncestryModeKey:
+				continue
+			}
+			protoAttrs[i] = p.convertAttribute(attr)
+		}
 	}
 	return protoAttrs
 }
 
 // convertEvents converts span events to protobuf format
-func (p *PriorityProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Span_Event {
+func (p *PathBridgeProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Span_Event {
 	if len(events) == 0 {
 		return nil
 	}
@@ -925,14 +677,14 @@ func (p *PriorityProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Sp
 		protoEvents[i] = &tracepb.Span_Event{
 			TimeUnixNano: uint64(event.Time.UnixNano()),
 			Name:         event.Name,
-			Attributes:   p.convertAttributes(event.Attributes), // This will include all attributes
+			Attributes:   p.convertAttributes(event.Attributes, true), // This will include all attributes
 		}
 	}
 	return protoEvents
 }
 
 // convertLinks converts span links to protobuf format
-func (p *PriorityProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_Link {
+func (p *PathBridgeProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_Link {
 	if len(links) == 0 {
 		return nil
 	}
@@ -945,14 +697,14 @@ func (p *PriorityProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_
 		protoLinks[i] = &tracepb.Span_Link{
 			TraceId:    traceID[:],
 			SpanId:     spanID[:],
-			Attributes: p.convertAttributes(link.Attributes), // This will include all attributes
+			Attributes: p.convertAttributes(link.Attributes, true), // This will include all attributes
 		}
 	}
 	return protoLinks
 }
 
 // getConfigDiscoveryEndpoint converts the agent endpoint to the config discovery endpoint
-func (p *PriorityProcessor) getConfigDiscoveryEndpoint() string {
+func (p *PathBridgeProcessor) getConfigDiscoveryEndpoint() string {
 	// Extract host from agent endpoint
 	if strings.Contains(p.agentEndpoint, ":") {
 		parts := strings.Split(p.agentEndpoint, ":")
@@ -967,7 +719,7 @@ func (p *PriorityProcessor) getConfigDiscoveryEndpoint() string {
 }
 
 // parseCheckpointDistance extracts and parses the checkpoint distance (cpd) from the config map
-func (p *PriorityProcessor) parseCheckpointDistance(config map[string]interface{}) int64 {
+func (p *PathBridgeProcessor) parseCheckpointDistance(config map[string]interface{}) int64 {
 	const defaultCPD = int64(1) // Default: every span is a checkpoint
 
 	if config == nil {
@@ -1018,7 +770,7 @@ func (p *PriorityProcessor) parseCheckpointDistance(config map[string]interface{
 }
 
 // fetchFullConfig fetches the full config from the config discovery endpoint
-func (p *PriorityProcessor) fetchFullConfig(ctx context.Context) error {
+func (p *PathBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 	// Try to fetch config from the discovery endpoint with retries
 	config, err := p.fetchFullConfigFromEndpointWithRetries(ctx)
 	if err != nil {
@@ -1048,7 +800,7 @@ func (p *PriorityProcessor) fetchFullConfig(ctx context.Context) error {
 }
 
 // fetchFullConfigFromEndpointWithRetries fetches config from the discovery endpoint with retries
-func (p *PriorityProcessor) fetchFullConfigFromEndpointWithRetries(ctx context.Context) (map[string]interface{}, error) {
+func (p *PathBridgeProcessor) fetchFullConfigFromEndpointWithRetries(ctx context.Context) (map[string]interface{}, error) {
 	configDiscoveryEndpoint := p.getConfigDiscoveryEndpoint()
 	url := fmt.Sprintf("http://%s/getFullConfig", configDiscoveryEndpoint)
 
@@ -1120,7 +872,7 @@ func (p *PriorityProcessor) fetchFullConfigFromEndpointWithRetries(ctx context.C
 }
 
 // getConfigMap returns the config map, with thread-safe access
-func (p *PriorityProcessor) getConfigMap() map[string]interface{} {
+func (p *PathBridgeProcessor) getConfigMap() map[string]interface{} {
 	p.configLock.RLock()
 	defer p.configLock.RUnlock()
 
@@ -1133,36 +885,28 @@ func (p *PriorityProcessor) getConfigMap() map[string]interface{} {
 }
 
 // Shutdown implements SpanProcessor.Shutdown
-func (p *PriorityProcessor) Shutdown(ctx context.Context) error {
+func (p *PathBridgeProcessor) Shutdown(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	slog.Info("🔴 PriorityProcessor shutting down")
+	slog.Info("🔴 PathBridgeProcessor shutting down")
 
 	// Stop the background workers
 	close(p.stopChan)
 	p.wg.Wait()
 
-	// Stop the high priority client
-	if err := p.highPrioClient.Stop(ctx); err != nil {
-		slog.Error("❌ Failed to stop high priority client", "error", err)
+	// Stop the client
+	if err := p.client.Stop(ctx); err != nil {
+		slog.Error("❌ Failed to stop client", "error", err)
 	}
 
-	// Stop the low priority client
-	if !singleOTLPClient && p.lowPrioClient != nil {
-		if err := p.lowPrioClient.Stop(ctx); err != nil {
-			slog.Error("❌ Failed to stop low priority client", "error", err)
-		}
-	}
-
-	slog.Info("✅ PriorityProcessor shutdown complete",
-		"highPrioEventsSent", p.highPrioEventsSent,
-		"lowPrioEventsSent", p.lowPrioEventsSent)
+	slog.Info("✅ PathBridgeProcessor shutdown complete",
+		"eventsSent", p.eventsSent)
 	return nil
 }
 
 // ForceFlush implements SpanProcessor.ForceFlush
-func (p *PriorityProcessor) ForceFlush(ctx context.Context) error {
+func (p *PathBridgeProcessor) ForceFlush(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

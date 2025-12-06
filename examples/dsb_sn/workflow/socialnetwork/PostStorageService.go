@@ -129,16 +129,30 @@ func (p *PostStorageServiceImpl) ReadPosts(ctx context.Context, reqID int64, pos
 			return []Post{}, err
 		}
 		retposts = append(retposts, new_posts...)
-		var wg sync.WaitGroup
-		for _, new_post := range new_posts {
+		// Cache new posts asynchronously using batch Mset operation
+		// Like the original DeathStarBench implementation, we wait for cache writes to complete
+		if len(new_posts) > 0 {
+			var wg sync.WaitGroup
 			wg.Add(1)
-
-			go func(new_post Post) {
+			go func() {
 				defer wg.Done()
-				p.postStorageCache.Put(ctx, strconv.FormatInt(new_post.PostID, 10), new_post)
-			}(new_post)
+				// Compute keys/values and do Mset in the goroutine
+				// This keeps all cache work together and allows marshaling to happen in background
+				cache_keys := make([]string, len(new_posts))
+				cache_values := make([]interface{}, len(new_posts))
+				for idx, new_post := range new_posts {
+					cache_keys[idx] = strconv.FormatInt(new_post.PostID, 10)
+					cache_values[idx] = new_post
+				}
+				// Use background context since this runs in a goroutine
+				err := p.postStorageCache.Mset(context.Background(), cache_keys, cache_values)
+				if err != nil {
+					// Log error but don't fail the request - cache is best effort
+					log.Printf("PostStorageService: Mset failed for %d posts: %v", len(new_posts), err)
+				}
+			}()
+			wg.Wait()
 		}
-		wg.Wait()
 	}
 	return retposts, nil
 }

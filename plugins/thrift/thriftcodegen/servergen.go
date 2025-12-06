@@ -79,7 +79,7 @@ func (handler *{{.Name}}) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	processor := {{.ImportPrefix}}.New{{.Service.BaseName}}Processor(handler)
+	processor := {{.ImportPrefix}}.New{{.Service.Name}}Processor(handler)
 	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
 
 	go func() {

@@ -117,7 +117,8 @@ def build_and_push_images(services, registry_url, docker_compose_dir, selected_s
                 print(f"[DEBUG] Build context: {context}")
                 print(f"[DEBUG] Image name: {full_image_name}")
 
-                build_cmd = ['docker', 'build', '-t', full_image_name, context]
+                # build_cmd = ['docker', 'build', '-t', full_image_name, context]
+                build_cmd = ['docker', 'build', '--no-cache', '-t', full_image_name, context]
                 # result = subprocess.run(build_cmd, capture_output=True, text=True)
                 result = subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if result.returncode != 0:

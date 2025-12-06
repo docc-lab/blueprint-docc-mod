@@ -133,7 +133,7 @@ func (b *CmdBuilder) ParseArgs() {
 	spec_name := flag.String("w", "", "Wiring spec to compile.  One of:\n"+b.List())
 	quiet := flag.Bool("quiet", false, "Suppress verbose compiler output.")
 	env := flag.Bool("env", true, "Generate a .env file that sets service address and port environment variables")
-	port := flag.Uint("port", 12345, "Sets the port to start at when assigning service ports.  Only used when generating a .env file.")
+	port := flag.Uint("port", 12346, "Sets the port to start at when assigning service ports.  Only used when generating a .env file.")
 
 	flag.Parse()
 

@@ -95,75 +95,75 @@ func (w *SockShopWorkflow) runRealisticWorkflow(ctx context.Context, stopChan <-
 		default:
 		}
 
-		// Record the start of a workload iteration
-		w.stats.RecordWorkloadStart()
-
-		// Step 1: Login to get the actual userID
-		userID, err := w.loginUser(ctx, session.Username, session.Password)
-		if err != nil {
-			if w.verbose {
-				fmt.Printf("❌ LOGIN FAILED! Username: %s, Error: %v\n", session.Username, err)
-			}
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		session.UserID = userID // Store the actual database userID
-
-		if w.verbose {
-			fmt.Printf("✅ LOGIN SUCCESS! Username: %s, UserID: %s\n", session.Username, userID)
-		}
-
-		// Step 2: Generate new session for fresh cart
-		w.generateNewSession(ctx, session)
-		if w.verbose {
-			fmt.Printf("🛒 NEW CART SESSION: %s\n", session.ID)
-		}
-
-		// Step 3: Browse catalogue
-		w.browseCatalogue(ctx, session)
-		time.Sleep(1 * time.Second)
-
-		// Step 4: Add items to cart
-		cartSessionID := w.addToCart(ctx, session)
-		time.Sleep(1 * time.Second)
-
-		// Step 5: Add address and payment method (only if not already done)
-		var addressID, cardID string
-		if session.AddressID == "" || session.CardID == "" {
-			addressID, cardID = w.addAddressAndPayment(ctx, session)
-			if addressID == "" || cardID == "" {
+			// Record the start of a workload iteration
+			w.stats.RecordWorkloadStart()
+			
+			// Step 1: Login to get the actual userID
+			userID, err := w.loginUser(ctx, session.Username, session.Password)
+			if err != nil {
 				if w.verbose {
-					fmt.Printf("❌ Failed to add address/payment for user %s\n", session.Username)
+					fmt.Printf("❌ LOGIN FAILED! Username: %s, Error: %v\n", session.Username, err)
 				}
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			session.AddressID = addressID
-			session.CardID = cardID
-		} else {
-			addressID = session.AddressID
-			cardID = session.CardID
-		}
+			session.UserID = userID // Store the actual database userID
 
-		// Step 6: Place order
-		orderID := w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
-		if orderID == "" {
 			if w.verbose {
-				fmt.Printf("❌ Failed to place order for user %s\n", session.Username)
+				fmt.Printf("✅ LOGIN SUCCESS! Username: %s, UserID: %s\n", session.Username, userID)
 			}
-		} else {
-			session.Orders = append(session.Orders, orderID)
+
+			// Step 2: Generate new session for fresh cart
+			w.generateNewSession(ctx, session)
 			if w.verbose {
-				fmt.Printf("✅ ORDER PLACED! User: %s, OrderID: %s\n", session.Username, orderID)
+				fmt.Printf("🛒 NEW CART SESSION: %s\n", session.ID)
 			}
-		}
 
-		// Step 7: Check order status
-		w.getOrders(ctx, session)
-		time.Sleep(1 * time.Second)
+			// Step 3: Browse catalogue
+			w.browseCatalogue(ctx, session)
+			time.Sleep(1 * time.Second)
 
-		// Think time between complete workflows
-		time.Sleep(3 * time.Second)
+			// Step 4: Add items to cart
+			cartSessionID := w.addToCart(ctx, session)
+			time.Sleep(1 * time.Second)
+
+			// Step 5: Add address and payment method (only if not already done)
+			var addressID, cardID string
+			if session.AddressID == "" || session.CardID == "" {
+				addressID, cardID = w.addAddressAndPayment(ctx, session)
+				if addressID == "" || cardID == "" {
+					if w.verbose {
+						fmt.Printf("❌ Failed to add address/payment for user %s\n", session.Username)
+					}
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				session.AddressID = addressID
+				session.CardID = cardID
+			} else {
+				addressID = session.AddressID
+				cardID = session.CardID
+			}
+
+			// Step 6: Place order
+			orderID := w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
+			if orderID == "" {
+				if w.verbose {
+					fmt.Printf("❌ Failed to place order for user %s\n", session.Username)
+				}
+			} else {
+				session.Orders = append(session.Orders, orderID)
+				if w.verbose {
+					fmt.Printf("✅ ORDER PLACED! User: %s, OrderID: %s\n", session.Username, orderID)
+				}
+			}
+
+			// Step 7: Check order status
+			w.getOrders(ctx, session)
+			time.Sleep(1 * time.Second)
+
+			// Think time between complete workflows
+			time.Sleep(3 * time.Second)
 	}
 }
 
@@ -177,19 +177,19 @@ func (w *SockShopWorkflow) runBrowsingWorkflow(ctx context.Context, stopChan <-c
 		default:
 		}
 
-		// Record the start of a workload iteration
-		w.stats.RecordWorkloadStart()
+			// Record the start of a workload iteration
+			w.stats.RecordWorkloadStart()
+			
+			// Browse by tags (2 hops: Frontend → Catalogue)
+			w.browseByTags(ctx, session)
 
-		// Browse by tags (2 hops: Frontend → Catalogue)
-		w.browseByTags(ctx, session)
+			// Search for specific items (2 hops: Frontend → Catalogue)
+			w.searchItems(ctx, session)
 
-		// Search for specific items (2 hops: Frontend → Catalogue)
-		w.searchItems(ctx, session)
+			// Get item details (2 hops: Frontend → Catalogue)
+			w.getItemDetails(ctx, session)
 
-		// Get item details (2 hops: Frontend → Catalogue)
-		w.getItemDetails(ctx, session)
-
-		time.Sleep(1 * time.Second)
+			time.Sleep(1 * time.Second)
 	}
 }
 
@@ -203,30 +203,30 @@ func (w *SockShopWorkflow) runPurchasingWorkflow(ctx context.Context, stopChan <
 		default:
 		}
 
-		// Record the start of a workload iteration
-		w.stats.RecordWorkloadStart()
+			// Record the start of a workload iteration
+			w.stats.RecordWorkloadStart()
+			
+			// Quick browse and add to cart
+			w.browseCatalogue(ctx, session)
+			w.addToCart(ctx, session)
 
-		// Quick browse and add to cart
-		w.browseCatalogue(ctx, session)
-		w.addToCart(ctx, session)
-
-		// Login to get userID
-		userID, err := w.loginUser(ctx, session.Username, session.Password)
-		if err == nil {
-			session.UserID = userID // Store the actual database userID
-		}
-		w.addAddressAndPayment(ctx, session)
-
-		// Place multiple orders
-		for i := 0; i < 3; i++ {
-			if len(session.Cart) > 0 {
-				addressID, cardID := w.addAddressAndPayment(ctx, session)
-				cartSessionID := w.addToCart(ctx, session)
-				w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
+			// Login to get userID
+			userID, err := w.loginUser(ctx, session.Username, session.Password)
+			if err == nil {
+				session.UserID = userID // Store the actual database userID
 			}
-		}
+			w.addAddressAndPayment(ctx, session)
 
-		time.Sleep(1 * time.Second)
+			// Place multiple orders
+			for i := 0; i < 3; i++ {
+				if len(session.Cart) > 0 {
+					addressID, cardID := w.addAddressAndPayment(ctx, session)
+					cartSessionID := w.addToCart(ctx, session)
+					w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
+				}
+			}
+
+			time.Sleep(1 * time.Second)
 	}
 }
 
@@ -244,27 +244,27 @@ func (w *SockShopWorkflow) runStressWorkflow(ctx context.Context, stopChan <-cha
 		default:
 		}
 
-		iteration++
-		// Record the start of a workload iteration
-		w.stats.RecordWorkloadStart()
+			iteration++
+			// Record the start of a workload iteration
+			w.stats.RecordWorkloadStart()
+			
+			if w.verbose && iteration%10 == 0 {
+				fmt.Printf("🔄 Stress workflow iteration %d\n", iteration)
+			}
 
-		if w.verbose && iteration%10 == 0 {
-			fmt.Printf("🔄 Stress workflow iteration %d\n", iteration)
-		}
+			// Rapid-fire operations
+			w.browseCatalogue(ctx, session)
+			w.addToCart(ctx, session)
+			userID, err := w.loginUser(ctx, session.Username, session.Password)
+			if err == nil {
+				session.UserID = userID // Store the actual database userID
+			}
+			addressID, cardID := w.addAddressAndPayment(ctx, session)
+			cartSessionID := w.addToCart(ctx, session)
+			w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
 
-		// Rapid-fire operations
-		w.browseCatalogue(ctx, session)
-		w.addToCart(ctx, session)
-		userID, err := w.loginUser(ctx, session.Username, session.Password)
-		if err == nil {
-			session.UserID = userID // Store the actual database userID
-		}
-		addressID, cardID := w.addAddressAndPayment(ctx, session)
-		cartSessionID := w.addToCart(ctx, session)
-		w.placeOrder(ctx, session, addressID, cardID, cartSessionID)
-
-		// Minimal think time for stress testing
-		time.Sleep(100 * time.Millisecond)
+			// Minimal think time for stress testing
+			time.Sleep(100 * time.Millisecond)
 	}
 }
 

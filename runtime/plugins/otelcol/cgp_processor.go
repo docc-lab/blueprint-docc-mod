@@ -26,7 +26,7 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-type PriorityProcessor struct {
+type CallGraphBridgeProcessor struct {
 	mu sync.RWMutex
 
 	// OTLP gRPC client for sending custom protobuf messages
@@ -64,8 +64,8 @@ type PriorityProcessor struct {
 }
 
 // Darby: this gets run once per service (when initialized)
-func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDiscoveryPort string) (*PriorityProcessor, error) {
-	slog.Info("🔵 Creating new PriorityProcessor", "agentEndpoint", agentEndpoint)
+func NewCallGraphBridgeProcessor(ctx context.Context, agentEndpoint string, configDiscoveryPort string) (*CallGraphBridgeProcessor, error) {
+	slog.Info("🔵 Creating new CallGraphBridgeProcessor", "agentEndpoint", agentEndpoint)
 
 	bloomFilter := bloom.New(10, 7)
 
@@ -122,7 +122,7 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDisco
 		return nil, fmt.Errorf("failed to start high priority OTLP client: %w", err)
 	}
 
-	slog.Info("✅ PriorityProcessor created successfully")
+	slog.Info("✅ CallGraphBridgeProcessor created successfully")
 
 	// Resolve ancestry mode from environment (default: bloom)
 	mode := AncestryMode(os.Getenv("ANCESTRY_MODE"))
@@ -143,7 +143,7 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDisco
 		Timeout: 10 * time.Second,
 	}
 
-	processor := &PriorityProcessor{
+	processor := &CallGraphBridgeProcessor{
 		lowPrioClient:       lowPrioClient,
 		highPrioClient:      highPrioClient,
 		agentEndpoint:       agentEndpoint,
@@ -182,7 +182,7 @@ func NewPriorityProcessor(ctx context.Context, agentEndpoint string, configDisco
 }
 
 // processHighPriorityEvents runs in the background to periodically send high priority events
-func (p *PriorityProcessor) processHighPriorityEvents() {
+func (p *CallGraphBridgeProcessor) processHighPriorityEvents() {
 	defer p.wg.Done()
 
 	ticker := time.NewTicker(100 * time.Millisecond) // Send every 50ms for high priority
@@ -202,7 +202,7 @@ func (p *PriorityProcessor) processHighPriorityEvents() {
 }
 
 // processLowPriorityEvents runs in the background to periodically send low priority events
-func (p *PriorityProcessor) processLowPriorityEvents() {
+func (p *CallGraphBridgeProcessor) processLowPriorityEvents() {
 	defer p.wg.Done()
 
 	slog.Info("🔴 Low priority worker started")
@@ -225,7 +225,7 @@ func (p *PriorityProcessor) processLowPriorityEvents() {
 }
 
 // flushHighPriorityBuffer sends all buffered high priority events
-func (p *PriorityProcessor) flushHighPriorityBuffer() {
+func (p *CallGraphBridgeProcessor) flushHighPriorityBuffer() {
 	// Get events from buffer and reset the buffer
 	p.hepLock.Lock()
 	events := p.highPrioEventsBuf
@@ -243,7 +243,7 @@ func (p *PriorityProcessor) flushHighPriorityBuffer() {
 }
 
 // flushLowPriorityBuffer sends all buffered low priority events
-func (p *PriorityProcessor) flushLowPriorityBuffer() {
+func (p *CallGraphBridgeProcessor) flushLowPriorityBuffer() {
 	// Get events from buffer and reset the buffer
 	p.lepLock.Lock()
 	events := p.lowPrioEventsBuf
@@ -264,7 +264,7 @@ func (p *PriorityProcessor) flushLowPriorityBuffer() {
 }
 
 // sendHighPriorityData sends data to the high priority endpoint
-func (p *PriorityProcessor) sendHighPriorityData(events []*tracepb.ResourceSpans) error {
+func (p *CallGraphBridgeProcessor) sendHighPriorityData(events []*tracepb.ResourceSpans) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -286,7 +286,7 @@ func (p *PriorityProcessor) sendHighPriorityData(events []*tracepb.ResourceSpans
 }
 
 // sendLowPriorityData sends data to the low priority endpoint
-func (p *PriorityProcessor) sendLowPriorityData(events []*tracepb.ResourceSpans) error {
+func (p *CallGraphBridgeProcessor) sendLowPriorityData(events []*tracepb.ResourceSpans) error {
 	if len(events) == 0 {
 		slog.Debug("🔴 No low priority events to send")
 		return nil
@@ -318,11 +318,11 @@ func (p *PriorityProcessor) sendLowPriorityData(events []*tracepb.ResourceSpans)
 }
 
 // // OnStart implements SpanProcessor.OnStart
-// func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
+// func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 // 	p.mu.Lock()
 // 	defer p.mu.Unlock()
 
-// 	slog.Info("🔵 PriorityProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+// 	slog.Info("🔵 CallGraphBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 // 	// Handle depth tracking in baggage
 // 	depth := 0
@@ -463,9 +463,9 @@ func (p *PriorityProcessor) sendLowPriorityData(events []*tracepb.ResourceSpans)
 // }
 
 // OnStart implements SpanProcessor.OnStart
-func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
+func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 	// No mutex needed - checkpointDistance and ancestryMode are read-only after initialization
-	slog.Debug("🔵 PriorityProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	slog.Debug("🔵 CallGraphBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	// Handle depth tracking in baggage
 	depth := 0
@@ -606,9 +606,9 @@ func (p *PriorityProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 }
 
 // OnEnd implements SpanProcessor.OnEnd
-func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
+func (p *CallGraphBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	// No mutex needed - only reading span attributes and routing to buffers (which have their own locks)
-	slog.Debug("🔴 PriorityProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	slog.Debug("🔴 CallGraphBridgeProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	// Extract priority from span attributes
 	var priority int
@@ -664,7 +664,7 @@ func (p *PriorityProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 }
 
 // routeToHighPriorityPipeline adds the span to the high priority buffer
-func (p *PriorityProcessor) routeToHighPriorityPipeline(s sdktrace.ReadOnlySpan) {
+func (p *CallGraphBridgeProcessor) routeToHighPriorityPipeline(s sdktrace.ReadOnlySpan) {
 	// Convert span to ResourceSpans and add to high priority buffer
 	resourceSpans := p.createResourceSpans(s)
 
@@ -676,7 +676,7 @@ func (p *PriorityProcessor) routeToHighPriorityPipeline(s sdktrace.ReadOnlySpan)
 }
 
 // routeToLowPriorityPipeline adds the span to the low priority buffer
-func (p *PriorityProcessor) routeToLowPriorityPipeline(s sdktrace.ReadOnlySpan) {
+func (p *CallGraphBridgeProcessor) routeToLowPriorityPipeline(s sdktrace.ReadOnlySpan) {
 	// Convert span to ResourceSpans and add to low priority buffer
 	resourceSpans := p.createResourceSpans(s)
 
@@ -693,7 +693,7 @@ func (p *PriorityProcessor) routeToLowPriorityPipeline(s sdktrace.ReadOnlySpan) 
 }
 
 // createResourceSpans converts a ReadOnlySpan to ResourceSpans protobuf format
-func (p *PriorityProcessor) createResourceSpans(s sdktrace.ReadOnlySpan) *tracepb.ResourceSpans {
+func (p *CallGraphBridgeProcessor) createResourceSpans(s sdktrace.ReadOnlySpan) *tracepb.ResourceSpans {
 	// Get trace and span IDs as byte arrays
 	traceID := s.SpanContext().TraceID()
 	spanID := s.SpanContext().SpanID()
@@ -736,7 +736,7 @@ func (p *PriorityProcessor) createResourceSpans(s sdktrace.ReadOnlySpan) *tracep
 }
 
 // convertResourceToProto converts an OpenTelemetry resource to protobuf format
-func (p *PriorityProcessor) convertResourceToProto(resource interface{}) *resourcepb.Resource {
+func (p *CallGraphBridgeProcessor) convertResourceToProto(resource interface{}) *resourcepb.Resource {
 	if resource == nil {
 		return &resourcepb.Resource{}
 	}
@@ -759,7 +759,7 @@ func (p *PriorityProcessor) convertResourceToProto(resource interface{}) *resour
 }
 
 // convertAttributeIterator converts an attribute iterator to protobuf format
-func (p *PriorityProcessor) convertAttributeIterator(iter attribute.Iterator) []*commonpb.KeyValue {
+func (p *CallGraphBridgeProcessor) convertAttributeIterator(iter attribute.Iterator) []*commonpb.KeyValue {
 	if iter.Len() == 0 {
 		return nil
 	}
@@ -773,7 +773,7 @@ func (p *PriorityProcessor) convertAttributeIterator(iter attribute.Iterator) []
 }
 
 // convertAttribute converts a single attribute to protobuf format
-func (p *PriorityProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.KeyValue {
+func (p *CallGraphBridgeProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.KeyValue {
 	return &commonpb.KeyValue{
 		Key:   string(kv.Key),
 		Value: p.convertAttributeValue(kv.Value),
@@ -781,7 +781,7 @@ func (p *PriorityProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.Ke
 }
 
 // convertAttributeValue converts an attribute value to protobuf format
-func (p *PriorityProcessor) convertAttributeValue(v attribute.Value) *commonpb.AnyValue {
+func (p *CallGraphBridgeProcessor) convertAttributeValue(v attribute.Value) *commonpb.AnyValue {
 	av := new(commonpb.AnyValue)
 	switch v.Type() {
 	case attribute.STRING:
@@ -834,7 +834,7 @@ func (p *PriorityProcessor) convertAttributeValue(v attribute.Value) *commonpb.A
 }
 
 // Helper functions for slice conversions
-func (p *PriorityProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue {
+func (p *CallGraphBridgeProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -844,7 +844,7 @@ func (p *PriorityProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue 
 	return values
 }
 
-func (p *PriorityProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValue {
+func (p *CallGraphBridgeProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -854,7 +854,7 @@ func (p *PriorityProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValu
 	return values
 }
 
-func (p *PriorityProcessor) convertFloat64Slice(slice []float64) []*commonpb.AnyValue {
+func (p *CallGraphBridgeProcessor) convertFloat64Slice(slice []float64) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -864,7 +864,7 @@ func (p *PriorityProcessor) convertFloat64Slice(slice []float64) []*commonpb.Any
 	return values
 }
 
-func (p *PriorityProcessor) convertStringSlice(slice []string) []*commonpb.AnyValue {
+func (p *CallGraphBridgeProcessor) convertStringSlice(slice []string) []*commonpb.AnyValue {
 	values := make([]*commonpb.AnyValue, len(slice))
 	for i, v := range slice {
 		values[i] = &commonpb.AnyValue{
@@ -875,7 +875,7 @@ func (p *PriorityProcessor) convertStringSlice(slice []string) []*commonpb.AnyVa
 }
 
 // convertSpanKind converts OpenTelemetry span kind to protobuf format
-func (p *PriorityProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_SpanKind {
+func (p *CallGraphBridgeProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_SpanKind {
 	switch kind {
 	case trace.SpanKindInternal:
 		return tracepb.Span_SPAN_KIND_INTERNAL
@@ -893,7 +893,7 @@ func (p *PriorityProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_Sp
 }
 
 // convertStatus converts OpenTelemetry span status to protobuf format
-func (p *PriorityProcessor) convertStatus(status sdktrace.Status) *tracepb.Status {
+func (p *CallGraphBridgeProcessor) convertStatus(status sdktrace.Status) *tracepb.Status {
 	return &tracepb.Status{
 		Code:    tracepb.Status_StatusCode(status.Code),
 		Message: status.Description,
@@ -901,7 +901,7 @@ func (p *PriorityProcessor) convertStatus(status sdktrace.Status) *tracepb.Statu
 }
 
 // convertAttributes converts span attributes to protobuf format, including all baggage attributes
-func (p *PriorityProcessor) convertAttributes(attrs []attribute.KeyValue) []*commonpb.KeyValue {
+func (p *CallGraphBridgeProcessor) convertAttributes(attrs []attribute.KeyValue) []*commonpb.KeyValue {
 	if len(attrs) == 0 {
 		return nil
 	}
@@ -915,7 +915,7 @@ func (p *PriorityProcessor) convertAttributes(attrs []attribute.KeyValue) []*com
 }
 
 // convertEvents converts span events to protobuf format
-func (p *PriorityProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Span_Event {
+func (p *CallGraphBridgeProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Span_Event {
 	if len(events) == 0 {
 		return nil
 	}
@@ -932,7 +932,7 @@ func (p *PriorityProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Sp
 }
 
 // convertLinks converts span links to protobuf format
-func (p *PriorityProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_Link {
+func (p *CallGraphBridgeProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_Link {
 	if len(links) == 0 {
 		return nil
 	}
@@ -952,7 +952,7 @@ func (p *PriorityProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_
 }
 
 // getConfigDiscoveryEndpoint converts the agent endpoint to the config discovery endpoint
-func (p *PriorityProcessor) getConfigDiscoveryEndpoint() string {
+func (p *CallGraphBridgeProcessor) getConfigDiscoveryEndpoint() string {
 	// Extract host from agent endpoint
 	if strings.Contains(p.agentEndpoint, ":") {
 		parts := strings.Split(p.agentEndpoint, ":")
@@ -967,7 +967,7 @@ func (p *PriorityProcessor) getConfigDiscoveryEndpoint() string {
 }
 
 // parseCheckpointDistance extracts and parses the checkpoint distance (cpd) from the config map
-func (p *PriorityProcessor) parseCheckpointDistance(config map[string]interface{}) int64 {
+func (p *CallGraphBridgeProcessor) parseCheckpointDistance(config map[string]interface{}) int64 {
 	const defaultCPD = int64(1) // Default: every span is a checkpoint
 
 	if config == nil {
@@ -1018,7 +1018,7 @@ func (p *PriorityProcessor) parseCheckpointDistance(config map[string]interface{
 }
 
 // fetchFullConfig fetches the full config from the config discovery endpoint
-func (p *PriorityProcessor) fetchFullConfig(ctx context.Context) error {
+func (p *CallGraphBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 	// Try to fetch config from the discovery endpoint with retries
 	config, err := p.fetchFullConfigFromEndpointWithRetries(ctx)
 	if err != nil {
@@ -1048,7 +1048,7 @@ func (p *PriorityProcessor) fetchFullConfig(ctx context.Context) error {
 }
 
 // fetchFullConfigFromEndpointWithRetries fetches config from the discovery endpoint with retries
-func (p *PriorityProcessor) fetchFullConfigFromEndpointWithRetries(ctx context.Context) (map[string]interface{}, error) {
+func (p *CallGraphBridgeProcessor) fetchFullConfigFromEndpointWithRetries(ctx context.Context) (map[string]interface{}, error) {
 	configDiscoveryEndpoint := p.getConfigDiscoveryEndpoint()
 	url := fmt.Sprintf("http://%s/getFullConfig", configDiscoveryEndpoint)
 
@@ -1120,7 +1120,7 @@ func (p *PriorityProcessor) fetchFullConfigFromEndpointWithRetries(ctx context.C
 }
 
 // getConfigMap returns the config map, with thread-safe access
-func (p *PriorityProcessor) getConfigMap() map[string]interface{} {
+func (p *CallGraphBridgeProcessor) getConfigMap() map[string]interface{} {
 	p.configLock.RLock()
 	defer p.configLock.RUnlock()
 
@@ -1133,11 +1133,11 @@ func (p *PriorityProcessor) getConfigMap() map[string]interface{} {
 }
 
 // Shutdown implements SpanProcessor.Shutdown
-func (p *PriorityProcessor) Shutdown(ctx context.Context) error {
+func (p *CallGraphBridgeProcessor) Shutdown(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	slog.Info("🔴 PriorityProcessor shutting down")
+	slog.Info("🔴 CallGraphBridgeProcessor shutting down")
 
 	// Stop the background workers
 	close(p.stopChan)
@@ -1155,14 +1155,14 @@ func (p *PriorityProcessor) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	slog.Info("✅ PriorityProcessor shutdown complete",
+	slog.Info("✅ CallGraphBridgeProcessor shutdown complete",
 		"highPrioEventsSent", p.highPrioEventsSent,
 		"lowPrioEventsSent", p.lowPrioEventsSent)
 	return nil
 }
 
 // ForceFlush implements SpanProcessor.ForceFlush
-func (p *PriorityProcessor) ForceFlush(ctx context.Context) error {
+func (p *CallGraphBridgeProcessor) ForceFlush(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

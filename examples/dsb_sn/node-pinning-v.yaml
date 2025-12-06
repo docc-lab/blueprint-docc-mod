@@ -1,0 +1,78 @@
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-v-ctr:
+      requests_cpu: 5000
+      # limits_cpu: 2000
+  - hometimeline-cache-v-ctr:
+      requests_cpu: 1000
+      # limits_cpu: 2000
+  - hometimeline-service-v-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - social-cache-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - social-db-v-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+  - socialgraph-service-v-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - uniqueid-service-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usermention-service-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usertimeline-cache-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usertimeline-db-v-ctr:
+      requests_cpu: 10000
+    #   limits_cpu: 2000
+  - usertimeline-service-v-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - wrk2api-service-v-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+node-2:
+  - media-service-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-cache-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-db-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-storage-service-v-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - text-service-v-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - urlshorten-db-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - urlshorten-service-v-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - user-service-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - user-cache-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - user-db-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - userid-service-v-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+node-3:
+  - jaeger-v-ctr:
+

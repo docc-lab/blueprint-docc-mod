@@ -60,7 +60,7 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	applyDockerDefaults := func(serviceName string, useHTTP ...bool) {
 		// Golang-level modifiers that add functionality
 		retries.AddRetries(spec, serviceName, 3)
-		clientpool.Create(spec, serviceName, 50)
+		clientpool.Create(spec, serviceName, 20)
 		opentelemetry.Instrument(spec, serviceName, trace_collector)
 		// opentelemetry.Instrument(spec, serviceName)
 		if len(useHTTP) > 0 && useHTTP[0] {
@@ -114,4 +114,5 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Instantiate starting with the frontend which will trigger all other services to be instantiated
 	// Also include the tests and wlgen
 	return []string{"frontend_ctr", wlgen, "gotests", "otelcol", "jaeger"}, nil
+	// return []string{"frontend_ctr", wlgen, "gotests"}, nil
 }

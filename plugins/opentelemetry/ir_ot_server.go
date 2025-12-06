@@ -293,11 +293,19 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if baggage != nil {
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
+
+	childCount := 0
+	ctx = context.WithValue(ctx, "childCount", &childCount)
 	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)
 	}
+
+	if childCount > 0 {
+		span.SetAttributes(attribute.Bool("hasChildren", true))
+	}
+
 	return
 }
 {{end}}
