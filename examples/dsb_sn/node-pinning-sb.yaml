@@ -1,0 +1,78 @@
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-sb-ctr:
+      requests_cpu: 5000
+      # limits_cpu: 2000
+  - hometimeline-cache-sb-ctr:
+      requests_cpu: 1000
+      # limits_cpu: 2000
+  - hometimeline-service-sb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - social-cache-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - social-db-sb-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+  - socialgraph-service-sb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - uniqueid-service-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usermention-service-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usertimeline-cache-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usertimeline-db-sb-ctr:
+      requests_cpu: 10000
+    #   limits_cpu: 2000
+  - usertimeline-service-sb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - wrk2api-service-sb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+node-2:
+  - media-service-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-cache-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-db-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-storage-service-sb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - text-service-sb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - urlshorten-db-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - urlshorten-service-sb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - user-service-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - user-cache-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - user-db-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - userid-service-sb-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+node-3:
+  - jaeger-sb-ctr:
+

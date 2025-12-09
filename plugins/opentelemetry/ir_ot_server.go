@@ -186,7 +186,16 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 		Name: wrapped.BaseName,
 	}
 
-	server.Imports.AddPackages("context", "go.opentelemetry.io/otel/trace", "go.opentelemetry.io/otel/attribute", "github.com/blueprint-uservices/blueprint/runtime/core/backend", "strings", "go.opentelemetry.io/otel/sdk/trace", "fmt")
+	server.Imports.AddPackages(
+		"context",
+		"go.opentelemetry.io/otel/trace",
+		"go.opentelemetry.io/otel/attribute",
+		"github.com/blueprint-uservices/blueprint/runtime/core/backend",
+		"strings",
+		"go.opentelemetry.io/otel/sdk/trace",
+		"fmt",
+		"sync",
+	)
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, "env.sh"))
 	outputFile := filepath.Join(server.Package.Path, "env.sh")
@@ -295,16 +304,29 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	}
 
 	childCount := 0
+	ccMutex := sync.Mutex{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
+	ctx = context.WithValue(ctx, "ccMutex", &ccMutex)
+
+	// End events accumulator array
+	endEvents := []string{}
+	// endEventsMutex := sync.Mutex{}
+	ctx = context.WithValue(ctx, "endEvents", &endEvents)
+	// ctx = context.WithValue(ctx, "endEventsMutex", &endEventsMutex)
 	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	if childCount > 0 {
-		span.SetAttributes(attribute.Bool("hasChildren", true))
+	span.SetAttributes(attribute.Int("childCount", childCount))
+	ccMutex.Lock()
+	remEndEvents := ""
+	for _, endEvent := range endEvents {
+		remEndEvents += "," + endEvent
 	}
+	ccMutex.Unlock()
+	span.SetAttributes(attribute.String("remEndEvents", remEndEvents))
 
 	return
 }

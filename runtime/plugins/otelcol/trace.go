@@ -35,9 +35,19 @@ func NewOTCollectorTracer(ctx context.Context, addr string, additionalPort strin
 	// 	return nil, fmt.Errorf("failed to create path-bridge span processor: %w", err)
 	// }
 
-	spanProcessor, err := NewExactBridgeProcessor(ctx, addr, additionalPort)
+	// spanProcessor, err := NewExactBridgeProcessor(ctx, addr, additionalPort)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create exact-bridge span processor: %w", err)
+	// }
+
+	// spanProcessor, err := NewCallGraphBridgeProcessor(ctx, addr, additionalPort)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create call-graph bridge span processor: %w", err)
+	// }
+
+	spanProcessor, err := NewStructuralBridgeProcessor(ctx, addr, additionalPort)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create exact-bridge span processor: %w", err)
+		return nil, fmt.Errorf("failed to create structural bridge span processor: %w", err)
 	}
 
 	// Commented out: Real-time span processor for partial spans (START/END events)

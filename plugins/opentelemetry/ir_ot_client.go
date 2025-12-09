@@ -153,6 +153,9 @@ func generateClientHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 	server.Imports.AddPackages("github.com/blueprint-uservices/blueprint/runtime/core/backend")
 	server.Imports.AddPackages("strings")
 	server.Imports.AddPackages("fmt")
+	server.Imports.AddPackages("sync")
+	server.Imports.AddPackages("slices")
+	server.Imports.AddPackages("strconv")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile := filepath.Join(server.Package.Path, impl.Name+".go")
@@ -209,11 +212,22 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	}
 
 	if childCountPtr, ok := ctx.Value("childCount").(*int); ok {
-		*childCountPtr++
+		if ccMutexPtr, ok := ctx.Value("ccMutex").(*sync.Mutex); ok {
+			if endEventsPtr, ok := ctx.Value("endEvents").(*[]string); ok {
+				ccMutexPtr.Lock()
+				*childCountPtr++
+				seqNum := *childCountPtr
+				endEvents := slices.Clone(*endEventsPtr)
+				ccMutexPtr.Unlock()
+				ctx = context.WithValue(ctx, "seqNum", seqNum)
+				ctx = context.WithValue(ctx, "endEvents", endEvents)
+			}
+		}
 	}
-
+	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
+	// ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 	
@@ -246,6 +260,18 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if err != nil {
 		span.RecordError(err)
 	}
+
+	if childCountPtr, ok := ctx.Value("childCount").(*int); ok {
+		if ccMutexPtr, ok := ctx.Value("ccMutex").(*sync.Mutex); ok {
+			if endEventsPtr, ok := ctx.Value("endEvents").(*[]string); ok {
+				ccMutexPtr.Lock()
+				*childCountPtr++
+				*endEventsPtr = append(*endEventsPtr, span.SpanContext().SpanID().String() + ":" + strconv.Itoa(*childCountPtr))
+				ccMutexPtr.Unlock()
+			}
+		}
+	}
+	
 	return
 }
 {{end}}

@@ -8,14 +8,17 @@ import (
 
 // Constants for baggage keys
 const (
-	BAG_BLOOM_FILTER = "__bag.bf"
-	BAG_HASH_ARRAY   = "__bag.ha"
+	BAG_BLOOM_FILTER       = "__bag.bf"
+	BAG_HASH_ARRAY         = "__bag.ha"
+	BAG_END_EVENTS         = "__bag.ee"
+	BAG_DELAYED_END_EVENTS = "__bag.dee"
 )
 
 // Ancestry tagging keys
 const (
-	AncestryModeKey = "ancestry_mode"
-	AncestryKey     = "ancestry"
+	AncestryModeKey  = "ancestry_mode"
+	AncestryKey      = "ancestry"
+	AncestryExtraKey = "ancestry2"
 )
 
 // AncestryMode selects the ancestry encoding strategy
