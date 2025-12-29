@@ -1,0 +1,93 @@
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-sbnn-ctr:
+      requests_cpu: 7000
+      # limits_cpu: 2000
+  - hometimeline-cache-sbnn-ctr:
+      requests_cpu: 2000
+      # limits_cpu: 2000
+  - hometimeline-service-sbnn-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+
+node-2:
+  - social-cache-sbnn-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - social-db-sbnn-ctr:
+      requests_cpu: 20000
+    #   limits_cpu: 2000
+  - socialgraph-service-sbnn-ctr:
+      requests_cpu: 300
+    #   limits_cpu: 2000
+
+node-3:
+  - uniqueid-service-sbnn-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - usermention-service-sbnn-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  # - wrk2api-service-sbnn-ctr:
+  #     # requests_cpu: 2000
+  #   #   limits_cpu: 2000
+
+node-4:
+  - usertimeline-cache-sbnn-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - usertimeline-db-sbnn-ctr:
+      requests_cpu: 7000
+    #   limits_cpu: 2000
+  - usertimeline-service-sbnn-ctr:
+      requests_cpu: 8000
+    #   limits_cpu: 2000
+
+node-5:
+  - media-service-sbnn-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - text-service-sbnn-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  - userid-service-sbnn-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+
+node-6:
+  - post-cache-sbnn-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-db-sbnn-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - post-storage-service-sbnn-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+
+node-7:
+  - urlshorten-db-sbnn-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - urlshorten-service-sbnn-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+
+node-8:
+  - user-service-sbnn-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - user-cache-sbnn-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  - user-db-sbnn-ctr:
+      requests_cpu: 1000
+    #   limits_cpu: 2000
+  
+node-9:
+  - jaeger-sbnn-ctr:
+      requests_cpu: 15000
+

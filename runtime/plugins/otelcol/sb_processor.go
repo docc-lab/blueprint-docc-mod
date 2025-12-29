@@ -37,8 +37,7 @@ type StructuralBridgeProcessor struct {
 
 	bloomFilter *bloom.BloomFilter
 
-	delayedEndEvents []string
-	deeLock          sync.Mutex
+	delayedEndEventsChan chan string
 
 	// Background processing
 	stopChan chan struct{}
@@ -122,17 +121,16 @@ func NewStructuralBridgeProcessor(ctx context.Context, agentEndpoint string, con
 	}
 
 	processor := &StructuralBridgeProcessor{
-		client:              client,
-		agentEndpoint:       agentEndpoint,
-		bloomFilter:         bloomFilter,
-		stopChan:            make(chan struct{}),
-		ancestryMode:        AncestryModePB,
-		configDiscoveryPort: configDiscoveryPortInt,
-		httpClient:          httpClient,
-		configMap:           make(map[string]interface{}),
-		checkpointDistance:  1, // Default: every span is a checkpoint
-		delayedEndEvents:    make([]string, 0),
-		deeLock:             sync.Mutex{},
+		client:               client,
+		agentEndpoint:        agentEndpoint,
+		bloomFilter:          bloomFilter,
+		stopChan:             make(chan struct{}),
+		ancestryMode:         AncestryModePB,
+		configDiscoveryPort:  configDiscoveryPortInt,
+		httpClient:           httpClient,
+		configMap:            make(map[string]interface{}),
+		checkpointDistance:   1,                        // Default: every span is a checkpoint
+		delayedEndEventsChan: make(chan string, 10000), // Buffered channel to avoid blocking
 	}
 
 	slog.Info("🔵 Ancestry mode configured", "mode", AncestryModePB)
@@ -217,9 +215,9 @@ func (p *StructuralBridgeProcessor) sendData(events []*tracepb.ResourceSpans) er
 // OnStart implements SpanProcessor.OnStart
 func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 	// No mutex needed - checkpointDistance and ancestryMode are read-only after initialization
-	slog.Debug("🔵 StructuralBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	// slog.Debug("🔵 StructuralBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
-	parentSpan := trace.SpanFromContext(parent)
+	// parentSpan := trace.SpanFromContext(parent)
 
 	// if s.SpanKind() == trace.SpanKindServer {
 	// 	totalSpanID := s.SpanContext().TraceID().String() + ":" + s.SpanContext().SpanID().String()
@@ -296,24 +294,37 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 
 	hashArrayStr += "," + spanID + ":" + strconv.Itoa(seqNum) + ":" + strconv.Itoa(depth)
 
-	if endEvents, ok := parent.Value("endEvents").([]string); ok {
-		for _, endEvent := range endEvents {
-			endEventsStr += "," + endEvent
-		}
+	// if endEvents, ok := parent.Value("endEvents").([]string); ok {
+	if endEvents, ok := parent.Value("endEvents").(string); ok {
+		// for _, endEvent := range endEvents {
+		// 	endEventsStr += "," + endEvent
+		// }
+		endEventsStr += "," + endEvents
 	}
 
-	p.deeLock.Lock()
-	if len(p.delayedEndEvents) > 0 {
-		delayedEndEvents := p.delayedEndEvents[:]
-		p.delayedEndEvents = make([]string, 0)
-		for _, delayedEndEvent := range delayedEndEvents {
-			delayedEndEventsStr += "," + delayedEndEvent
+	// Drain delayed end events from channel (non-blocking)
+	// var delayedEvents []string
+	// var delayedEvents string
+	draining := true
+	for draining {
+		select {
+		case event := <-p.delayedEndEventsChan:
+			// delayedEvents = append(delayedEvents, event)
+			delayedEndEventsStr += "," + event
+		default:
+			draining = false
 		}
 	}
-	p.deeLock.Unlock()
+	// // Process collected events
+	// for _, delayedEvent := range delayedEvents {
+	// 	if delayedEndEventsStr != "" {
+	// 		delayedEndEventsStr += ","
+	// 	}
+	// 	delayedEndEventsStr += delayedEvent
+	// }
 
-	isRoot := !parentSpan.SpanContext().IsValid()
-	slog.Debug("🔵 Updated hash array for span", "span_id", spanID, "is_root", isRoot)
+	// isRoot := !parentSpan.SpanContext().IsValid()
+	// slog.Debug("🔵 Updated hash array for span", "span_id", spanID, "is_root", isRoot)
 
 	// // Serialize updated bloom filter and set baggage attribute for propagation
 	// bfStr, err := serializeBloomFilter(bloomFilter)
@@ -348,7 +359,7 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	// ancestryPayload := ""
 	// switch p.ancestryMode {
 	// case AncestryModeBloom:
-	ancestryPayload := hashArrayStr + ";" + endEventsStr
+	// ancestryPayload := hashArrayStr + ";" + endEventsStr
 	// case AncestryModeHash:
 	// 	ancestryPayload = hashArrayStr
 	// case AncestryModeHybrid:
@@ -360,7 +371,8 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 
 	// Always set ancestry data - will be stripped for low-priority spans in convertAttributes
 	s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
-	s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
+	// s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
+	s.SetAttributes(attribute.String(AncestryKey, hashArrayStr+";"+endEventsStr))
 	if delayedEndEventsStr != "" {
 		s.SetAttributes(attribute.String(AncestryExtraKey, delayedEndEventsStr))
 	}
@@ -369,6 +381,8 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	if priority == 1 {
 		// hashArrayStr = spanID
 		s.SetAttributes(attribute.String(BAG_HASH_ARRAY, spanID))
+		s.SetAttributes(attribute.String(BAG_END_EVENTS, ""))
+		s.SetAttributes(attribute.String(BAG_DELAYED_END_EVENTS, ""))
 	}
 	// else {
 	// 	s.SetAttributes(attribute.String("prio", "low"))
@@ -377,41 +391,38 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	// Add depth attribute for verification (not baggage)
 	s.SetAttributes(attribute.Int("depth", depth))
 
-	slog.Debug("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
+	// slog.Debug("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
 }
 
 // OnEnd implements SpanProcessor.OnEnd
 func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	// No mutex needed - only reading span attributes and routing to buffers (which have their own locks)
-	slog.Debug("🔴 StructuralBridgeProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	// slog.Debug("🔴 StructuralBridgeProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	// Extract priority from span attributes
 	var priority int
 	var hasPriority bool
-	var depth int
-	var hasDepth bool
+	// var depth int
+	// var hasDepth bool
 	var hasChildren bool
 	var remEndEvents string
 
 	// Iterate through attributes to find __bag.prio, __bag.depth, and hasChildren
 	for _, attr := range s.Attributes() {
-		if attr.Key == "__bag.prio" {
+		switch attr.Key {
+		case "__bag.prio":
 			val := attr.Value.AsInt64()
 			priority = int(val)
 			hasPriority = true
-		} else if attr.Key == "__bag.depth" {
-			val := attr.Value.AsInt64()
-			depth = int(val)
-			hasDepth = true
-		} else if attr.Key == "childCount" {
+		case "childCount":
 			// AI_ADDED: Check for hasChildren attribute to determine if server span is a leaf
 			hasChildren = attr.Value.AsInt64() > 0
-		} else if attr.Key == "remEndEvents" {
+		case "remEndEvents":
 			remEndEvents = attr.Value.AsString()
 			if remEndEvents != "" {
-				p.deeLock.Lock()
-				p.delayedEndEvents = append(p.delayedEndEvents, s.SpanContext().TraceID().String()+"::"+remEndEvents)
-				p.deeLock.Unlock()
+				// Send to channel (blocking to ensure event is never dropped)
+				event := s.SpanContext().TraceID().String() + "::" + remEndEvents
+				p.delayedEndEventsChan <- event
 			}
 		}
 	}
@@ -420,11 +431,11 @@ func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 		// AI_ADDED: Use hasChildren attribute instead of map-based counting
 		if hasChildren {
 			// Non-leaf server span - force to low priority (priority = 0)
-			slog.Info("🔵 Non-leaf server span (hasChildren=true)", "span_name", s.Name())
+			// slog.Info("🔵 Non-leaf server span (hasChildren=true)", "span_name", s.Name())
 			priority += 0
 		} else {
 			// Leaf server span - always checkpoint (priority = 1)
-			slog.Info("🔵 Leaf server span (hasChildren=false or missing)", "span_name", s.Name())
+			// slog.Info("🔵 Leaf server span (hasChildren=false or missing)", "span_name", s.Name())
 			priority = 1
 		}
 	}
@@ -433,19 +444,19 @@ func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	if !hasPriority {
 		// Default to low priority if no priority found
 		priority = 0
-		slog.Debug("🔴 No priority found, defaulting to low priority", "span_name", s.Name())
+		// slog.Debug("🔴 No priority found, defaulting to low priority", "span_name", s.Name())
 	}
-	if !hasDepth {
-		depth = 0
-		slog.Debug("🔴 No depth found, defaulting to 0", "span_name", s.Name())
-	}
+	// if !hasDepth {
+	// 	depth = 0
+	// 	// slog.Debug("🔴 No depth found, defaulting to 0", "span_name", s.Name())
+	// }
 
-	slog.Debug("🔴 Routing span based on priority",
-		"priority", priority,
-		"depth", depth,
-		"span_name", s.Name(),
-		"trace_id", s.SpanContext().TraceID(),
-		"span_id", s.SpanContext().SpanID())
+	// slog.Debug("🔴 Routing span based on priority",
+	// 	"priority", priority,
+	// 	"depth", depth,
+	// 	"span_name", s.Name(),
+	// 	"trace_id", s.SpanContext().TraceID(),
+	// 	"span_id", s.SpanContext().SpanID())
 
 	// Route span to pipeline
 	p.routeToPipeline(s, priority == 1)

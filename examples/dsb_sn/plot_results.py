@@ -115,7 +115,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         latencies = [results[level] for level in load_levels]
         plt.plot(load_levels, latencies, marker='o', label=name, linewidth=2)
     
-    plt.xlabel('Load Level (concurrent connections)', fontsize=12)
+    plt.xlabel('Load Level (requests per second)', fontsize=12)
     
     if metric_type == 'mean':
         ylabel = 'Mean Latency (ms)'
@@ -134,6 +134,8 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
     plt.title(title, fontsize=14, fontweight='bold')
     plt.legend(loc='best', fontsize=10)
     plt.grid(True, alpha=0.3)
+    plt.xlim(left=0)
+    plt.ylim(bottom=0)
     plt.tight_layout()
     
     # Save the plot

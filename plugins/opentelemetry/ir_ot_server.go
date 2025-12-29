@@ -193,8 +193,9 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 		"github.com/blueprint-uservices/blueprint/runtime/core/backend",
 		"strings",
 		"go.opentelemetry.io/otel/sdk/trace",
-		"fmt",
 		"sync",
+		"sync/atomic",
+		"strconv",
 	)
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, "env.sh"))
@@ -285,7 +286,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 				// Convert value to string for baggage based on attribute type
 				switch attr.Value.Type() {
 				case attribute.INT64:
-					baggage[key] = fmt.Sprintf("%d", attr.Value.AsInt64())
+					baggage[key] = strconv.FormatInt(attr.Value.AsInt64(), 10)
 				case attribute.STRING:
 					baggage[key] = attr.Value.AsString()
 				default:
@@ -303,30 +304,39 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := 0
+	childCount := atomic.Uint64{}
+	// Enable line below for S-Bridge
 	ccMutex := sync.Mutex{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
+	// Enable line below for S-Bridge
 	ctx = context.WithValue(ctx, "ccMutex", &ccMutex)
 
 	// End events accumulator array
-	endEvents := []string{}
-	// endEventsMutex := sync.Mutex{}
+	// endEvents := []string{} // Old
+	// Enable line below for S-Bridge
+	endEvents := ""
+	// endEventsMutex := sync.Mutex{} // Old
+	// Enable line below for S-Bridge
 	ctx = context.WithValue(ctx, "endEvents", &endEvents)
-	// ctx = context.WithValue(ctx, "endEventsMutex", &endEventsMutex)
+	// ctx = context.WithValue(ctx, "endEventsMutex", &endEventsMutex) // Old
 	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Int("childCount", childCount))
-	ccMutex.Lock()
-	remEndEvents := ""
-	for _, endEvent := range endEvents {
-		remEndEvents += "," + endEvent
-	}
-	ccMutex.Unlock()
-	span.SetAttributes(attribute.String("remEndEvents", remEndEvents))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
+	// Old stuff commented below here:
+	// ccMutex.Lock()
+	// remEndEvents := ""
+	// for _, endEvent := range endEvents {
+	// 	remEndEvents += "," + endEvent
+	// }
+	// ccMutex.Unlock()
+	// span.SetAttributes(attribute.String("remEndEvents", remEndEvents))
+	
+	// Enable line below for S-Bridge
+	span.SetAttributes(attribute.String("remEndEvents", endEvents))
 
 	return
 }

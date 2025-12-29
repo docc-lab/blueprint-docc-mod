@@ -212,9 +212,9 @@ func (p *CallGraphBridgeProcessor) sendData(events []*tracepb.ResourceSpans) err
 // OnStart implements SpanProcessor.OnStart
 func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 	// No mutex needed - checkpointDistance and ancestryMode are read-only after initialization
-	slog.Debug("🔵 CallGraphBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	// slog.Debug("🔵 CallGraphBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
-	parentSpan := trace.SpanFromContext(parent)
+	// parentSpan := trace.SpanFromContext(parent)
 
 	// if s.SpanKind() == trace.SpanKindServer {
 	// 	totalSpanID := s.SpanContext().TraceID().String() + ":" + s.SpanContext().SpanID().String()
@@ -242,10 +242,11 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 			}
 		}
 
-		bloomFilter, err = deserializeBloomFilter(baggage["bf"])
-		if err != nil {
-			slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
-		}
+		// bloomFilter, err = deserializeBloomFilter(baggage["bf"])
+		bloomFilter, _ = deserializeBloomFilter(baggage["bf"])
+		// if err != nil {
+		// 	slog.Warn("Failed to deserialize existing bloom filter, creating new one", "error", err)
+		// }
 
 		hashArrayStr = baggage["ha"]
 	} else {
@@ -295,8 +296,8 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 		}
 	}
 
-	isRoot := !parentSpan.SpanContext().IsValid()
-	slog.Debug("🔵 Updated bloom filter for span", "span_id", spanID, "is_root", isRoot)
+	// isRoot := !parentSpan.SpanContext().IsValid()
+	// slog.Debug("🔵 Updated bloom filter for span", "span_id", spanID, "is_root", isRoot)
 
 	// Serialize updated bloom filter and set baggage attribute for propagation
 	bfStr, err := serializeBloomFilter(bloomFilter)
@@ -329,7 +330,7 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 	// ancestryPayload := ""
 	// switch p.ancestryMode {
 	// case AncestryModeBloom:
-	ancestryPayload := bfStr
+	// ancestryPayload := bfStr
 	// case AncestryModeHash:
 	// 	ancestryPayload = hashArrayStr
 	// case AncestryModeHybrid:
@@ -341,7 +342,8 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 
 	// Always set ancestry data - will be stripped for low-priority spans in convertAttributes
 	s.SetAttributes(attribute.String(AncestryModeKey, string(p.ancestryMode)))
-	s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
+	// s.SetAttributes(attribute.String(AncestryKey, ancestryPayload))
+	s.SetAttributes(attribute.String(AncestryKey, bfStr))
 	if hashArrayStr != "" {
 		s.SetAttributes(attribute.String(AncestryExtraKey, hashArrayStr))
 	}
@@ -368,34 +370,35 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 	// Add depth attribute for verification (not baggage)
 	s.SetAttributes(attribute.Int("depth", depth))
 
-	slog.Debug("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
+	// slog.Debug("🔵 Set priority baggage and attribute", "priority", priority, "depth", depth, "span_name", s.Name())
 }
 
 // OnEnd implements SpanProcessor.OnEnd
 func (p *CallGraphBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	// No mutex needed - only reading span attributes and routing to buffers (which have their own locks)
-	slog.Debug("🔴 CallGraphBridgeProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	// slog.Debug("🔴 CallGraphBridgeProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
 
 	// Extract priority from span attributes
 	var priority int
 	var hasPriority bool
-	var depth int
-	var hasDepth bool
+	// var depth int
+	// var hasDepth bool
 	var hasChildren bool
 
 	// Iterate through attributes to find __bag.prio, __bag.depth, and hasChildren
 	for _, attr := range s.Attributes() {
-		if attr.Key == "__bag.prio" {
+		switch attr.Key {
+		case "__bag.prio":
 			val := attr.Value.AsInt64()
 			priority = int(val)
 			hasPriority = true
-		} else if attr.Key == "__bag.depth" {
-			val := attr.Value.AsInt64()
-			depth = int(val)
-			hasDepth = true
-		} else if attr.Key == "hasChildren" {
-			// AI_ADDED: Check for hasChildren attribute to determine if server span is a leaf
-			hasChildren = attr.Value.AsBool()
+			// case "__bag.depth":
+			// 	val := attr.Value.AsInt64()
+			// 	// depth = int(val)
+			// 	hasDepth = true
+		case "childCount":
+			// AI_ADDED: Check for childCount attribute to determine if server span is a leaf
+			hasChildren = attr.Value.AsInt64() > 0
 		}
 	}
 
@@ -403,11 +406,11 @@ func (p *CallGraphBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 		// AI_ADDED: Use hasChildren attribute instead of map-based counting
 		if hasChildren {
 			// Non-leaf server span - force to low priority (priority = 0)
-			slog.Info("🔵 Non-leaf server span (hasChildren=true)", "span_name", s.Name())
+			// slog.Info("🔵 Non-leaf server span (hasChildren=true)", "span_name", s.Name())
 			priority += 0
 		} else {
 			// Leaf server span - always checkpoint (priority = 1)
-			slog.Info("🔵 Leaf server span (hasChildren=false or missing)", "span_name", s.Name())
+			// slog.Info("🔵 Leaf server span (hasChildren=false or missing)", "span_name", s.Name())
 			priority = 1
 		}
 	}
@@ -416,19 +419,19 @@ func (p *CallGraphBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	if !hasPriority {
 		// Default to low priority if no priority found
 		priority = 0
-		slog.Debug("🔴 No priority found, defaulting to low priority", "span_name", s.Name())
+		// slog.Debug("🔴 No priority found, defaulting to low priority", "span_name", s.Name())
 	}
-	if !hasDepth {
-		depth = 0
-		slog.Debug("🔴 No depth found, defaulting to 0", "span_name", s.Name())
-	}
+	// if !hasDepth {
+	// 	depth = 0
+	// 	// slog.Debug("🔴 No depth found, defaulting to 0", "span_name", s.Name())
+	// }
 
-	slog.Debug("🔴 Routing span based on priority",
-		"priority", priority,
-		"depth", depth,
-		"span_name", s.Name(),
-		"trace_id", s.SpanContext().TraceID(),
-		"span_id", s.SpanContext().SpanID())
+	// slog.Debug("🔴 Routing span based on priority",
+	// 	"priority", priority,
+	// 	"depth", depth,
+	// 	"span_name", s.Name(),
+	// 	"trace_id", s.SpanContext().TraceID(),
+	// 	"span_id", s.SpanContext().SpanID())
 
 	// Route span to pipeline
 	p.routeToPipeline(s, priority == 1)

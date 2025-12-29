@@ -177,6 +177,7 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Define frontend service
 	wrk2api_service := workflow.Service[socialnetwork.Wrk2APIService](spec, "wrk2api_service_sb", user_service, composepost_service, usertimeline_service, hometimeline_service, socialgraph_service)
 	containers = append(containers, applyHTTPDefaults(wrk2api_service, trace_collector))
+	// containers = append(containers, applyHTTPDefaults(wrk2api_service, ""))
 	// applyHTTPDefaults(wrk2api_service, jaeger_collector)
 	// containers = append(containers, applyHTTPDefaults(wrk2api_service, ""))
 	// containers = append(containers, "wrk2api_ctr_sb")

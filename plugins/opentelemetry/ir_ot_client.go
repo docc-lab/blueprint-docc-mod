@@ -152,9 +152,8 @@ func generateClientHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 	server.Imports.AddPackages("go.opentelemetry.io/otel/attribute")
 	server.Imports.AddPackages("github.com/blueprint-uservices/blueprint/runtime/core/backend")
 	server.Imports.AddPackages("strings")
-	server.Imports.AddPackages("fmt")
 	server.Imports.AddPackages("sync")
-	server.Imports.AddPackages("slices")
+	server.Imports.AddPackages("sync/atomic")
 	server.Imports.AddPackages("strconv")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
@@ -211,19 +210,26 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		}
 	}
 
-	if childCountPtr, ok := ctx.Value("childCount").(*int); ok {
-		if ccMutexPtr, ok := ctx.Value("ccMutex").(*sync.Mutex); ok {
-			if endEventsPtr, ok := ctx.Value("endEvents").(*[]string); ok {
-				ccMutexPtr.Lock()
-				*childCountPtr++
-				seqNum := *childCountPtr
-				endEvents := slices.Clone(*endEventsPtr)
-				ccMutexPtr.Unlock()
-				ctx = context.WithValue(ctx, "seqNum", seqNum)
-				ctx = context.WithValue(ctx, "endEvents", endEvents)
-			}
-		}
-	}
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
+	// Enable lines below for S-Bridge
+	ccMutexPtr := ctx.Value("ccMutex").(*sync.Mutex)
+	endEventsPtr := ctx.Value("endEvents").(*string)
+	// endEventsPtr := ctx.Value("endEvents").(*[]string) // Old
+
+	// seqNum := int(childCountPtr.Add(1))
+	// ctx = context.WithValue(ctx, "seqNum", seqNum)
+	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// Enable lines below for S-Bridge
+	ccMutexPtr.Lock()
+	// endEvents := slices.Clone(*endEventsPtr) // Old
+	endEvents := *endEventsPtr
+	*endEventsPtr = ""
+	ccMutexPtr.Unlock()
+
+	// Enable line below for S-Bridge
+	ctx = context.WithValue(ctx, "endEvents", endEvents)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
@@ -239,7 +245,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 				// Convert value to string for baggage based on attribute type
 				switch attr.Value.Type() {
 				case attribute.INT64:
-					baggage[key] = fmt.Sprintf("%d", attr.Value.AsInt64())
+					baggage[key] = strconv.FormatInt(attr.Value.AsInt64(), 10)
 				case attribute.STRING:
 					baggage[key] = attr.Value.AsString()
 				default:
@@ -261,16 +267,17 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	if childCountPtr, ok := ctx.Value("childCount").(*int); ok {
-		if ccMutexPtr, ok := ctx.Value("ccMutex").(*sync.Mutex); ok {
-			if endEventsPtr, ok := ctx.Value("endEvents").(*[]string); ok {
-				ccMutexPtr.Lock()
-				*childCountPtr++
-				*endEventsPtr = append(*endEventsPtr, span.SpanContext().SpanID().String() + ":" + strconv.Itoa(*childCountPtr))
-				ccMutexPtr.Unlock()
-			}
-		}
-	}
+	// Reuse cached pointers - no need to look up from context again
+	// Enable lines below for S-Bridge
+	// childCountAfter := int(childCountPtr.Add(1))
+	// event := "," + span.SpanContext().SpanID().String() + ":" + strconv.Itoa(childCountAfter)
+	event := "," + span.SpanContext().SpanID().String() + ":" + strconv.Itoa(int(childCountPtr.Add(1)))
+
+	ccMutexPtr.Lock()
+	// *endEventsPtr = append(*endEventsPtr, span.SpanContext().SpanID().String() + ":" + strconv.Itoa(*childCountPtr)) // Old
+	// *endEventsPtr = *endEventsPtr + "," + span.SpanContext().SpanID().String() + ":" + strconv.Itoa(childCountAfter) // Old
+	*endEventsPtr = *endEventsPtr + event
+	ccMutexPtr.Unlock()
 	
 	return
 }
