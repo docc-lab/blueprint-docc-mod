@@ -51,7 +51,7 @@ def get_name_from_subdir(subdir_path):
     # Fallback to directory name if no name_ file found
     return subdir_path.name
 
-def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None):
+def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None):
     """Plots latency results from all subdirectories.
     
     Args:
@@ -60,6 +60,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         output_filename: Optional custom output filename (default: based on metric_type)
         min_data_point: Optional minimum load level to include (inclusive)
         max_data_point: Optional maximum load level to include (inclusive)
+        targets: Optional list of subdirectory names to include (if None, includes all)
     """
     results_path = Path(results_dir)
     
@@ -71,11 +72,18 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         print(f"Error: metric_type must be 'mean', 'p99', or 'max', got '{metric_type}'", file=sys.stderr)
         sys.exit(1)
     
+    # Normalize targets (subdirectory names to include), if provided
+    target_set = set(targets) if targets is not None else None
+
     # Find all subdirectories with aggregate.out files
     data_to_plot = {}
     
     for subdir in results_path.iterdir():
         if not subdir.is_dir():
+            continue
+
+        # If targets list is provided, only include matching subdirectories
+        if target_set is not None and subdir.name not in target_set:
             continue
         
         aggregate_file = subdir / 'aggregate.out'
@@ -88,9 +96,10 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
             print(f"Warning: No data found in {aggregate_file}", file=sys.stderr)
             continue
         
-        # Get name from name_ file
+        # Get human-readable name from name_ file (or fallback to directory name)
         name = get_name_from_subdir(subdir)
-        data_to_plot[name] = latency_results
+        # Key by subdirectory name so we can respect target ordering, store (label, results)
+        data_to_plot[subdir.name] = (name, latency_results)
     
     if not data_to_plot:
         print(f"Error: No aggregate.out files found in subdirectories of '{results_dir}'", file=sys.stderr)
@@ -99,7 +108,16 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
     # Create the plot
     plt.figure(figsize=(10, 6))
     
-    for name, results in sorted(data_to_plot.items()):
+    # Determine plotting order:
+    # - If targets were provided, follow their order (filtering out any that had no data)
+    # - Otherwise, sort series by their display name alphabetically
+    if targets is not None:
+        ordered_keys = [t for t in targets if t in data_to_plot]
+    else:
+        ordered_keys = sorted(data_to_plot.keys(), key=lambda k: data_to_plot[k][0])
+
+    for key in ordered_keys:
+        name, results = data_to_plot[key]
         load_levels = sorted(results.keys())
         
         # Filter by min and max data points if specified
@@ -151,12 +169,13 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
     plt.show()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3 or len(sys.argv) > 6:
-        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point]", file=sys.stderr)
+    if len(sys.argv) < 3:
+        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...]", file=sys.stderr)
         print("  type: 'mean', 'p99', or 'max'", file=sys.stderr)
         print("  output_filename: optional custom output filename (default: based on type)", file=sys.stderr)
         print("  min_data_point: optional minimum load level to include (inclusive)", file=sys.stderr)
         print("  max_data_point: optional maximum load level to include (inclusive)", file=sys.stderr)
+        print("  --targets=...: optional comma-separated list of subdirectory names to include", file=sys.stderr)
         sys.exit(1)
     
     results_dir = sys.argv[1]
@@ -166,27 +185,40 @@ if __name__ == "__main__":
     output_filename = None
     min_data_point = None
     max_data_point = None
-    
-    # Check each optional argument position
-    if len(sys.argv) >= 4:
-        if sys.argv[3].isdigit():
-            # sys.argv[3] is a number, so it's min_data_point
-            min_data_point = int(sys.argv[3])
-        else:
-            # sys.argv[3] is a string, so it's output_filename
-            output_filename = sys.argv[3]
-    
-    if len(sys.argv) >= 5:
-        if output_filename:
-            # We already have output_filename, so sys.argv[4] is min_data_point
-            min_data_point = int(sys.argv[4])
-        else:
-            # No output_filename, so sys.argv[4] is max_data_point (sys.argv[3] was min_data_point)
-            max_data_point = int(sys.argv[4])
-    
-    if len(sys.argv) >= 6:
-        # sys.argv[5] is always max_data_point
-        max_data_point = int(sys.argv[5])
-    
-    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point)
+    targets = None
 
+    # Separate flag-style args (e.g., --targets=...) from positional optional args
+    raw_optional_args = sys.argv[3:]
+    positional_args = []
+    for arg in raw_optional_args:
+        if arg.startswith("--targets="):
+            value = arg.split("=", 1)[1]
+            if value:
+                targets = [name for name in value.split(",") if name]
+            else:
+                targets = []
+        else:
+            positional_args.append(arg)
+
+    # Now interpret positional_args the same way the script did before
+    if len(positional_args) >= 1:
+        if positional_args[0].isdigit():
+            # First positional is a number: min_data_point
+            min_data_point = int(positional_args[0])
+        else:
+            # First positional is a string: output_filename
+            output_filename = positional_args[0]
+
+    if len(positional_args) >= 2:
+        if output_filename:
+            # We already have output_filename, so second positional is min_data_point
+            min_data_point = int(positional_args[1])
+        else:
+            # No output_filename, so second positional is max_data_point
+            max_data_point = int(positional_args[1])
+
+    if len(positional_args) >= 3:
+        # Third positional is always max_data_point
+        max_data_point = int(positional_args[2])
+    
+    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets)

@@ -1,9 +1,7 @@
 package otelcol
 
 import (
-	"encoding/base64"
-
-	"github.com/bits-and-blooms/bloom"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/bloom"
 )
 
 // Constants for baggage keys
@@ -38,43 +36,32 @@ var (
 // priority spans use a separate OTLP client/endpoint.
 const singleOTLPClient = true
 
+// Bloom filter parameters (m = bit array size, k = number of hash functions)
+var (
+	BloomFilterM uint64 = 10 // Size of bit array in bits
+	BloomFilterK uint   = 7  // Number of hash functions
+)
+
 // ConfigResponse represents the response from the config discovery endpoint
 type ConfigResponse struct {
 	Config map[string]interface{} `json:"config"`
 }
 
-// serializeBloomFilter converts a bloom filter to a base64-encoded string
+// serializeBloomFilter converts a bloom filter to a base64-encoded string.
+// Only serializes the bit array, not metadata (much more efficient than GobEncode).
 func serializeBloomFilter(bf *bloom.BloomFilter) (string, error) {
-	data, err := bf.GobEncode()
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
+	return bf.Serialize(), nil
 }
 
-// deserializeBloomFilter converts a base64-encoded string back to a bloom filter
+// deserializeBloomFilter converts a base64-encoded string back to a bloom filter.
+// Uses minimal deserialization (only the bit array).
 func deserializeBloomFilter(serialized string) (*bloom.BloomFilter, error) {
-	if serialized == "" {
-		return createEmptyBloomFilter(), nil
-	}
-
-	data, err := base64.StdEncoding.DecodeString(serialized)
-	if err != nil {
-		return createEmptyBloomFilter(), err
-	}
-
-	bf := &bloom.BloomFilter{}
-	err = bf.GobDecode(data)
-	if err != nil {
-		return createEmptyBloomFilter(), err
-	}
-
-	return bf, nil
+	return bloom.Deserialize(serialized, BloomFilterM, BloomFilterK)
 }
 
 // createEmptyBloomFilter creates a new empty bloom filter
 func createEmptyBloomFilter() *bloom.BloomFilter {
-	return bloom.New(10, 7) // Same parameters as existing
+	return bloom.New(BloomFilterM, BloomFilterK)
 }
 
 // getBaggageKeys returns the keys from a baggage map for logging

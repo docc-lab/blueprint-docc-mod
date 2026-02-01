@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bits-and-blooms/bloom"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/bloom"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -66,7 +66,7 @@ type StructuralBridgeProcessor struct {
 func NewStructuralBridgeProcessor(ctx context.Context, agentEndpoint string, configDiscoveryPort string) (*StructuralBridgeProcessor, error) {
 	slog.Info("🔵 Creating new StructuralBridgeProcessor", "agentEndpoint", agentEndpoint)
 
-	bloomFilter := bloom.New(10, 7)
+	bloomFilter := bloom.New(BloomFilterM, BloomFilterK)
 
 	// Extract host from agent endpoint
 	var host string

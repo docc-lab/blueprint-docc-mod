@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bits-and-blooms/bloom"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/bloom"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -141,6 +141,32 @@ func NewCallGraphBridgeProcessor(ctx context.Context, agentEndpoint string, conf
 	} else {
 		slog.Info("🟢 Successfully fetched full config", "config_keys", len(processor.configMap))
 	}
+
+	// Calculate and set bloom filter parameters based on checkpoint distance
+	// Expected number of elements (n) = checkpoint distance (spans between checkpoints)
+	// Use a reasonable false positive rate (1%)
+	const desiredFalsePositiveRate = 0.01
+	expectedElements := uint(processor.checkpointDistance)
+	if expectedElements == 0 {
+		expectedElements = 1 // Ensure at least 1 element
+	}
+
+	// Calculate optimal M and K using EstimateParameters
+	calculatedM, calculatedK := bloom.EstimateParameters(expectedElements, desiredFalsePositiveRate)
+	
+	// Set global bloom filter parameters
+	BloomFilterM = calculatedM
+	BloomFilterK = calculatedK
+
+	slog.Info("🔵 Bloom filter parameters calculated",
+		"checkpoint_distance", processor.checkpointDistance,
+		"expected_elements", expectedElements,
+		"false_positive_rate", desiredFalsePositiveRate,
+		"m", calculatedM,
+		"k", calculatedK)
+
+	// Recreate bloom filter with calculated parameters
+	processor.bloomFilter = bloom.New(BloomFilterM, BloomFilterK)
 
 	// Start background worker for batch export
 	processor.wg.Add(1)
