@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: social-cache-nt-ctr
+  name: social-cache-nt-ctr
+spec:
+  ports:
+  - name: '12353'
+    port: 12353
+    targetPort: 6379
+  - name: '6379'
+    port: 6379
+    targetPort: 6379
+  selector:
+    io.kompose.service: social-cache-nt-ctr

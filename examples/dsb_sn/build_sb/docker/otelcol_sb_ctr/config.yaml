@@ -1,0 +1,49 @@
+exporters:
+    debug:
+        verbosity: detailed
+    otlp:
+        endpoint: ${JAEGER_SB_OTLP_DIAL_ADDR}
+        tls:
+            insecure: true
+processors:
+    batch: null
+    priority:
+        burst_memory_limit_percentage: 80
+        check_interval: 200ms
+        memory_limit_percentage: 50
+receivers:
+    configdiscovery:
+        config_map:
+            cpd: 3
+        endpoint: :8080
+    otlp:
+        protocols:
+            grpc:
+                endpoint: 0.0.0.0:4317
+    otlp/highprio:
+        protocols:
+            grpc:
+                endpoint: 0.0.0.0:4317
+            http:
+                endpoint: 0.0.0.0:4318
+service:
+    extensions: []
+    pipelines:
+        logs/configdiscovery:
+            exporters:
+                - debug
+            processors: []
+            receivers:
+                - configdiscovery
+        traces:
+            exporters:
+                - otlp
+                - debug
+            processors:
+                - priority
+                - batch
+            receivers:
+                - otlp
+    telemetry:
+        logs:
+            level: DEBUG

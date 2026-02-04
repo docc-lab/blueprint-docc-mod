@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: media-service-v-ctr
+  name: media-service-v-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: media-service-v-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: media-service-v-ctr
+    spec:
+      containers:
+      - env:
+        - name: MEDIA_SERVICE_V_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: OTELCOL_V_DIAL_ADDR
+          value: otelcol-v-ctr:4317
+        image: 10.10.1.1:30000/media-service-v-ctr:latest
+        name: media-service-v-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 2000m
+      hostname: media-service-v-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-5

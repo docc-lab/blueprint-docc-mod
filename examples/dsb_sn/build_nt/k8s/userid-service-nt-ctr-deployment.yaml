@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: userid-service-nt-ctr
+  name: userid-service-nt-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: userid-service-nt-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: userid-service-nt-ctr
+    spec:
+      containers:
+      - env:
+        - name: USERID_SERVICE_NT_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: USER_CACHE_NT_DIAL_ADDR
+          value: user-cache-nt-ctr:6379
+        - name: USER_DB_NT_DIAL_ADDR
+          value: user-db-nt-ctr:27017
+        image: 10.10.1.1:30000/userid-service-nt-ctr:latest
+        name: userid-service-nt-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 6000m
+      hostname: userid-service-nt-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-5

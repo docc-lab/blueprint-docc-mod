@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: hometimeline-service-sb-ctr
+  name: hometimeline-service-sb-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hometimeline-service-sb-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: hometimeline-service-sb-ctr
+    spec:
+      containers:
+      - env:
+        - name: HOMETIMELINE_CACHE_SB_DIAL_ADDR
+          value: hometimeline-cache-sb-ctr:6379
+        - name: HOMETIMELINE_SERVICE_SB_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: OTELCOL_SB_DIAL_ADDR
+          value: otelcol-sb-ctr:4317
+        - name: POST_STORAGE_SERVICE_SB_GRPC_DIAL_ADDR
+          value: post-storage-service-sb-ctr:12345
+        - name: SOCIALGRAPH_SERVICE_SB_GRPC_DIAL_ADDR
+          value: socialgraph-service-sb-ctr:12345
+        image: 10.10.1.1:30000/hometimeline-service-sb-ctr:latest
+        name: hometimeline-service-sb-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 3000m
+      hostname: hometimeline-service-sb-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-1

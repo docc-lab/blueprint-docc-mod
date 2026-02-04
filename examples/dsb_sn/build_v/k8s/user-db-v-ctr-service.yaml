@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: user-db-v-ctr
+  name: user-db-v-ctr
+spec:
+  ports:
+  - name: '12366'
+    port: 12366
+    targetPort: 27017
+  - name: '27017'
+    port: 27017
+    targetPort: 27017
+  selector:
+    io.kompose.service: user-db-v-ctr

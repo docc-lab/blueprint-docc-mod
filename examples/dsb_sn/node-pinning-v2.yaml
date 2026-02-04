@@ -1,0 +1,93 @@
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-v2-ctr:
+      requests_cpu: 12000
+      # limits_cpu: 2000
+  - hometimeline-cache-v2-ctr:
+      requests_cpu: 3000
+      # limits_cpu: 2000
+  - hometimeline-service-v2-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+
+node-2:
+  - social-cache-v2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - social-db-v2-ctr:
+      requests_cpu: 24000
+    #   limits_cpu: 2000
+  - socialgraph-service-v2-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+
+node-3:
+  - uniqueid-service-v2-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+  - usermention-service-v2-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+  # - wrk2api-service-v2-ctr:
+  #     # requests_cpu: 2000
+  #   #   limits_cpu: 2000
+
+node-4:
+  - usertimeline-cache-v2-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  - usertimeline-db-v2-ctr:
+      requests_cpu: 12000
+    #   limits_cpu: 2000
+  - usertimeline-service-v2-ctr:
+      requests_cpu: 14000
+    #   limits_cpu: 2000
+
+node-5:
+  - media-service-v2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - text-service-v2-ctr:
+      requests_cpu: 8000
+    #   limits_cpu: 2000
+  - userid-service-v2-ctr:
+      requests_cpu: 6000
+    #   limits_cpu: 2000
+
+node-6:
+  - post-cache-v2-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+  - post-db-v2-ctr:
+      requests_cpu: 10000
+    #   limits_cpu: 2000
+  - post-storage-service-v2-ctr:
+      requests_cpu: 10000
+    #   limits_cpu: 2000
+
+node-7:
+  - urlshorten-db-v2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - urlshorten-service-v2-ctr:
+      requests_cpu: 7000
+    #   limits_cpu: 2000
+
+node-8:
+  - user-service-v2-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  - user-cache-v2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - user-db-v2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  
+node-9:
+  - jaeger-v2-ctr:
+      requests_cpu: 20000
+

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: post-db-nt-ctr
+  name: post-db-nt-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: post-db-nt-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: post-db-nt-ctr
+    spec:
+      containers:
+      - image: 10.10.1.1:30000/mongo:4.4
+        name: post-db-nt-ctr
+        ports:
+        - containerPort: 27017
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 3000m
+      hostname: post-db-nt-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-6

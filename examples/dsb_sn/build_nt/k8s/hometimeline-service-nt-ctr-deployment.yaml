@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: hometimeline-service-nt-ctr
+  name: hometimeline-service-nt-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hometimeline-service-nt-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: hometimeline-service-nt-ctr
+    spec:
+      containers:
+      - env:
+        - name: HOMETIMELINE_CACHE_NT_DIAL_ADDR
+          value: hometimeline-cache-nt-ctr:6379
+        - name: HOMETIMELINE_SERVICE_NT_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: POST_STORAGE_SERVICE_NT_GRPC_DIAL_ADDR
+          value: post-storage-service-nt-ctr:12345
+        - name: SOCIALGRAPH_SERVICE_NT_GRPC_DIAL_ADDR
+          value: socialgraph-service-nt-ctr:12345
+        image: 10.10.1.1:30000/hometimeline-service-nt-ctr:latest
+        name: hometimeline-service-nt-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 5000m
+      hostname: hometimeline-service-nt-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-1

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: text-service-nt-ctr
+  name: text-service-nt-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: text-service-nt-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: text-service-nt-ctr
+    spec:
+      containers:
+      - env:
+        - name: TEXT_SERVICE_NT_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: URLSHORTEN_SERVICE_NT_GRPC_DIAL_ADDR
+          value: urlshorten-service-nt-ctr:12345
+        - name: USERMENTION_SERVICE_NT_GRPC_DIAL_ADDR
+          value: usermention-service-nt-ctr:12345
+        image: 10.10.1.1:30000/text-service-nt-ctr:latest
+        name: text-service-nt-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 8000m
+      hostname: text-service-nt-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-5

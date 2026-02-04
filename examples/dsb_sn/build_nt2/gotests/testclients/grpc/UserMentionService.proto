@@ -1,0 +1,23 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UserMentionService_ComposeUserMentions_Request {
+    sint64 reqID = 1;
+    repeated string usernames = 2;
+}
+
+message UserMentionService_ComposeUserMentions_Response {
+    repeated UserMentionService_UserMention ret0 = 1;
+}
+
+message UserMentionService_UserMention {
+    sint64 UserID = 1;
+    string Username = 2;
+}
+
+service UserMentionService {
+    rpc ComposeUserMentions (UserMentionService_ComposeUserMentions_Request) returns (UserMentionService_ComposeUserMentions_Response) {}
+}
+

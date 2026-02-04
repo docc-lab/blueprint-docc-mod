@@ -4,32 +4,32 @@
 
 node-1:
   - composepost-service-nt-ctr:
-      requests_cpu: 7000
+      # requests_cpu: 12000
       # limits_cpu: 2000
   - hometimeline-cache-nt-ctr:
-      requests_cpu: 2000
+      # requests_cpu: 2000
       # limits_cpu: 2000
   - hometimeline-service-nt-ctr:
-      requests_cpu: 3000
+      # requests_cpu: 5000
     #   limits_cpu: 2000
 
 node-2:
   - social-cache-nt-ctr:
-      requests_cpu: 2000
+      # requests_cpu: 4000
     #   limits_cpu: 2000
   - social-db-nt-ctr:
-      requests_cpu: 20000
+      # requests_cpu: 25000
     #   limits_cpu: 2000
   - socialgraph-service-nt-ctr:
-      requests_cpu: 300
+      # requests_cpu: 6000
     #   limits_cpu: 2000
 
 node-3:
   - uniqueid-service-nt-ctr:
-      requests_cpu: 2000
+      # requests_cpu: 3000
     #   limits_cpu: 2000
   - usermention-service-nt-ctr:
-      requests_cpu: 3000
+      # requests_cpu: 4000
     #   limits_cpu: 2000
   # - wrk2api-service-nt-ctr:
   #     # requests_cpu: 2000
@@ -37,54 +37,54 @@ node-3:
 
 node-4:
   - usertimeline-cache-nt-ctr:
-      requests_cpu: 1000
+      # requests_cpu: 2000
     #   limits_cpu: 2000
   - usertimeline-db-nt-ctr:
-      requests_cpu: 7000
+      # requests_cpu: 11000
     #   limits_cpu: 2000
   - usertimeline-service-nt-ctr:
-      requests_cpu: 8000
+      # requests_cpu: 8000
     #   limits_cpu: 2000
 
 node-5:
   - media-service-nt-ctr:
-      requests_cpu: 2000
+      # requests_cpu: 2000
     #   limits_cpu: 2000
   - text-service-nt-ctr:
-      requests_cpu: 4000
+      # requests_cpu: 8000
     #   limits_cpu: 2000
   - userid-service-nt-ctr:
-      requests_cpu: 4000
+      # requests_cpu: 6000
     #   limits_cpu: 2000
 
 node-6:
   - post-cache-nt-ctr:
-      requests_cpu: 1000
+      # requests_cpu: 2000
     #   limits_cpu: 2000
   - post-db-nt-ctr:
-      requests_cpu: 1000
+      # requests_cpu: 3000
     #   limits_cpu: 2000
   - post-storage-service-nt-ctr:
-      requests_cpu: 3000
+      # requests_cpu: 5000
     #   limits_cpu: 2000
 
 node-7:
   - urlshorten-db-nt-ctr:
-      requests_cpu: 1000
+      # requests_cpu: 2000
     #   limits_cpu: 2000
   - urlshorten-service-nt-ctr:
-      requests_cpu: 3000
+      # requests_cpu: 5000
     #   limits_cpu: 2000
 
 node-8:
   - user-service-nt-ctr:
-      requests_cpu: 2000
+      # requests_cpu: 3000
     #   limits_cpu: 2000
   - user-cache-nt-ctr:
-      requests_cpu: 1000
+      # requests_cpu: 2000
     #   limits_cpu: 2000
   - user-db-nt-ctr:
-      requests_cpu: 1000
+      # requests_cpu: 2000
     #   limits_cpu: 2000
   
 node-9:

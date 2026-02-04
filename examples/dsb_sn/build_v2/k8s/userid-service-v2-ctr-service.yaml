@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v2/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: userid-service-v2-ctr
+  name: userid-service-v2-ctr
+spec:
+  ports:
+  - name: '12368'
+    port: 12368
+    targetPort: 12345
+  - name: '12345'
+    port: 12345
+    targetPort: 12345
+  selector:
+    io.kompose.service: userid-service-v2-ctr

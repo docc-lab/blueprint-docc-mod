@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v2/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: userid-service-v2-ctr
+  name: userid-service-v2-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: userid-service-v2-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v2/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: userid-service-v2-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_V2_DIAL_ADDR
+          value: otelcol-v2-ctr:4317
+        - name: USERID_SERVICE_V2_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: USER_CACHE_V2_DIAL_ADDR
+          value: user-cache-v2-ctr:6379
+        - name: USER_DB_V2_DIAL_ADDR
+          value: user-db-v2-ctr:27017
+        image: 10.10.1.1:30000/userid-service-v2-ctr:latest
+        name: userid-service-v2-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 6000m
+      hostname: userid-service-v2-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-5

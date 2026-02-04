@@ -1,0 +1,296 @@
+
+version: '3'
+services:
+
+  composepost_service_nt2_ctr:
+    build:
+      context: composepost_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: composepost_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${COMPOSEPOST_SERVICE_NT2_GRPC_BIND_ADDR?composepost_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - COMPOSEPOST_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+     - HOMETIMELINE_SERVICE_NT2_GRPC_DIAL_ADDR=hometimeline_service_nt2_ctr:12345
+     - MEDIA_SERVICE_NT2_GRPC_DIAL_ADDR=media_service_nt2_ctr:12345
+     - POST_STORAGE_SERVICE_NT2_GRPC_DIAL_ADDR=post_storage_service_nt2_ctr:12345
+     - TEXT_SERVICE_NT2_GRPC_DIAL_ADDR=text_service_nt2_ctr:12345
+     - UNIQUEID_SERVICE_NT2_GRPC_DIAL_ADDR=uniqueid_service_nt2_ctr:12345
+     - USERTIMELINE_SERVICE_NT2_GRPC_DIAL_ADDR=usertimeline_service_nt2_ctr:12345
+     - USER_SERVICE_NT2_GRPC_DIAL_ADDR=user_service_nt2_ctr:12345
+    restart: always
+
+  hometimeline_cache_nt2_ctr:
+    image: redis
+    hostname: hometimeline_cache_nt2_ctr
+    expose:
+     - "6379"
+    ports:
+     - "${HOMETIMELINE_CACHE_NT2_BIND_ADDR?hometimeline_cache_nt2.bind_addr must be set by the calling environment}:6379"
+    restart: always
+
+  hometimeline_service_nt2_ctr:
+    build:
+      context: hometimeline_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: hometimeline_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${HOMETIMELINE_SERVICE_NT2_GRPC_BIND_ADDR?hometimeline_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - HOMETIMELINE_CACHE_NT2_DIAL_ADDR=hometimeline_cache_nt2_ctr:6379
+     - HOMETIMELINE_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+     - POST_STORAGE_SERVICE_NT2_GRPC_DIAL_ADDR=post_storage_service_nt2_ctr:12345
+     - SOCIALGRAPH_SERVICE_NT2_GRPC_DIAL_ADDR=socialgraph_service_nt2_ctr:12345
+    restart: always
+
+  media_service_nt2_ctr:
+    build:
+      context: media_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: media_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${MEDIA_SERVICE_NT2_GRPC_BIND_ADDR?media_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - MEDIA_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+    restart: always
+
+  post_cache_nt2_ctr:
+    image: redis
+    hostname: post_cache_nt2_ctr
+    expose:
+     - "6379"
+    ports:
+     - "${POST_CACHE_NT2_BIND_ADDR?post_cache_nt2.bind_addr must be set by the calling environment}:6379"
+    restart: always
+
+  post_db_nt2_ctr:
+    image: mongo:4.4
+    hostname: post_db_nt2_ctr
+    expose:
+     - "27017"
+    ports:
+     - "${POST_DB_NT2_BIND_ADDR?post_db_nt2.bind_addr must be set by the calling environment}:27017"
+    restart: always
+
+  post_storage_service_nt2_ctr:
+    build:
+      context: post_storage_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: post_storage_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${POST_STORAGE_SERVICE_NT2_GRPC_BIND_ADDR?post_storage_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - POST_CACHE_NT2_DIAL_ADDR=post_cache_nt2_ctr:6379
+     - POST_DB_NT2_DIAL_ADDR=post_db_nt2_ctr:27017
+     - POST_STORAGE_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+    restart: always
+
+  social_cache_nt2_ctr:
+    image: redis
+    hostname: social_cache_nt2_ctr
+    expose:
+     - "6379"
+    ports:
+     - "${SOCIAL_CACHE_NT2_BIND_ADDR?social_cache_nt2.bind_addr must be set by the calling environment}:6379"
+    restart: always
+
+  social_db_nt2_ctr:
+    image: mongo:4.4
+    hostname: social_db_nt2_ctr
+    expose:
+     - "27017"
+    ports:
+     - "${SOCIAL_DB_NT2_BIND_ADDR?social_db_nt2.bind_addr must be set by the calling environment}:27017"
+    restart: always
+
+  socialgraph_service_nt2_ctr:
+    build:
+      context: socialgraph_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: socialgraph_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${SOCIALGRAPH_SERVICE_NT2_GRPC_BIND_ADDR?socialgraph_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - SOCIALGRAPH_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+     - SOCIAL_CACHE_NT2_DIAL_ADDR=social_cache_nt2_ctr:6379
+     - SOCIAL_DB_NT2_DIAL_ADDR=social_db_nt2_ctr:27017
+     - USERID_SERVICE_NT2_GRPC_DIAL_ADDR=userid_service_nt2_ctr:12345
+    restart: always
+
+  text_service_nt2_ctr:
+    build:
+      context: text_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: text_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${TEXT_SERVICE_NT2_GRPC_BIND_ADDR?text_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - TEXT_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+     - URLSHORTEN_SERVICE_NT2_GRPC_DIAL_ADDR=urlshorten_service_nt2_ctr:12345
+     - USERMENTION_SERVICE_NT2_GRPC_DIAL_ADDR=usermention_service_nt2_ctr:12345
+    restart: always
+
+  uniqueid_service_nt2_ctr:
+    build:
+      context: uniqueid_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: uniqueid_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${UNIQUEID_SERVICE_NT2_GRPC_BIND_ADDR?uniqueid_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - UNIQUEID_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+    restart: always
+
+  urlshorten_db_nt2_ctr:
+    image: mongo:4.4
+    hostname: urlshorten_db_nt2_ctr
+    expose:
+     - "27017"
+    ports:
+     - "${URLSHORTEN_DB_NT2_BIND_ADDR?urlshorten_db_nt2.bind_addr must be set by the calling environment}:27017"
+    restart: always
+
+  urlshorten_service_nt2_ctr:
+    build:
+      context: urlshorten_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: urlshorten_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${URLSHORTEN_SERVICE_NT2_GRPC_BIND_ADDR?urlshorten_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - URLSHORTEN_DB_NT2_DIAL_ADDR=urlshorten_db_nt2_ctr:27017
+     - URLSHORTEN_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+    restart: always
+
+  user_cache_nt2_ctr:
+    image: redis
+    hostname: user_cache_nt2_ctr
+    expose:
+     - "6379"
+    ports:
+     - "${USER_CACHE_NT2_BIND_ADDR?user_cache_nt2.bind_addr must be set by the calling environment}:6379"
+    restart: always
+
+  user_db_nt2_ctr:
+    image: mongo:4.4
+    hostname: user_db_nt2_ctr
+    expose:
+     - "27017"
+    ports:
+     - "${USER_DB_NT2_BIND_ADDR?user_db_nt2.bind_addr must be set by the calling environment}:27017"
+    restart: always
+
+  user_service_nt2_ctr:
+    build:
+      context: user_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: user_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${USER_SERVICE_NT2_GRPC_BIND_ADDR?user_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - SOCIALGRAPH_SERVICE_NT2_GRPC_DIAL_ADDR=socialgraph_service_nt2_ctr:12345
+     - USER_CACHE_NT2_DIAL_ADDR=user_cache_nt2_ctr:6379
+     - USER_DB_NT2_DIAL_ADDR=user_db_nt2_ctr:27017
+     - USER_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+    restart: always
+
+  userid_service_nt2_ctr:
+    build:
+      context: userid_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: userid_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${USERID_SERVICE_NT2_GRPC_BIND_ADDR?userid_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - USERID_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+     - USER_CACHE_NT2_DIAL_ADDR=user_cache_nt2_ctr:6379
+     - USER_DB_NT2_DIAL_ADDR=user_db_nt2_ctr:27017
+    restart: always
+
+  usermention_service_nt2_ctr:
+    build:
+      context: usermention_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: usermention_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${USERMENTION_SERVICE_NT2_GRPC_BIND_ADDR?usermention_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - USERMENTION_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+     - USER_CACHE_NT2_DIAL_ADDR=user_cache_nt2_ctr:6379
+     - USER_DB_NT2_DIAL_ADDR=user_db_nt2_ctr:27017
+    restart: always
+
+  usertimeline_cache_nt2_ctr:
+    image: redis
+    hostname: usertimeline_cache_nt2_ctr
+    expose:
+     - "6379"
+    ports:
+     - "${USERTIMELINE_CACHE_NT2_BIND_ADDR?usertimeline_cache_nt2.bind_addr must be set by the calling environment}:6379"
+    restart: always
+
+  usertimeline_db_nt2_ctr:
+    image: mongo:4.4
+    hostname: usertimeline_db_nt2_ctr
+    expose:
+     - "27017"
+    ports:
+     - "${USERTIMELINE_DB_NT2_BIND_ADDR?usertimeline_db_nt2.bind_addr must be set by the calling environment}:27017"
+    restart: always
+
+  usertimeline_service_nt2_ctr:
+    build:
+      context: usertimeline_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: usertimeline_service_nt2_ctr
+    expose:
+     - "12345"
+    ports:
+     - "${USERTIMELINE_SERVICE_NT2_GRPC_BIND_ADDR?usertimeline_service_nt2.grpc.bind_addr must be set by the calling environment}:12345"
+    environment:
+     - POST_STORAGE_SERVICE_NT2_GRPC_DIAL_ADDR=post_storage_service_nt2_ctr:12345
+     - USERTIMELINE_CACHE_NT2_DIAL_ADDR=usertimeline_cache_nt2_ctr:6379
+     - USERTIMELINE_DB_NT2_DIAL_ADDR=usertimeline_db_nt2_ctr:27017
+     - USERTIMELINE_SERVICE_NT2_GRPC_BIND_ADDR=0.0.0.0:12345
+    restart: always
+
+  wrk2api_service_nt2_ctr:
+    build:
+      context: wrk2api_service_nt2_ctr
+      dockerfile: ./Dockerfile
+    hostname: wrk2api_service_nt2_ctr
+    expose:
+     - "2000"
+    ports:
+     - "${WRK2API_SERVICE_NT2_HTTP_BIND_ADDR?wrk2api_service_nt2.http.bind_addr must be set by the calling environment}:2000"
+    environment:
+     - COMPOSEPOST_SERVICE_NT2_GRPC_DIAL_ADDR=composepost_service_nt2_ctr:12345
+     - HOMETIMELINE_SERVICE_NT2_GRPC_DIAL_ADDR=hometimeline_service_nt2_ctr:12345
+     - SOCIALGRAPH_SERVICE_NT2_GRPC_DIAL_ADDR=socialgraph_service_nt2_ctr:12345
+     - USERTIMELINE_SERVICE_NT2_GRPC_DIAL_ADDR=usertimeline_service_nt2_ctr:12345
+     - USER_SERVICE_NT2_GRPC_DIAL_ADDR=user_service_nt2_ctr:12345
+     - WRK2API_SERVICE_NT2_HTTP_BIND_ADDR=0.0.0.0:2000
+    restart: always
+

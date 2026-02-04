@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: otelcol-sb-ctr
+  name: otelcol-sb-ctr
+spec:
+  selector:
+    matchLabels:
+      io.kompose.service: otelcol-sb-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: otelcol-sb-ctr
+    spec:
+      containers:
+      - env:
+        - name: JAEGER_SB_OTLP_DIAL_ADDR
+          value: jaeger-sb-ctr:4317
+        image: 10.10.1.1:30000/otelcol-sb-ctr:latest
+        name: otelcol-sb-ctr
+        ports:
+        - containerPort: 4317
+          protocol: TCP
+        - containerPort: 8080
+          protocol: TCP
+      hostname: otelcol-sb-ctr
+      restartPolicy: Always

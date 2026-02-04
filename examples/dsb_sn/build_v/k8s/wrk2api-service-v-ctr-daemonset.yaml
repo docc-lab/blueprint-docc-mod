@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v/k8s
+    kompose.version: 1.37.0 (fb0539e64)
+  labels:
+    io.kompose.service: wrk2api-service-v-ctr
+  name: wrk2api-service-v-ctr
+spec:
+  selector:
+    matchLabels:
+      io.kompose.service: wrk2api-service-v-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v/k8s
+        kompose.version: 1.37.0 (fb0539e64)
+      labels:
+        io.kompose.service: wrk2api-service-v-ctr
+    spec:
+      containers:
+      - env:
+        - name: COMPOSEPOST_SERVICE_V_GRPC_DIAL_ADDR
+          value: composepost-service-v-ctr:12345
+        - name: HOMETIMELINE_SERVICE_V_GRPC_DIAL_ADDR
+          value: hometimeline-service-v-ctr:12345
+        - name: OTELCOL_V_DIAL_ADDR
+          value: otelcol-v-ctr:4317
+        - name: SOCIALGRAPH_SERVICE_V_GRPC_DIAL_ADDR
+          value: socialgraph-service-v-ctr:12345
+        - name: USERTIMELINE_SERVICE_V_GRPC_DIAL_ADDR
+          value: usertimeline-service-v-ctr:12345
+        - name: USER_SERVICE_V_GRPC_DIAL_ADDR
+          value: user-service-v-ctr:12345
+        - name: WRK2API_SERVICE_V_HTTP_BIND_ADDR
+          value: 0.0.0.0:2000
+        image: 10.10.1.1:30000/wrk2api-service-v-ctr:latest
+        name: wrk2api-service-v-ctr
+        ports:
+        - containerPort: 2000
+          protocol: TCP
+      hostname: wrk2api-service-v-ctr
+      restartPolicy: Always
