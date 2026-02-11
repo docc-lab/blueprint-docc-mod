@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb4/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: post-storage-service-sb4-ctr
+  name: post-storage-service-sb4-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: post-storage-service-sb4-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb4/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: post-storage-service-sb4-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_SB4_DIAL_ADDR
+          value: otelcol-sb4-ctr:4317
+        - name: POST_CACHE_SB4_DIAL_ADDR
+          value: post-cache-sb4-ctr:6379
+        - name: POST_DB_SB4_DIAL_ADDR
+          value: post-db-sb4-ctr:27017
+        - name: POST_STORAGE_SERVICE_SB4_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: GC_INTERVAL_SEC
+          value: '0.01'
+        - name: GOGC
+          value: 'off'
+        image: 10.10.1.1:30000/post-storage-service-sb4-ctr:latest
+        name: post-storage-service-sb4-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 4000m
+      hostname: post-storage-service-sb4-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-6

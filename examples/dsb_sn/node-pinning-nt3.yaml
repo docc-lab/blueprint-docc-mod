@@ -1,0 +1,209 @@
+# # Example configuration for pinning services to nodes
+# # Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# # Service names should match the deployment names (without -deployment.yaml suffix)
+
+# node-1:
+#   - composepost-service-nt3-ctr:
+#       requests_cpu: 7000
+#       # limits_cpu: 2000
+#   - hometimeline-cache-nt3-ctr:
+#       requests_cpu: 2000
+#       # limits_cpu: 2000
+#   - hometimeline-service-nt3-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-2:
+#   - social-cache-nt3-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - social-db-nt3-ctr:
+#       requests_cpu: 20000
+#     #   limits_cpu: 2000
+#   - socialgraph-service-nt3-ctr:
+#       requests_cpu: 300
+#     #   limits_cpu: 2000
+
+# node-3:
+#   - uniqueid-service-nt3-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - usermention-service-nt3-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+#   # - wrk2api-service-nt3-ctr:
+#   #     # requests_cpu: 2000
+#   #   #   limits_cpu: 2000
+
+# node-4:
+#   - usertimeline-cache-nt3-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - usertimeline-db-nt3-ctr:
+#       requests_cpu: 7000
+#     #   limits_cpu: 2000
+#   - usertimeline-service-nt3-ctr:
+#       requests_cpu: 8000
+#     #   limits_cpu: 2000
+
+# node-5:
+#   - media-service-nt3-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - text-service-nt3-ctr:
+#       requests_cpu: 4000
+#     #   limits_cpu: 2000
+#   - userid-service-nt3-ctr:
+#       requests_cpu: 4000
+#     #   limits_cpu: 2000
+
+# node-6:
+#   - post-cache-nt3-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - post-db-nt3-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - post-storage-service-nt3-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-7:
+#   - urlshorten-db-nt3-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - urlshorten-service-nt3-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-8:
+#   - user-service-nt3-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - user-cache-nt3-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - user-db-nt3-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+  
+# node-9:
+#   - jaeger-nt3-ctr:
+#       requests_cpu: 15000
+
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-nt3-ctr:
+      requests_cpu: 10000
+      requests_memory: 500Mi
+      # limits_cpu: 2000
+  - hometimeline-cache-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 5000Mi
+      # limits_cpu: 2000
+  - hometimeline-service-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+
+node-2:
+  - social-cache-nt3-ctr:
+      requests_cpu: 2000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - social-db-nt3-ctr:
+      requests_cpu: 20000
+      requests_memory: 1000Mi
+    #   limits_cpu: 2000
+  - socialgraph-service-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+
+node-3:
+  - uniqueid-service-nt3-ctr:
+      requests_cpu: 3000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - usermention-service-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  # - wrk2api-service-nt3-ctr:
+  #     # requests_cpu: 2000
+  #   #   limits_cpu: 2000
+
+node-4:
+  - usertimeline-cache-nt3-ctr:
+      requests_cpu: 2000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - usertimeline-db-nt3-ctr:
+      requests_cpu: 15000
+      requests_memory: 2000Mi
+    #   limits_cpu: 2000
+  - usertimeline-service-nt3-ctr:
+      requests_cpu: 15000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+
+node-5:
+  - media-service-nt3-ctr:
+      requests_cpu: 2000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - text-service-nt3-ctr:
+      requests_cpu: 5000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - userid-service-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+
+node-6:
+  - post-cache-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - post-db-nt3-ctr:
+      requests_cpu: 3000
+      requests_memory: 5000Mi
+    #   limits_cpu: 2000
+  - post-storage-service-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+
+node-7:
+  - urlshorten-db-nt3-ctr:
+      requests_cpu: 2000
+      requests_memory: 4000Mi
+    #   limits_cpu: 2000
+  - urlshorten-service-nt3-ctr:
+      requests_cpu: 4000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+
+node-8:
+  - user-service-nt3-ctr:
+      requests_cpu: 3000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - user-cache-nt3-ctr:
+      requests_cpu: 3000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  - user-db-nt3-ctr:
+      requests_cpu: 3000
+      requests_memory: 500Mi
+    #   limits_cpu: 2000
+  
+node-9:
+  - jaeger-nt3-ctr:
+      requests_cpu: 20000
+      requests_memory: 60000Mi
+

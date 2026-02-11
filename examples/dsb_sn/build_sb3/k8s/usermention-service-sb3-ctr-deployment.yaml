@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb3/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: usermention-service-sb3-ctr
+  name: usermention-service-sb3-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: usermention-service-sb3-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb3/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: usermention-service-sb3-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_SB3_DIAL_ADDR
+          value: otelcol-sb3-ctr:4317
+        - name: USERMENTION_SERVICE_SB3_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: USER_CACHE_SB3_DIAL_ADDR
+          value: user-cache-sb3-ctr:6379
+        - name: USER_DB_SB3_DIAL_ADDR
+          value: user-db-sb3-ctr:27017
+        image: 10.10.1.1:30000/usermention-service-sb3-ctr:latest
+        name: usermention-service-sb3-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 4000m
+      hostname: usermention-service-sb3-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-3

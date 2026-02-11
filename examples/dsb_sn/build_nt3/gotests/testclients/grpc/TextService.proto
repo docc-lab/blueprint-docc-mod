@@ -1,0 +1,30 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message TextService_ComposeText_Request {
+    sint64 reqID = 1;
+    string text = 2;
+}
+
+message TextService_ComposeText_Response {
+    string ret0 = 1;
+    repeated TextService_UserMention ret1 = 2;
+    repeated TextService_URL ret2 = 3;
+}
+
+message TextService_URL {
+    string ShortenedUrl = 1;
+    string ExpandedUrl = 2;
+}
+
+message TextService_UserMention {
+    sint64 UserID = 1;
+    string Username = 2;
+}
+
+service TextService {
+    rpc ComposeText (TextService_ComposeText_Request) returns (TextService_ComposeText_Response) {}
+}
+

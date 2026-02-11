@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt5/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: hometimeline-service-nt5-ctr
+  name: hometimeline-service-nt5-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hometimeline-service-nt5-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt5/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: hometimeline-service-nt5-ctr
+    spec:
+      containers:
+      - env:
+        - name: HOMETIMELINE_CACHE_NT5_DIAL_ADDR
+          value: hometimeline-cache-nt5-ctr:6379
+        - name: HOMETIMELINE_SERVICE_NT5_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: POST_STORAGE_SERVICE_NT5_GRPC_DIAL_ADDR
+          value: post-storage-service-nt5-ctr:12345
+        - name: SOCIALGRAPH_SERVICE_NT5_GRPC_DIAL_ADDR
+          value: socialgraph-service-nt5-ctr:12345
+        - name: GC_INTERVAL_SEC
+          value: "0.01"
+        - name: GOGC
+          value: "off"
+        image: 10.10.1.1:30000/hometimeline-service-nt5-ctr:latest
+        name: hometimeline-service-nt5-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 4000m
+      hostname: hometimeline-service-nt5-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-1

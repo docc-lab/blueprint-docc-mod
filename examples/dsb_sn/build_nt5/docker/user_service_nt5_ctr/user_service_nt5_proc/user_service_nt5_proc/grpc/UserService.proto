@@ -1,0 +1,70 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UserService_ComposeCreatorWithUserId_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    string username = 3;
+}
+
+message UserService_ComposeCreatorWithUserId_Response {
+    UserService_Creator ret0 = 1;
+}
+
+message UserService_ComposeCreatorWithUsername_Request {
+    sint64 reqID = 1;
+    string username = 2;
+}
+
+message UserService_ComposeCreatorWithUsername_Response {
+    UserService_Creator ret0 = 1;
+}
+
+message UserService_Creator {
+    sint64 UserID = 1;
+    string Username = 2;
+}
+
+message UserService_Login_Request {
+    sint64 reqID = 1;
+    string username = 2;
+    string password = 3;
+}
+
+message UserService_Login_Response {
+    string ret0 = 1;
+}
+
+message UserService_RegisterUserWithId_Request {
+    sint64 reqID = 1;
+    string firstName = 2;
+    string lastName = 3;
+    string username = 4;
+    string password = 5;
+    sint64 userID = 6;
+}
+
+message UserService_RegisterUserWithId_Response {
+}
+
+message UserService_RegisterUser_Request {
+    sint64 reqID = 1;
+    string firstName = 2;
+    string lastName = 3;
+    string username = 4;
+    string password = 5;
+}
+
+message UserService_RegisterUser_Response {
+}
+
+service UserService {
+    rpc ComposeCreatorWithUserId (UserService_ComposeCreatorWithUserId_Request) returns (UserService_ComposeCreatorWithUserId_Response) {}
+    rpc ComposeCreatorWithUsername (UserService_ComposeCreatorWithUsername_Request) returns (UserService_ComposeCreatorWithUsername_Response) {}
+    rpc Login (UserService_Login_Request) returns (UserService_Login_Response) {}
+    rpc RegisterUser (UserService_RegisterUser_Request) returns (UserService_RegisterUser_Response) {}
+    rpc RegisterUserWithId (UserService_RegisterUserWithId_Request) returns (UserService_RegisterUserWithId_Response) {}
+}
+

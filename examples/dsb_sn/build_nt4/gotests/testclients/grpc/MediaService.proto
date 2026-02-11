@@ -1,0 +1,24 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message MediaService_ComposeMedia_Request {
+    sint64 reqID = 1;
+    repeated string mediaTypes = 2;
+    repeated sint64 mediaIds = 3;
+}
+
+message MediaService_ComposeMedia_Response {
+    repeated MediaService_Media ret0 = 1;
+}
+
+message MediaService_Media {
+    sint64 MediaID = 1;
+    string MediaType = 2;
+}
+
+service MediaService {
+    rpc ComposeMedia (MediaService_ComposeMedia_Request) returns (MediaService_ComposeMedia_Response) {}
+}
+

@@ -1,0 +1,141 @@
+package socialnetwork
+
+import (
+	"context"
+	"log"
+	"sync"
+	"time"
+)
+
+// The ComposePostService interface
+type ComposePostService interface {
+	// Compose a post from the provided arguments
+	ComposePost(ctx context.Context, reqID int64, username string, userID int64, text string, mediaIDs []int64, mediaTypes []string, postType int64) (int64, []int64, error)
+}
+
+// Implementation of [ComposePostService]
+type ComposePostServiceImpl struct {
+	postStorageService  PostStorageService
+	userTimelineService UserTimelineService
+	userService         UserService
+	uniqueIDService     UniqueIdService
+	mediaService        MediaService
+	textService         TextService
+	homeTimelineService HomeTimelineService
+}
+
+// Creates a [ComposePostService] instance that creates a post from the provided arguments and connects to the various internal services to store the newly created post and update the state.
+func NewComposePostServiceImpl(ctx context.Context, postStorageService PostStorageService, userTimelineService UserTimelineService, userService UserService, uniqueIDService UniqueIdService, mediaService MediaService, textService TextService, homeTimelineService HomeTimelineService) (ComposePostService, error) {
+	return &ComposePostServiceImpl{postStorageService: postStorageService, userTimelineService: userTimelineService, userService: userService, uniqueIDService: uniqueIDService, mediaService: mediaService, textService: textService, homeTimelineService: homeTimelineService}, nil
+}
+
+// ComposePost implements ComposePostService
+func (c *ComposePostServiceImpl) ComposePost(ctx context.Context, reqID int64, username string, userID int64, text string, mediaIDs []int64, mediaTypes []string, postType int64) (int64, []int64, error) {
+	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
+	var err1, err2, err3, err4 error
+	var uniqueID int64
+	var creator Creator
+	var up_text string
+	var medias []Media
+	var urls []URL
+	var usermentions []UserMention
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		up_text, usermentions, urls, err1 = c.textService.ComposeText(ctx, reqID, text)
+		if err1 != nil {
+			log.Printf("ComposePost: ComposeText FAILED reqID=%d error=%v", reqID, err1)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		medias, err2 = c.mediaService.ComposeMedia(ctx, reqID, mediaTypes, mediaIDs)
+		if err2 != nil {
+			log.Printf("ComposePost: ComposeMedia FAILED reqID=%d error=%v", reqID, err2)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		uniqueID, err3 = c.uniqueIDService.ComposeUniqueId(ctx, reqID, postType)
+		if err3 != nil {
+			log.Printf("ComposePost: ComposeUniqueId FAILED reqID=%d error=%v", reqID, err3)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		creator, err4 = c.userService.ComposeCreatorWithUserId(ctx, reqID, userID, username)
+		if err4 != nil {
+			log.Printf("ComposePost: ComposeCreatorWithUserId FAILED reqID=%d error=%v", reqID, err4)
+		}
+	}()
+	wg.Wait()
+
+	if err1 != nil {
+		log.Printf("ComposePost: ComposeText FAILED reqID=%d error=%v", reqID, err1)
+		return -1, []int64{}, err1
+	}
+	if err2 != nil {
+		log.Printf("ComposePost: ComposeMedia FAILED reqID=%d error=%v", reqID, err2)
+		return -1, []int64{}, err2
+	}
+	if err3 != nil {
+		log.Printf("ComposePost: ComposeUniqueId FAILED reqID=%d error=%v", reqID, err3)
+		return -1, []int64{}, err3
+	}
+	if err4 != nil {
+		log.Printf("ComposePost: ComposeCreatorWithUserId FAILED reqID=%d error=%v", reqID, err4)
+		return -1, []int64{}, err4
+	}
+	var post Post
+	post.PostID = uniqueID
+	post.Creator = creator
+	post.Medias = medias
+	post.Text = up_text
+	post.Urls = urls
+	post.UserMentions = usermentions
+	post.ReqID = reqID
+	post.PostType = postType
+
+	var usermentionIds []int64
+	for _, um := range usermentions {
+		usermentionIds = append(usermentionIds, um.UserID)
+	}
+	var wg2 sync.WaitGroup
+	wg2.Add(3)
+	go func() {
+		defer wg2.Done()
+		err1 = c.postStorageService.StorePost(ctx, reqID, post)
+		if err1 != nil {
+			log.Printf("ComposePost: StorePost FAILED reqID=%d postID=%d error=%v", reqID, uniqueID, err1)
+		}
+	}()
+	go func() {
+		defer wg2.Done()
+		err2 = c.userTimelineService.WriteUserTimeline(ctx, reqID, uniqueID, userID, timestamp)
+		if err2 != nil {
+			log.Printf("ComposePost: WriteUserTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err2)
+		}
+	}()
+	go func() {
+		defer wg2.Done()
+		err3 = c.homeTimelineService.WriteHomeTimeline(ctx, reqID, uniqueID, userID, timestamp, usermentionIds)
+		if err3 != nil {
+			log.Printf("ComposePost: WriteHomeTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err3)
+		}
+	}()
+	wg2.Wait()
+	if err1 != nil {
+		log.Printf("ComposePost: StorePost FAILED reqID=%d postID=%d error=%v", reqID, uniqueID, err1)
+		return uniqueID, usermentionIds, err1
+	}
+	if err2 != nil {
+		log.Printf("ComposePost: WriteUserTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err2)
+		return uniqueID, usermentionIds, err2
+	}
+	if err3 != nil {
+		log.Printf("ComposePost: WriteHomeTimeline FAILED reqID=%d postID=%d userID=%d error=%v", reqID, uniqueID, userID, err3)
+		return uniqueID, usermentionIds, err3
+	}
+	return uniqueID, usermentionIds, nil
+}

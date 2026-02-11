@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb3/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: wrk2api-service-sb3-ctr
+  name: wrk2api-service-sb3-ctr
+spec:
+  selector:
+    matchLabels:
+      io.kompose.service: wrk2api-service-sb3-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb3/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: wrk2api-service-sb3-ctr
+    spec:
+      containers:
+      - env:
+        - name: COMPOSEPOST_SERVICE_SB3_GRPC_DIAL_ADDR
+          value: composepost-service-sb3-ctr:12345
+        - name: HOMETIMELINE_SERVICE_SB3_GRPC_DIAL_ADDR
+          value: hometimeline-service-sb3-ctr:12345
+        - name: OTELCOL_SB3_DIAL_ADDR
+          value: otelcol-sb3-ctr:4317
+        - name: SOCIALGRAPH_SERVICE_SB3_GRPC_DIAL_ADDR
+          value: socialgraph-service-sb3-ctr:12345
+        - name: USERTIMELINE_SERVICE_SB3_GRPC_DIAL_ADDR
+          value: usertimeline-service-sb3-ctr:12345
+        - name: USER_SERVICE_SB3_GRPC_DIAL_ADDR
+          value: user-service-sb3-ctr:12345
+        - name: WRK2API_SERVICE_SB3_HTTP_BIND_ADDR
+          value: 0.0.0.0:2000
+        image: 10.10.1.1:30000/wrk2api-service-sb3-ctr:latest
+        name: wrk2api-service-sb3-ctr
+        ports:
+        - containerPort: 2000
+          protocol: TCP
+      hostname: wrk2api-service-sb3-ctr
+      restartPolicy: Always

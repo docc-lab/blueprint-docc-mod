@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb2/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: social-cache-sb2-ctr
+  name: social-cache-sb2-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: social-cache-sb2-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb2/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: social-cache-sb2-ctr
+    spec:
+      containers:
+      - image: 10.10.1.1:30000/redis:latest
+        name: social-cache-sb2-ctr
+        ports:
+        - containerPort: 6379
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 2000m
+      hostname: social-cache-sb2-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-2

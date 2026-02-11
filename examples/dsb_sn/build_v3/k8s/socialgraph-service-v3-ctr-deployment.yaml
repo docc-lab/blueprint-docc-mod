@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v3/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: socialgraph-service-v3-ctr
+  name: socialgraph-service-v3-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: socialgraph-service-v3-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v3/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: socialgraph-service-v3-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_V3_DIAL_ADDR
+          value: otelcol-v3-ctr:4317
+        - name: SOCIALGRAPH_SERVICE_V3_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: SOCIAL_CACHE_V3_DIAL_ADDR
+          value: social-cache-v3-ctr:6379
+        - name: SOCIAL_DB_V3_DIAL_ADDR
+          value: social-db-v3-ctr:27017
+        - name: USERID_SERVICE_V3_GRPC_DIAL_ADDR
+          value: userid-service-v3-ctr:12345
+        image: 10.10.1.1:30000/socialgraph-service-v3-ctr:latest
+        name: socialgraph-service-v3-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 5000m
+      hostname: socialgraph-service-v3-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-2

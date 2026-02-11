@@ -1,0 +1,31 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UserTimelineService_ReadUserTimeline_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    sint64 start = 3;
+    sint64 stop = 4;
+}
+
+message UserTimelineService_ReadUserTimeline_Response {
+    repeated sint64 ret0 = 1;
+}
+
+message UserTimelineService_WriteUserTimeline_Request {
+    sint64 reqID = 1;
+    sint64 postID = 2;
+    sint64 userID = 3;
+    sint64 timestamp = 4;
+}
+
+message UserTimelineService_WriteUserTimeline_Response {
+}
+
+service UserTimelineService {
+    rpc ReadUserTimeline (UserTimelineService_ReadUserTimeline_Request) returns (UserTimelineService_ReadUserTimeline_Response) {}
+    rpc WriteUserTimeline (UserTimelineService_WriteUserTimeline_Request) returns (UserTimelineService_WriteUserTimeline_Response) {}
+}
+

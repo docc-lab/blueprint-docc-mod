@@ -1,0 +1,18 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UniqueIdService_ComposeUniqueId_Request {
+    sint64 reqID = 1;
+    sint64 postType = 2;
+}
+
+message UniqueIdService_ComposeUniqueId_Response {
+    sint64 ret0 = 1;
+}
+
+service UniqueIdService {
+    rpc ComposeUniqueId (UniqueIdService_ComposeUniqueId_Request) returns (UniqueIdService_ComposeUniqueId_Response) {}
+}
+

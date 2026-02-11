@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v4/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: hometimeline-service-v4-ctr
+  name: hometimeline-service-v4-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: hometimeline-service-v4-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v4/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: hometimeline-service-v4-ctr
+    spec:
+      containers:
+      - env:
+        - name: HOMETIMELINE_CACHE_V4_DIAL_ADDR
+          value: hometimeline-cache-v4-ctr:6379
+        - name: HOMETIMELINE_SERVICE_V4_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: OTELCOL_V4_DIAL_ADDR
+          value: otelcol-v4-ctr:4317
+        - name: POST_STORAGE_SERVICE_V4_GRPC_DIAL_ADDR
+          value: post-storage-service-v4-ctr:12345
+        - name: SOCIALGRAPH_SERVICE_V4_GRPC_DIAL_ADDR
+          value: socialgraph-service-v4-ctr:12345
+        image: 10.10.1.1:30000/hometimeline-service-v4-ctr:latest
+        name: hometimeline-service-v4-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+      hostname: hometimeline-service-v4-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-1

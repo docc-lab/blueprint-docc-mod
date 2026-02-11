@@ -193,8 +193,8 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 		"github.com/blueprint-uservices/blueprint/runtime/core/backend",
 		"strings",
 		"go.opentelemetry.io/otel/sdk/trace",
-		// "sync",
-		// "sync/atomic",
+		"sync",
+		"sync/atomic",
 		"strconv",
 		// "github.com/blueprint-uservices/blueprint/runtime/plugins/critpath",
 	)
@@ -209,8 +209,8 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile = filepath.Join(server.Package.Path, impl.Name+".go")
 	// return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplate, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplateSBridge, server, outputFile)
-	return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplateVanilla, server, outputFile)
+	return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplateSBridge, server, outputFile)
+	// return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplateVanilla, server, outputFile)
 }
 
 func generateClientSideInterfaces(builder golang.ModuleBuilder, iface *gocode.ServiceInterface, outputPackage string) error {

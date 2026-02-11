@@ -1,0 +1,77 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message SocialGraphService_FollowWithUsername_Request {
+    sint64 reqID = 1;
+    string userUsername = 2;
+    string followeeUsername = 3;
+}
+
+message SocialGraphService_FollowWithUsername_Response {
+}
+
+message SocialGraphService_Follow_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    sint64 followeeID = 3;
+}
+
+message SocialGraphService_Follow_Response {
+}
+
+message SocialGraphService_GetFollowees_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+}
+
+message SocialGraphService_GetFollowees_Response {
+    repeated sint64 ret0 = 1;
+}
+
+message SocialGraphService_GetFollowers_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+}
+
+message SocialGraphService_GetFollowers_Response {
+    repeated sint64 ret0 = 1;
+}
+
+message SocialGraphService_InsertUser_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+}
+
+message SocialGraphService_InsertUser_Response {
+}
+
+message SocialGraphService_UnfollowWithUsername_Request {
+    sint64 reqID = 1;
+    string userUsername = 2;
+    string followeeUsername = 3;
+}
+
+message SocialGraphService_UnfollowWithUsername_Response {
+}
+
+message SocialGraphService_Unfollow_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    sint64 followeeID = 3;
+}
+
+message SocialGraphService_Unfollow_Response {
+}
+
+service SocialGraphService {
+    rpc Follow (SocialGraphService_Follow_Request) returns (SocialGraphService_Follow_Response) {}
+    rpc FollowWithUsername (SocialGraphService_FollowWithUsername_Request) returns (SocialGraphService_FollowWithUsername_Response) {}
+    rpc GetFollowees (SocialGraphService_GetFollowees_Request) returns (SocialGraphService_GetFollowees_Response) {}
+    rpc GetFollowers (SocialGraphService_GetFollowers_Request) returns (SocialGraphService_GetFollowers_Response) {}
+    rpc InsertUser (SocialGraphService_InsertUser_Request) returns (SocialGraphService_InsertUser_Response) {}
+    rpc Unfollow (SocialGraphService_Unfollow_Request) returns (SocialGraphService_Unfollow_Response) {}
+    rpc UnfollowWithUsername (SocialGraphService_UnfollowWithUsername_Request) returns (SocialGraphService_UnfollowWithUsername_Response) {}
+}
+

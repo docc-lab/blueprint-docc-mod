@@ -153,16 +153,16 @@ func generateClientHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 	server.Imports.AddPackages("github.com/blueprint-uservices/blueprint/runtime/core/backend")
 	// server.Imports.AddPackages("github.com/blueprint-uservices/blueprint/runtime/plugins/critpath")
 	server.Imports.AddPackages("strings")
-	// server.Imports.AddPackages("sync")
-	// server.Imports.AddPackages("sync/atomic")
+	server.Imports.AddPackages("sync")
+	server.Imports.AddPackages("sync/atomic")
 	server.Imports.AddPackages("strconv")
 	// server.Imports.AddPackages("time")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile := filepath.Join(server.Package.Path, impl.Name+".go")
 	// return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplate, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplateSBridge, server, outputFile)
-	return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplateVanilla, server, outputFile)
+	return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplateSBridge, server, outputFile)
+	// return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplateVanilla, server, outputFile)
 }
 
 type clientArgs struct {

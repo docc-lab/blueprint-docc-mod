@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v8/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: urlshorten-service-v8-ctr
+  name: urlshorten-service-v8-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: urlshorten-service-v8-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_v8/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: urlshorten-service-v8-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_V8_DIAL_ADDR
+          value: otelcol-v8-ctr:4317
+        - name: URLSHORTEN_DB_V8_DIAL_ADDR
+          value: urlshorten-db-v8-ctr:27017
+        - name: URLSHORTEN_SERVICE_V8_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: GC_INTERVAL_SEC
+          value: "0.01"
+        - name: GOGC
+          value: "off"
+        image: 10.10.1.1:30000/urlshorten-service-v8-ctr:latest
+        name: urlshorten-service-v8-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 4000m
+      hostname: urlshorten-service-v8-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-7

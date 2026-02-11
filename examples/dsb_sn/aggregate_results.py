@@ -12,7 +12,9 @@ from collections import defaultdict
 
 
 def parse_run_file(filepath):
-    """Parse a .run file and extract metrics for each load level."""
+    """Parse a .run file and extract metrics for each load level.
+    Detects unit from the Latency line (ms or s) and normalizes all values to milliseconds.
+    """
     results = {}
     
     with open(filepath, 'r') as f:
@@ -29,17 +31,24 @@ def parse_run_file(filepath):
         load_level = int(sections[i])
         section_content = sections[i + 1]
         
-        # Extract Mean from #[Mean = X, ...]
+        # Detect unit from Latency line (first value: ms or s); allow optional space before unit (e.g. "0.008 s")
+        unit_match = re.search(r'Latency\s+[\d.]+\s*(ms|s)\s+', section_content, re.IGNORECASE)
+        scale_to_ms = 1000.0 if (unit_match and unit_match.group(1).lower() == 's') else 1.0
+
+        # Extract Mean from #[Mean = X, ...] (no unit in line; use section unit). If "s", convert to ms.
         mean_match = re.search(r'#\[Mean\s*=\s*([\d.]+)', section_content)
-        mean = float(mean_match.group(1)) if mean_match else None
-        
-        # Extract 99% from Latency line (3rd value)
-        latency_match = re.search(r'Latency\s+[\d.]+ms\s+[\d.]+ms\s+([\d.]+)ms', section_content)
-        p99 = float(latency_match.group(1)) if latency_match else None
-        
-        # Extract Max from #[Max = X, ...]
+        mean = float(mean_match.group(1)) * scale_to_ms if mean_match else None
+
+        # Extract 99% from Latency line (3rd value); accept ms or s (with optional space). If "s", convert to ms.
+        latency_match = re.search(r'Latency\s+[\d.]+\s*(?:ms|s)\s+[\d.]+\s*(?:ms|s)\s+([\d.]+)\s*(ms|s)', section_content, re.IGNORECASE)
+        if latency_match:
+            p99 = float(latency_match.group(1)) * (1000.0 if latency_match.group(2).lower() == 's' else 1.0)
+        else:
+            p99 = None
+
+        # Extract Max from #[Max = X, ...] (no unit in line; use section unit). If "s", convert to ms.
         max_match = re.search(r'#\[Max\s*=\s*([\d.]+)', section_content)
-        max_val = float(max_match.group(1)) if max_match else None
+        max_val = float(max_match.group(1)) * scale_to_ms if max_match else None
         
         if mean is not None and p99 is not None and max_val is not None:
             results[load_level] = {

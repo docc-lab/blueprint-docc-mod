@@ -79,6 +79,8 @@ var mainTemplate = `// {{.Name}} runs the {{.Name}} Golang process.
 //
 //   go run main.go {{range $_, $arg := .Args}}--{{$arg.Name}}=value {{end}}
 //
+// Optional env: GC_INTERVAL_SEC=N (e.g. 30, 1, 0.5, 0.1) to run GC every N seconds; fractional seconds supported. Omit or <=0 for default GC.
+//
 // {{.Name}} requires the following arguments are passed:
 {{- range $_, $arg := .Args }}
 //
@@ -96,11 +98,30 @@ package main
 import (
 	"context"
 	"os"
+	"runtime"
+	"strconv"
+	"time"
 
 	"log/slog"
 )
 
 func main() {
+	// Optional: run GC on a fixed interval to normalize GC frequency (e.g. across tracing vs no-tracing).
+	// Set GC_INTERVAL_SEC to a positive number (e.g. 30, 1, 0.5, 0.1) to trigger runtime.GC() every N seconds; unset or <=0 to leave default GC behavior.
+	if sec := os.Getenv("GC_INTERVAL_SEC"); sec != "" {
+		if secVal, err := strconv.ParseFloat(sec, 64); err == nil && secVal > 0 && secVal < 1e15 {
+			interval := time.Duration(secVal * float64(time.Second))
+			if interval > 0 {
+				go func() {
+					ticker := time.NewTicker(interval)
+					defer ticker.Stop()
+					for range ticker.C {
+						runtime.GC()
+					}
+				}()
+			}
+		}
+	}
 	slog.Info("Running {{.Name}}")
 	n, err := {{.NamespaceConstructor}}("{{.Name}}").Build(context.Background())
 	if err != nil {

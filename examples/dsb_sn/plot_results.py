@@ -6,36 +6,40 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 def parse_aggregate_out(filepath, metric_type):
-    """Parses an aggregate.out file and returns a dict of load_level -> latency value.
+    """Parses an aggregate.out file and returns a dict of load_level -> latency value (in ms).
+    Accepts values in ms or s and normalizes to milliseconds.
     
     Args:
         filepath: Path to aggregate.out file
         metric_type: Either 'mean', 'p99', or 'max'
     
     Returns:
-        Dictionary mapping load_level -> latency value
+        Dictionary mapping load_level -> latency value in ms
     """
     results = {}
     with open(filepath, 'r') as f:
         content = f.read()
     
+    # Unit can be ms or s; capture value and unit, normalize to ms
+    unit_suffix = r'([\d.]+)(ms|s)'
     if metric_type == 'mean':
-        # Match pattern: "50:\n  Mean: 9.913ms, ..."
-        pattern = r'(\d+):\s*\n\s*Mean:\s+([\d.]+)ms'
+        # Match pattern: "50:\n  Mean: 9.913ms, ..." or "9.913s"
+        pattern = r'(\d+):\s*\n\s*Mean:\s+' + unit_suffix
     elif metric_type == 'p99':
-        # Match pattern: "50:\n  Mean: 9.913ms, 99%: 14.28ms, ..."
-        pattern = r'(\d+):\s*\n\s*Mean:\s+[\d.]+ms,\s+99%:\s+([\d.]+)ms'
+        pattern = r'(\d+):\s*\n\s*Mean:\s+[\d.]+(?:ms|s),\s+99%:\s+' + unit_suffix
     elif metric_type == 'max':
-        # Match pattern: "50:\n  Mean: 9.913ms, 99%: 14.28ms, Max: 23.184ms"
-        pattern = r'(\d+):\s*\n\s*Mean:\s+[\d.]+ms,\s+99%:\s+[\d.]+ms,\s+Max:\s+([\d.]+)ms'
+        pattern = r'(\d+):\s*\n\s*Mean:\s+[\d.]+(?:ms|s),\s+99%:\s+[\d.]+(?:ms|s),\s+Max:\s+' + unit_suffix
     else:
         raise ValueError(f"Invalid metric_type: {metric_type}. Must be 'mean', 'p99', or 'max'")
     
     matches = re.findall(pattern, content)
     
-    for load_level_str, latency_str in matches:
+    for load_level_str, latency_str, unit in matches:
         load_level = int(load_level_str)
         latency = float(latency_str)
+        # Convert seconds to milliseconds when value is postfixed with "s"
+        if unit.lower() == 's':
+            latency *= 1000.0
         results[load_level] = latency
     
     return results
@@ -51,7 +55,7 @@ def get_name_from_subdir(subdir_path):
     # Fallback to directory name if no name_ file found
     return subdir_path.name
 
-def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None):
+def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None, clamp_x=False):
     """Plots latency results from all subdirectories.
     
     Args:
@@ -61,6 +65,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         min_data_point: Optional minimum load level to include (inclusive)
         max_data_point: Optional maximum load level to include (inclusive)
         targets: Optional list of subdirectory names to include (if None, includes all)
+        clamp_x: If True, set x-axis range to exactly the min/max of plotted data points
     """
     results_path = Path(results_dir)
     
@@ -116,6 +121,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
     else:
         ordered_keys = sorted(data_to_plot.keys(), key=lambda k: data_to_plot[k][0])
 
+    plotted_load_levels = []
     for key in ordered_keys:
         name, results = data_to_plot[key]
         load_levels = sorted(results.keys())
@@ -130,6 +136,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
             print(f"Warning: No data points in range for {name} after filtering", file=sys.stderr)
             continue
         
+        plotted_load_levels.extend(load_levels)
         latencies = [results[level] for level in load_levels]
         plt.plot(load_levels, latencies, marker='o', label=name, linewidth=2)
     
@@ -152,7 +159,13 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
     plt.title(title, fontsize=14, fontweight='bold')
     plt.legend(loc='best', fontsize=10)
     plt.grid(True, alpha=0.3)
-    plt.xlim(left=0)
+    if clamp_x and plotted_load_levels:
+        x_min, x_max = min(plotted_load_levels), max(plotted_load_levels)
+        x_range = x_max - x_min
+        pad = (x_range * 0.02) if x_range > 0 else 50  # 2% padding each side, or 50 if single point
+        plt.xlim(x_min - pad, x_max + pad)
+    else:
+        plt.xlim(left=0)
     plt.ylim(bottom=0)
     plt.tight_layout()
     
@@ -170,12 +183,13 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...]", file=sys.stderr)
+        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...] [--clamp-x]", file=sys.stderr)
         print("  type: 'mean', 'p99', or 'max'", file=sys.stderr)
         print("  output_filename: optional custom output filename (default: based on type)", file=sys.stderr)
         print("  min_data_point: optional minimum load level to include (inclusive)", file=sys.stderr)
         print("  max_data_point: optional maximum load level to include (inclusive)", file=sys.stderr)
         print("  --targets=...: optional comma-separated list of subdirectory names to include", file=sys.stderr)
+        print("  --clamp-x: set x-axis range to the min/max of plotted data points only", file=sys.stderr)
         sys.exit(1)
     
     results_dir = sys.argv[1]
@@ -186,12 +200,15 @@ if __name__ == "__main__":
     min_data_point = None
     max_data_point = None
     targets = None
+    clamp_x = False
 
-    # Separate flag-style args (e.g., --targets=...) from positional optional args
+    # Separate flag-style args (e.g., --targets=..., --clamp-x) from positional optional args
     raw_optional_args = sys.argv[3:]
     positional_args = []
     for arg in raw_optional_args:
-        if arg.startswith("--targets="):
+        if arg == "--clamp-x":
+            clamp_x = True
+        elif arg.startswith("--targets="):
             value = arg.split("=", 1)[1]
             if value:
                 targets = [name for name in value.split(",") if name]
@@ -221,4 +238,4 @@ if __name__ == "__main__":
         # Third positional is always max_data_point
         max_data_point = int(positional_args[2])
     
-    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets)
+    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets, clamp_x)

@@ -1,0 +1,18 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UserIDService_GetUserId_Request {
+    sint64 reqID = 1;
+    string username = 2;
+}
+
+message UserIDService_GetUserId_Response {
+    sint64 ret0 = 1;
+}
+
+service UserIDService {
+    rpc GetUserId (UserIDService_GetUserId_Request) returns (UserIDService_GetUserId_Response) {}
+}
+

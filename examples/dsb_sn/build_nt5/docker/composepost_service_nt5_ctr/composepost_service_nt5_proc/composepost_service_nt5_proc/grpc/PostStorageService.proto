@@ -1,0 +1,69 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message PostStorageService_Creator {
+    sint64 UserID = 1;
+    string Username = 2;
+}
+
+message PostStorageService_Media {
+    sint64 MediaID = 1;
+    string MediaType = 2;
+}
+
+message PostStorageService_Post {
+    sint64 PostID = 1;
+    PostStorageService_Creator Creator = 2;
+    sint64 ReqID = 3;
+    string Text = 4;
+    repeated PostStorageService_UserMention UserMentions = 5;
+    repeated PostStorageService_Media Medias = 6;
+    repeated PostStorageService_URL Urls = 7;
+    sint64 Timestamp = 8;
+    sint64 PostType = 9;
+}
+
+message PostStorageService_ReadPost_Request {
+    sint64 reqID = 1;
+    sint64 postID = 2;
+}
+
+message PostStorageService_ReadPost_Response {
+    PostStorageService_Post ret0 = 1;
+}
+
+message PostStorageService_ReadPosts_Request {
+    sint64 reqID = 1;
+    repeated sint64 postIDs = 2;
+}
+
+message PostStorageService_ReadPosts_Response {
+    repeated PostStorageService_Post ret0 = 1;
+}
+
+message PostStorageService_StorePost_Request {
+    sint64 reqID = 1;
+    PostStorageService_Post post = 2;
+}
+
+message PostStorageService_StorePost_Response {
+}
+
+message PostStorageService_URL {
+    string ShortenedUrl = 1;
+    string ExpandedUrl = 2;
+}
+
+message PostStorageService_UserMention {
+    sint64 UserID = 1;
+    string Username = 2;
+}
+
+service PostStorageService {
+    rpc ReadPost (PostStorageService_ReadPost_Request) returns (PostStorageService_ReadPost_Response) {}
+    rpc ReadPosts (PostStorageService_ReadPosts_Request) returns (PostStorageService_ReadPosts_Response) {}
+    rpc StorePost (PostStorageService_StorePost_Request) returns (PostStorageService_StorePost_Response) {}
+}
+

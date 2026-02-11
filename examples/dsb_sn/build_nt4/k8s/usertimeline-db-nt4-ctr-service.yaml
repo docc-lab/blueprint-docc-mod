@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt4/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: usertimeline-db-nt4-ctr
+  name: usertimeline-db-nt4-ctr
+spec:
+  ports:
+  - name: '12366'
+    port: 12366
+    targetPort: 27017
+  - name: '27017'
+    port: 27017
+    targetPort: 27017
+  selector:
+    io.kompose.service: usertimeline-db-nt4-ctr
