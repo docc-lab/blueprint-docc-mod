@@ -55,7 +55,7 @@ def get_name_from_subdir(subdir_path):
     # Fallback to directory name if no name_ file found
     return subdir_path.name
 
-def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None, clamp_x=False):
+def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None, clamp_x=False, diff_base=None, diff_perc_base=None):
     """Plots latency results from all subdirectories.
     
     Args:
@@ -66,6 +66,8 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         max_data_point: Optional maximum load level to include (inclusive)
         targets: Optional list of subdirectory names to include (if None, includes all)
         clamp_x: If True, set x-axis range to exactly the min/max of plotted data points
+        diff_base: If set, plot numeric difference (value - base) for each non-base series; value is subdir name
+        diff_perc_base: If set, plot percentage difference ((value - base) / base * 100) for each non-base series
     """
     results_path = Path(results_dir)
     
@@ -110,6 +112,40 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         print(f"Error: No aggregate.out files found in subdirectories of '{results_dir}'", file=sys.stderr)
         sys.exit(1)
     
+    base_key = diff_base or diff_perc_base
+    base_display_name = None  # human-readable name for base, used in ylabel/title when diff/diff_perc
+    if base_key is not None and base_key not in data_to_plot:
+        print(f"Error: Base folder for diff '{base_key}' not found in data (available: {list(data_to_plot.keys())})", file=sys.stderr)
+        sys.exit(1)
+    
+    # When diff or diff-perc is set, convert each series to difference from base (only non-base series plotted)
+    if base_key is not None:
+        base_display_name, base_results = data_to_plot[base_key]
+        new_data = {}
+        for key, (name, results) in data_to_plot.items():
+            if key == base_key:
+                continue
+            if diff_base is not None:
+                # Numeric difference: value - base_value at each load level where base has data
+                diff_results = {}
+                for level, base_val in base_results.items():
+                    if level in results:
+                        diff_results[level] = results[level] - base_val
+                if diff_results:
+                    new_data[key] = (name, diff_results)
+            else:  # diff_perc_base
+                # Percentage difference: (value - base) / base * 100; skip where base == 0
+                diff_results = {}
+                for level, base_val in base_results.items():
+                    if level in results and base_val != 0:
+                        diff_results[level] = (results[level] - base_val) / base_val * 100.0
+                if diff_results:
+                    new_data[key] = (name, diff_results)
+        if not new_data:
+            print(f"Error: No non-base series to plot for diff (base: {base_key})", file=sys.stderr)
+            sys.exit(1)
+        data_to_plot = new_data
+    
     # Create the plot
     plt.figure(figsize=(10, 6))
     
@@ -142,7 +178,32 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
     
     plt.xlabel('Load Level (requests per second)', fontsize=12)
     
-    if metric_type == 'mean':
+    ref_name = base_display_name or base_key or ''
+    if diff_base is not None:
+        suffix = f" diff from {base_key}"
+        ylabel = f'Difference from {ref_name} (ms)'
+        if metric_type == 'mean':
+            title = 'Mean Latency' + suffix
+            default_filename = f'mean_latency_diff_from_{base_key}.png'
+        elif metric_type == 'p99':
+            title = '99th Percentile Latency' + suffix
+            default_filename = f'p99_latency_diff_from_{base_key}.png'
+        else:
+            title = 'Max Latency' + suffix
+            default_filename = f'max_latency_diff_from_{base_key}.png'
+    elif diff_perc_base is not None:
+        suffix = f" % diff from {base_key}"
+        ylabel = f'% difference from {ref_name}'
+        if metric_type == 'mean':
+            title = 'Mean Latency' + suffix
+            default_filename = f'mean_latency_diff_perc_from_{base_key}.png'
+        elif metric_type == 'p99':
+            title = '99th Percentile Latency' + suffix
+            default_filename = f'p99_latency_diff_perc_from_{base_key}.png'
+        else:
+            title = 'Max Latency' + suffix
+            default_filename = f'max_latency_diff_perc_from_{base_key}.png'
+    elif metric_type == 'mean':
         ylabel = 'Mean Latency (ms)'
         title = 'Mean Latency Comparison Across Configurations'
         default_filename = 'mean_latency_comparison.png'
@@ -166,12 +227,21 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         plt.xlim(x_min - pad, x_max + pad)
     else:
         plt.xlim(left=0)
-    plt.ylim(bottom=0)
+    # For diff/diff-perc, y can be negative; otherwise start y-axis at 0
+    if base_key is None:
+        plt.ylim(bottom=0)
     plt.tight_layout()
     
-    # Save the plot
+    # Save the plot; postfix filename when using diff/diff-perc so the file reflects the mode
     if output_filename:
-        output_file = results_path / output_filename
+        name = output_filename
+        if base_key is not None:
+            stem, ext = os.path.splitext(name)
+            if diff_base is not None:
+                name = f"{stem}_diff_from_{base_key}{ext}"
+            else:
+                name = f"{stem}_diff_perc_from_{base_key}{ext}"
+        output_file = results_path / name
     else:
         output_file = results_path / default_filename
     
@@ -183,13 +253,15 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...] [--clamp-x]", file=sys.stderr)
+        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...] [--clamp-x] [--diff=base_dir] [--diff-perc=base_dir]", file=sys.stderr)
         print("  type: 'mean', 'p99', or 'max'", file=sys.stderr)
         print("  output_filename: optional custom output filename (default: based on type)", file=sys.stderr)
         print("  min_data_point: optional minimum load level to include (inclusive)", file=sys.stderr)
         print("  max_data_point: optional maximum load level to include (inclusive)", file=sys.stderr)
         print("  --targets=...: optional comma-separated list of subdirectory names to include", file=sys.stderr)
         print("  --clamp-x: set x-axis range to the min/max of plotted data points only", file=sys.stderr)
+        print("  --diff=base_dir: plot numeric difference (value - base) for each non-base series", file=sys.stderr)
+        print("  --diff-perc=base_dir: plot %% difference ((value - base) / base * 100) for each non-base series", file=sys.stderr)
         sys.exit(1)
     
     results_dir = sys.argv[1]
@@ -201,13 +273,19 @@ if __name__ == "__main__":
     max_data_point = None
     targets = None
     clamp_x = False
+    diff_base = None
+    diff_perc_base = None
 
-    # Separate flag-style args (e.g., --targets=..., --clamp-x) from positional optional args
+    # Separate flag-style args (e.g., --targets=..., --clamp-x, --diff=..., --diff-perc=...) from positional optional args
     raw_optional_args = sys.argv[3:]
     positional_args = []
     for arg in raw_optional_args:
         if arg == "--clamp-x":
             clamp_x = True
+        elif arg.startswith("--diff-perc="):
+            diff_perc_base = arg.split("=", 1)[1].strip()
+        elif arg.startswith("--diff="):
+            diff_base = arg.split("=", 1)[1].strip()
         elif arg.startswith("--targets="):
             value = arg.split("=", 1)[1]
             if value:
@@ -216,6 +294,10 @@ if __name__ == "__main__":
                 targets = []
         else:
             positional_args.append(arg)
+    
+    if diff_base is not None and diff_perc_base is not None:
+        print("Error: --diff and --diff-perc are mutually exclusive", file=sys.stderr)
+        sys.exit(1)
 
     # Now interpret positional_args the same way the script did before
     if len(positional_args) >= 1:
@@ -238,4 +320,4 @@ if __name__ == "__main__":
         # Third positional is always max_data_point
         max_data_point = int(positional_args[2])
     
-    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets, clamp_x)
+    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets, clamp_x, diff_base, diff_perc_base)
