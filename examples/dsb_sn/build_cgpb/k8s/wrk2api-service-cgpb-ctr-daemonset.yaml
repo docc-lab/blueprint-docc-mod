@@ -35,6 +35,10 @@ spec:
           value: user-service-cgpb-ctr:12345
         - name: WRK2API_SERVICE_CGPB_HTTP_BIND_ADDR
           value: 0.0.0.0:2000
+        - name: GC_INTERVAL_SEC
+          value: "0.01"
+        - name: GOGC
+          value: "off"
         image: 10.10.1.1:30000/wrk2api-service-cgpb-ctr:latest
         name: wrk2api-service-cgpb-ctr
         ports:

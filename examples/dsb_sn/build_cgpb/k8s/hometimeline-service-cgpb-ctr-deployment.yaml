@@ -32,6 +32,10 @@ spec:
           value: post-storage-service-cgpb-ctr:12345
         - name: SOCIALGRAPH_SERVICE_CGPB_GRPC_DIAL_ADDR
           value: socialgraph-service-cgpb-ctr:12345
+        - name: GC_INTERVAL_SEC
+          value: "0.01"
+        - name: GOGC
+          value: "off"
         image: 10.10.1.1:30000/hometimeline-service-cgpb-ctr:latest
         name: hometimeline-service-cgpb-ctr
         ports:

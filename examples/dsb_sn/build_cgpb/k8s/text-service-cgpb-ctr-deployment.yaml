@@ -30,6 +30,10 @@ spec:
           value: urlshorten-service-cgpb-ctr:12345
         - name: USERMENTION_SERVICE_CGPB_GRPC_DIAL_ADDR
           value: usermention-service-cgpb-ctr:12345
+        - name: GC_INTERVAL_SEC
+          value: "0.01"
+        - name: GOGC
+          value: "off"
         image: 10.10.1.1:30000/text-service-cgpb-ctr:latest
         name: text-service-cgpb-ctr
         ports:

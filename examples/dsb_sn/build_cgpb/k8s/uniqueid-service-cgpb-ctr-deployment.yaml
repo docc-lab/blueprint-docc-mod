@@ -26,6 +26,10 @@ spec:
           value: otelcol-cgpb-ctr:4317
         - name: UNIQUEID_SERVICE_CGPB_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
+        - name: GC_INTERVAL_SEC
+          value: "0.01"
+        - name: GOGC
+          value: "off"
         image: 10.10.1.1:30000/uniqueid-service-cgpb-ctr:latest
         name: uniqueid-service-cgpb-ctr
         ports:
