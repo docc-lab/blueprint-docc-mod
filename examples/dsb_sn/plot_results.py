@@ -55,7 +55,7 @@ def get_name_from_subdir(subdir_path):
     # Fallback to directory name if no name_ file found
     return subdir_path.name
 
-def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None, clamp_x=False, diff_base=None, diff_perc_base=None):
+def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None, clamp_x=False, diff_base=None, diff_perc_base=None, pdf=False):
     """Plots latency results from all subdirectories.
     
     Args:
@@ -68,6 +68,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         clamp_x: If True, set x-axis range to exactly the min/max of plotted data points
         diff_base: If set, plot numeric difference (value - base) for each non-base series; value is subdir name
         diff_perc_base: If set, plot percentage difference ((value - base) / base * 100) for each non-base series
+        pdf: If True, save as PDF instead of PNG
     """
     results_path = Path(results_dir)
     
@@ -245,6 +246,9 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
     else:
         output_file = results_path / default_filename
     
+    if pdf:
+        output_file = output_file.with_suffix('.pdf')
+    
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Plot saved to {output_file}")
     
@@ -253,13 +257,14 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...] [--clamp-x] [--diff=base_dir] [--diff-perc=base_dir]", file=sys.stderr)
+        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...] [--clamp-x] [--pdf] [--diff=base_dir] [--diff-perc=base_dir]", file=sys.stderr)
         print("  type: 'mean', 'p99', or 'max'", file=sys.stderr)
         print("  output_filename: optional custom output filename (default: based on type)", file=sys.stderr)
         print("  min_data_point: optional minimum load level to include (inclusive)", file=sys.stderr)
         print("  max_data_point: optional maximum load level to include (inclusive)", file=sys.stderr)
         print("  --targets=...: optional comma-separated list of subdirectory names to include", file=sys.stderr)
         print("  --clamp-x: set x-axis range to the min/max of plotted data points only", file=sys.stderr)
+        print("  --pdf: save plot as PDF instead of PNG", file=sys.stderr)
         print("  --diff=base_dir: plot numeric difference (value - base) for each non-base series", file=sys.stderr)
         print("  --diff-perc=base_dir: plot %% difference ((value - base) / base * 100) for each non-base series", file=sys.stderr)
         sys.exit(1)
@@ -273,15 +278,18 @@ if __name__ == "__main__":
     max_data_point = None
     targets = None
     clamp_x = False
+    pdf = False
     diff_base = None
     diff_perc_base = None
 
-    # Separate flag-style args (e.g., --targets=..., --clamp-x, --diff=..., --diff-perc=...) from positional optional args
+    # Separate flag-style args (e.g., --targets=..., --clamp-x, --pdf, --diff=..., --diff-perc=...) from positional optional args
     raw_optional_args = sys.argv[3:]
     positional_args = []
     for arg in raw_optional_args:
         if arg == "--clamp-x":
             clamp_x = True
+        elif arg == "--pdf":
+            pdf = True
         elif arg.startswith("--diff-perc="):
             diff_perc_base = arg.split("=", 1)[1].strip()
         elif arg.startswith("--diff="):
@@ -320,4 +328,4 @@ if __name__ == "__main__":
         # Third positional is always max_data_point
         max_data_point = int(positional_args[2])
     
-    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets, clamp_x, diff_base, diff_perc_base)
+    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets, clamp_x, diff_base, diff_perc_base, pdf)

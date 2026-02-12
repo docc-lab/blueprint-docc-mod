@@ -22,7 +22,7 @@ for iternum in $(seq 0 $LOOP_COUNT); do
     kubectl delete -f build_$TARGET_BUILD/k8s/ --ignore-not-found=true
     sleep 60
     kubectl apply -f build_$TARGET_BUILD/k8s/
-    sleep 60
+    sleep 120
     kubectl patch service wrk2api-service-$TARGET_BUILD-ctr -p '{"spec":{"type":"NodePort"}}'
     kubectl patch service jaeger-$TARGET_BUILD-ctr -p '{"spec":{"type":"NodePort"}}' || true
     NODEPORT=$(kubectl get services wrk2api-service-$TARGET_BUILD-ctr jaeger-$TARGET_BUILD-ctr -o wide 2>/dev/null | sed -n 's/.*2000:\([0-9]*\)\/TCP.*/\1/p' | head -1)

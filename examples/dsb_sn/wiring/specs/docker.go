@@ -36,11 +36,11 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	var containers []string
 	var allServices []string
 
-	jaeger_collector := jaeger.Collector(spec, "jaeger_sb4")
+	jaeger_collector := jaeger.Collector(spec, "jaeger_cgpb")
 	// trace_collector := otelcol.Collector(spec, "otelcol", jaeger_collector, "jaeger")
 	// TODO: Document new fields in a readme + explain how to use otelcol plugin
 	trace_collector := otelcol.CollectorWithConfig(
-		spec, "otelcol_sb4",
+		spec, "otelcol_cgpb",
 		jaeger_collector,
 		"/users/tomislav/opentelemetry-collector-contrib/test-config-bridges.yaml",
 		// "/users/tomislav/opentelemetry-collector-contrib/config-vanilla.yaml",
@@ -81,20 +81,20 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 
 	// Define backends
 	// user_cache := memcached.Container(spec, "user_cache")
-	user_cache := redis.Container(spec, "user_cache_sb4")
-	user_db := mongodb.Container(spec, "user_db_sb4")
+	user_cache := redis.Container(spec, "user_cache_cgpb")
+	user_db := mongodb.Container(spec, "user_db_cgpb")
 	// post_cache := memcached.Container(spec, "post_cache")
-	post_cache := redis.Container(spec, "post_cache_sb4")
-	post_db := mongodb.Container(spec, "post_db_sb4")
+	post_cache := redis.Container(spec, "post_cache_cgpb")
+	post_db := mongodb.Container(spec, "post_db_cgpb")
 	// social_cache := memcached.Container(spec, "social_cache")
-	social_cache := redis.Container(spec, "social_cache_sb4")
-	social_db := mongodb.Container(spec, "social_db_sb4")
-	urlshorten_db := mongodb.Container(spec, "urlshorten_db_sb4")
+	social_cache := redis.Container(spec, "social_cache_cgpb")
+	social_db := mongodb.Container(spec, "social_db_cgpb")
+	urlshorten_db := mongodb.Container(spec, "urlshorten_db_cgpb")
 	// usertimeline_cache := memcached.Container(spec, "usertimeline_cache")
-	usertimeline_cache := redis.Container(spec, "usertimeline_cache_sb4")
-	usertimeline_db := mongodb.Container(spec, "usertimeline_db_sb4")
+	usertimeline_cache := redis.Container(spec, "usertimeline_cache_cgpb")
+	usertimeline_db := mongodb.Container(spec, "usertimeline_db_cgpb")
 	// hometimeline_cache := memcached.Container(spec, "hometimeline_cache")
-	hometimeline_cache := redis.Container(spec, "hometimeline_cache_sb4")
+	hometimeline_cache := redis.Container(spec, "hometimeline_cache_cgpb")
 
 	// Add backends to services list so that their client libraries are used in the generated tests!
 	allServices = append(allServices, user_cache)
@@ -108,88 +108,88 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	allServices = append(allServices, hometimeline_cache)
 
 	// Define url_shorten service
-	urlshorten_service := workflow.Service[socialnetwork.UrlShortenService](spec, "urlshorten_service_sb4", urlshorten_db)
+	urlshorten_service := workflow.Service[socialnetwork.UrlShortenService](spec, "urlshorten_service_cgpb", urlshorten_db)
 	containers = append(containers, applyDockerDefaults(urlshorten_service))
-	// containers = append(containers, "urlshorten_ctr_sb4")
-	allServices = append(allServices, "urlshorten_service_sb4")
+	// containers = append(containers, "urlshorten_ctr_cgpb")
+	allServices = append(allServices, "urlshorten_service_cgpb")
 
 	// Define user_mention service
-	usermention_service := workflow.Service[socialnetwork.UserMentionService](spec, "usermention_service_sb4", user_cache, user_db)
+	usermention_service := workflow.Service[socialnetwork.UserMentionService](spec, "usermention_service_cgpb", user_cache, user_db)
 	containers = append(containers, applyDockerDefaults(usermention_service))
-	// containers = append(containers, "usermention_ctr_sb4")
-	allServices = append(allServices, "usermention_service_sb4")
+	// containers = append(containers, "usermention_ctr_cgpb")
+	allServices = append(allServices, "usermention_service_cgpb")
 
 	// Define post_storage service
-	post_storage_service := workflow.Service[socialnetwork.PostStorageService](spec, "post_storage_service_sb4", post_cache, post_db)
+	post_storage_service := workflow.Service[socialnetwork.PostStorageService](spec, "post_storage_service_cgpb", post_cache, post_db)
 	containers = append(containers, applyDockerDefaults(post_storage_service))
-	// containers = append(containers, "post_storage_ctr_sb4")
-	allServices = append(allServices, "post_storage_service_sb4")
+	// containers = append(containers, "post_storage_ctr_cgpb")
+	allServices = append(allServices, "post_storage_service_cgpb")
 
 	// Define media service
-	media_service := workflow.Service[socialnetwork.MediaService](spec, "media_service_sb4")
+	media_service := workflow.Service[socialnetwork.MediaService](spec, "media_service_cgpb")
 	containers = append(containers, applyDockerDefaults(media_service))
-	// containers = append(containers, "media_ctr_sb4")
-	allServices = append(allServices, "media_service_sb4")
+	// containers = append(containers, "media_ctr_cgpb")
+	allServices = append(allServices, "media_service_cgpb")
 
 	// Define uniqueid service
-	uniqueId_service := workflow.Service[socialnetwork.UniqueIdService](spec, "uniqueid_service_sb4")
+	uniqueId_service := workflow.Service[socialnetwork.UniqueIdService](spec, "uniqueid_service_cgpb")
 	containers = append(containers, applyDockerDefaults(uniqueId_service))
-	// containers = append(containers, "uniqueid_ctr_sb4")
-	allServices = append(allServices, "uniqueid_service_sb4")
+	// containers = append(containers, "uniqueid_ctr_cgpb")
+	allServices = append(allServices, "uniqueid_service_cgpb")
 
 	// Define user_id service
-	userid_service := workflow.Service[socialnetwork.UserIDService](spec, "userid_service_sb4", user_cache, user_db)
+	userid_service := workflow.Service[socialnetwork.UserIDService](spec, "userid_service_cgpb", user_cache, user_db)
 	containers = append(containers, applyDockerDefaults(userid_service))
-	// containers = append(containers, "userid_ctr_sb4")
-	allServices = append(allServices, "userid_service_sb4")
+	// containers = append(containers, "userid_ctr_cgpb")
+	allServices = append(allServices, "userid_service_cgpb")
 
 	// Define social_graph service
-	socialgraph_service := workflow.Service[socialnetwork.SocialGraphService](spec, "socialgraph_service_sb4", social_cache, social_db, userid_service)
+	socialgraph_service := workflow.Service[socialnetwork.SocialGraphService](spec, "socialgraph_service_cgpb", social_cache, social_db, userid_service)
 	containers = append(containers, applyDockerDefaults(socialgraph_service))
-	// containers = append(containers, "socialgraph_ctr_sb4")
-	allServices = append(allServices, "socialgraph_service_sb4")
+	// containers = append(containers, "socialgraph_ctr_cgpb")
+	allServices = append(allServices, "socialgraph_service_cgpb")
 
 	// Define home_timeline service
-	hometimeline_service := workflow.Service[socialnetwork.HomeTimelineService](spec, "hometimeline_service_sb4", hometimeline_cache, post_storage_service, socialgraph_service)
+	hometimeline_service := workflow.Service[socialnetwork.HomeTimelineService](spec, "hometimeline_service_cgpb", hometimeline_cache, post_storage_service, socialgraph_service)
 	containers = append(containers, applyDockerDefaults(hometimeline_service))
-	// containers = append(containers, "hometimeline_ctr_sb4")
-	allServices = append(allServices, "hometimeline_service_sb4")
+	// containers = append(containers, "hometimeline_ctr_cgpb")
+	allServices = append(allServices, "hometimeline_service_cgpb")
 
 	// Define user service
-	user_service := workflow.Service[socialnetwork.UserService](spec, "user_service_sb4", user_cache, user_db, socialgraph_service, "secret")
+	user_service := workflow.Service[socialnetwork.UserService](spec, "user_service_cgpb", user_cache, user_db, socialgraph_service, "secret")
 	containers = append(containers, applyDockerDefaults(user_service))
-	// containers = append(containers, "user_ctr_sb4")
-	allServices = append(allServices, "user_service_sb4")
+	// containers = append(containers, "user_ctr_cgpb")
+	allServices = append(allServices, "user_service_cgpb")
 
 	// Define text service
-	text_service := workflow.Service[socialnetwork.TextService](spec, "text_service_sb4", urlshorten_service, usermention_service)
+	text_service := workflow.Service[socialnetwork.TextService](spec, "text_service_cgpb", urlshorten_service, usermention_service)
 	containers = append(containers, applyDockerDefaults(text_service))
-	// containers = append(containers, "text_ctr_sb4")
-	allServices = append(allServices, "text_service_sb4")
+	// containers = append(containers, "text_ctr_cgpb")
+	allServices = append(allServices, "text_service_cgpb")
 
 	// Define user_timeline service
-	usertimeline_service := workflow.Service[socialnetwork.UserTimelineService](spec, "usertimeline_service_sb4", usertimeline_cache, usertimeline_db, post_storage_service)
+	usertimeline_service := workflow.Service[socialnetwork.UserTimelineService](spec, "usertimeline_service_cgpb", usertimeline_cache, usertimeline_db, post_storage_service)
 	containers = append(containers, applyDockerDefaults(usertimeline_service))
-	// containers = append(containers, "usertimeline_ctr_sb4")
-	allServices = append(allServices, "usertimeline_service_sb4")
+	// containers = append(containers, "usertimeline_ctr_cgpb")
+	allServices = append(allServices, "usertimeline_service_cgpb")
 
 	// Define compose post service
-	composepost_service := workflow.Service[socialnetwork.ComposePostService](spec, "composepost_service_sb4", post_storage_service, usertimeline_service, user_service, uniqueId_service, media_service, text_service, hometimeline_service)
+	composepost_service := workflow.Service[socialnetwork.ComposePostService](spec, "composepost_service_cgpb", post_storage_service, usertimeline_service, user_service, uniqueId_service, media_service, text_service, hometimeline_service)
 	containers = append(containers, applyDockerDefaults(composepost_service))
-	// containers = append(containers, "composepost_ctr_sb4")
-	allServices = append(allServices, "composepost_service_sb4")
+	// containers = append(containers, "composepost_ctr_cgpb")
+	allServices = append(allServices, "composepost_service_cgpb")
 
 	// Define frontend service
-	wrk2api_service := workflow.Service[socialnetwork.Wrk2APIService](spec, "wrk2api_service_sb4", user_service, composepost_service, usertimeline_service, hometimeline_service, socialgraph_service)
+	wrk2api_service := workflow.Service[socialnetwork.Wrk2APIService](spec, "wrk2api_service_cgpb", user_service, composepost_service, usertimeline_service, hometimeline_service, socialgraph_service)
 	containers = append(containers, applyHTTPDefaults(wrk2api_service, trace_collector))
 	// containers = append(containers, applyHTTPDefaults(wrk2api_service, ""))
 	// applyHTTPDefaults(wrk2api_service, jaeger_collector)
 	// containers = append(containers, applyHTTPDefaults(wrk2api_service, ""))
-	// containers = append(containers, "wrk2api_ctr_sb4")
-	allServices = append(allServices, "wrk2api_service_sb4")
+	// containers = append(containers, "wrk2api_ctr_cgpb")
+	allServices = append(allServices, "wrk2api_service_cgpb")
 
 	tests := gotests.Test(spec, allServices...)
-	containers = append(containers, tests, "otelcol_sb4", "jaeger_sb4")
+	containers = append(containers, tests, "otelcol_cgpb", "jaeger_cgpb")
 	// containers = append(containers, tests, "jaeger")
 	// containers = append(containers, tests)
 

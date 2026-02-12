@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_cgpb/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: user-service-cgpb-ctr
+  name: user-service-cgpb-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: user-service-cgpb-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_cgpb/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: user-service-cgpb-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_CGPB_DIAL_ADDR
+          value: otelcol-cgpb-ctr:4317
+        - name: SOCIALGRAPH_SERVICE_CGPB_GRPC_DIAL_ADDR
+          value: socialgraph-service-cgpb-ctr:12345
+        - name: USER_CACHE_CGPB_DIAL_ADDR
+          value: user-cache-cgpb-ctr:6379
+        - name: USER_DB_CGPB_DIAL_ADDR
+          value: user-db-cgpb-ctr:27017
+        - name: USER_SERVICE_CGPB_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        image: 10.10.1.1:30000/user-service-cgpb-ctr:latest
+        name: user-service-cgpb-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+      hostname: user-service-cgpb-ctr
+      restartPolicy: Always

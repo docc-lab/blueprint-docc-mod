@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_cgpb/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: user-cache-cgpb-ctr
+  name: user-cache-cgpb-ctr
+spec:
+  ports:
+  - name: '12365'
+    port: 12365
+    targetPort: 6379
+  - name: '6379'
+    port: 6379
+    targetPort: 6379
+  selector:
+    io.kompose.service: user-cache-cgpb-ctr
