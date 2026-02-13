@@ -26,5 +26,10 @@ spec:
         ports:
         - containerPort: 27017
           protocol: TCP
+        resources:
+          requests:
+            cpu: 3000m
       hostname: user-db-pb-ctr
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-8
