@@ -103,7 +103,7 @@ services:
     restart: always
 
   post_db_pb_ctr:
-    image: mongo
+    image: mongo:4.4
     hostname: post_db_pb_ctr
     expose:
      - "27017"
@@ -137,7 +137,7 @@ services:
     restart: always
 
   social_db_pb_ctr:
-    image: mongo
+    image: mongo:4.4
     hostname: social_db_pb_ctr
     expose:
      - "27017"
@@ -193,7 +193,7 @@ services:
     restart: always
 
   urlshorten_db_pb_ctr:
-    image: mongo
+    image: mongo:4.4
     hostname: urlshorten_db_pb_ctr
     expose:
      - "27017"
@@ -226,7 +226,7 @@ services:
     restart: always
 
   user_db_pb_ctr:
-    image: mongo
+    image: mongo:4.4
     hostname: user_db_pb_ctr
     expose:
      - "27017"
@@ -293,7 +293,7 @@ services:
     restart: always
 
   usertimeline_db_pb_ctr:
-    image: mongo
+    image: mongo:4.4
     hostname: usertimeline_db_pb_ctr
     expose:
      - "27017"

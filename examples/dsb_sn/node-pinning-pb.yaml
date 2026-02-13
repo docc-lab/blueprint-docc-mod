@@ -1,78 +1,186 @@
+# # Example configuration for pinning services to nodes
+# # Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# # Service names should match the deployment names (without -deployment.yaml suffix)
+
+# node-1:
+#   - composepost-service-pb-ctr:
+#       requests_cpu: 7000
+#       # limits_cpu: 2000
+#   - hometimeline-cache-pb-ctr:
+#       requests_cpu: 2000
+#       # limits_cpu: 2000
+#   - hometimeline-service-pb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-2:
+#   - social-cache-pb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - social-db-pb-ctr:
+#       requests_cpu: 20000
+#     #   limits_cpu: 2000
+#   - socialgraph-service-pb-ctr:
+#       requests_cpu: 300
+#     #   limits_cpu: 2000
+
+# node-3:
+#   - uniqueid-service-pb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - usermention-service-pb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+#   # - wrk2api-service-pb-ctr:
+#   #     # requests_cpu: 2000
+#   #   #   limits_cpu: 2000
+
+# node-4:
+#   - usertimeline-cache-pb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - usertimeline-db-pb-ctr:
+#       requests_cpu: 7000
+#     #   limits_cpu: 2000
+#   - usertimeline-service-pb-ctr:
+#       requests_cpu: 8000
+#     #   limits_cpu: 2000
+
+# node-5:
+#   - media-service-pb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - text-service-pb-ctr:
+#       requests_cpu: 4000
+#     #   limits_cpu: 2000
+#   - userid-service-pb-ctr:
+#       requests_cpu: 4000
+#     #   limits_cpu: 2000
+
+# node-6:
+#   - post-cache-pb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - post-db-pb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - post-storage-service-pb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-7:
+#   - urlshorten-db-pb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - urlshorten-service-pb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-8:
+#   - user-service-pb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - user-cache-pb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - user-db-pb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+  
+# node-9:
+#   - jaeger-pb-ctr:
+#       requests_cpu: 15000
+
 # Example configuration for pinning services to nodes
 # Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
 # Service names should match the deployment names (without -deployment.yaml suffix)
 
 node-1:
   - composepost-service-pb-ctr:
-      requests_cpu: 5000
+      requests_cpu: 10000
       # limits_cpu: 2000
   - hometimeline-cache-pb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 4000
       # limits_cpu: 2000
   - hometimeline-service-pb-ctr:
-      requests_cpu: 2000
+      requests_cpu: 4000
     #   limits_cpu: 2000
+
+node-2:
   - social-cache-pb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 2000
     #   limits_cpu: 2000
   - social-db-pb-ctr:
-      requests_cpu: 5000
+      requests_cpu: 20000
     #   limits_cpu: 2000
   - socialgraph-service-pb-ctr:
-      requests_cpu: 2000
+      requests_cpu: 4000
     #   limits_cpu: 2000
+
+node-3:
   - uniqueid-service-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - usermention-service-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - usertimeline-cache-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - usertimeline-db-pb-ctr:
-      requests_cpu: 10000
-    #   limits_cpu: 2000
-  - usertimeline-service-pb-ctr:
       requests_cpu: 3000
     #   limits_cpu: 2000
-  - wrk2api-service-pb-ctr:
+  - usermention-service-pb-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  # - wrk2api-service-pb-ctr:
+  #     # requests_cpu: 2000
+  #   #   limits_cpu: 2000
+
+node-4:
+  - usertimeline-cache-pb-ctr:
       requests_cpu: 2000
     #   limits_cpu: 2000
-node-2:
+  - usertimeline-db-pb-ctr:
+      requests_cpu: 15000
+    #   limits_cpu: 2000
+  - usertimeline-service-pb-ctr:
+      requests_cpu: 15000
+    #   limits_cpu: 2000
+
+node-5:
   - media-service-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - post-cache-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - post-db-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - post-storage-service-pb-ctr:
       requests_cpu: 2000
     #   limits_cpu: 2000
   - text-service-pb-ctr:
-      requests_cpu: 3000
-    #   limits_cpu: 2000
-  - urlshorten-db-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - urlshorten-service-pb-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - user-service-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - user-cache-pb-ctr:
-      requests_cpu: 1000
-    #   limits_cpu: 2000
-  - user-db-pb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 5000
     #   limits_cpu: 2000
   - userid-service-pb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 4000
     #   limits_cpu: 2000
-node-3:
+
+node-6:
+  - post-cache-pb-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  - post-db-pb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - post-storage-service-pb-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+
+node-7:
+  - urlshorten-db-pb-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - urlshorten-service-pb-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+
+node-8:
+  - user-service-pb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - user-cache-pb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - user-db-pb-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  
+node-9:
   - jaeger-pb-ctr:
+      requests_cpu: 20000
 

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_pb/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: usermention-service-pb-ctr
+  name: usermention-service-pb-ctr
+spec:
+  ports:
+  - name: '12369'
+    port: 12369
+    targetPort: 12345
+  - name: '12345'
+    port: 12345
+    targetPort: 12345
+  selector:
+    io.kompose.service: usermention-service-pb-ctr
