@@ -69,6 +69,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace blueprint/goproc/composepost_service_pb_proc => ../composepost_service_pb_proc
-
 replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
+
+replace blueprint/goproc/composepost_service_pb_proc => ../composepost_service_pb_proc

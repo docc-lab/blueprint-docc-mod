@@ -2,8 +2,8 @@
 package ot
 
 import (
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserService_OTServerWrapperInterface interface {

@@ -26,10 +26,5 @@ spec:
         ports:
         - containerPort: 27017
           protocol: TCP
-        resources:
-          requests:
-            cpu: 2000m
       hostname: urlshorten-db-pb-ctr
       restartPolicy: Always
-      nodeSelector:
-        kubernetes.io/hostname: node-7

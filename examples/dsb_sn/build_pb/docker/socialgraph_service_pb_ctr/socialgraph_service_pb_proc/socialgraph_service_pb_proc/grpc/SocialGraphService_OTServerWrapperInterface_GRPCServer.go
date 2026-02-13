@@ -2,10 +2,10 @@
 package grpc
 
 import (
+	"net"
 	"google.golang.org/grpc"
 	"blueprint/goproc/socialgraph_service_pb_proc/ot"
 	"context"
-	"net"
 )
 
 type SocialGraphService_GRPCServerHandler struct {

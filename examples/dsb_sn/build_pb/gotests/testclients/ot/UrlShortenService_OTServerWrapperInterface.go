@@ -2,8 +2,8 @@
 package ot
 
 import (
-	"context"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"context"
 )
 
 type UrlShortenService_OTServerWrapperInterface interface {

@@ -9,15 +9,15 @@
 package main
 
 import (
-	"blueprint/goproc/urlshorten_service_pb_proc/grpc"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"blueprint/goproc/urlshorten_service_pb_proc/ot"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"blueprint/goproc/urlshorten_service_pb_proc/grpc"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"blueprint/goproc/urlshorten_service_pb_proc/ot"
 )
 
 // Initializes the urlshorten_service_pb_proc namespace by defining all of the nodes that run

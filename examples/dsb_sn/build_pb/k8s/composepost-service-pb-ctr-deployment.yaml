@@ -41,18 +41,13 @@ spec:
         - name: USER_SERVICE_PB_GRPC_DIAL_ADDR
           value: user-service-pb-ctr:12345
         - name: GC_INTERVAL_SEC
-          value: '0.01'
+          value: "0.01"
         - name: GOGC
-          value: 'off'
+          value: "off"
         image: 10.10.1.1:30000/composepost-service-pb-ctr:latest
         name: composepost-service-pb-ctr
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 10000m
       hostname: composepost-service-pb-ctr
       restartPolicy: Always
-      nodeSelector:
-        kubernetes.io/hostname: node-1

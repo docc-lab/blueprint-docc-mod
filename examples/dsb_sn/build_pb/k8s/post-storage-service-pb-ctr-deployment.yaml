@@ -31,18 +31,13 @@ spec:
         - name: POST_STORAGE_SERVICE_PB_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
         - name: GC_INTERVAL_SEC
-          value: '0.01'
+          value: "0.01"
         - name: GOGC
-          value: 'off'
+          value: "off"
         image: 10.10.1.1:30000/post-storage-service-pb-ctr:latest
         name: post-storage-service-pb-ctr
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 4000m
       hostname: post-storage-service-pb-ctr
       restartPolicy: Always
-      nodeSelector:
-        kubernetes.io/hostname: node-6

@@ -2,9 +2,9 @@
 package retries
 
 import (
+	"context"
 	"blueprint/testclients/ot"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"context"
 )
 
 type MediaService_RetrierClient struct {

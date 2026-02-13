@@ -2,10 +2,10 @@
 package grpc
 
 import (
-	"context"
-	"net"
 	"google.golang.org/grpc"
 	"blueprint/goproc/uniqueid_service_pb_proc/ot"
+	"context"
+	"net"
 )
 
 type UniqueIdService_GRPCServerHandler struct {

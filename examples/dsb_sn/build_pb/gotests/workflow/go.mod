@@ -17,8 +17,8 @@ require (
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f // indirect
 )
 
-replace blueprint/testclients => ../testclients
-
 replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/tests => ../tests
 
 replace github.com/blueprint-uservices/blueprint/runtime => ../runtime
+
+replace blueprint/testclients => ../testclients

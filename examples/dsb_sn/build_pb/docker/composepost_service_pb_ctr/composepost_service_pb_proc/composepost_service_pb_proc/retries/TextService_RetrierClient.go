@@ -2,9 +2,9 @@
 package retries
 
 import (
+	"context"
 	"blueprint/goproc/composepost_service_pb_proc/ot"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"context"
 )
 
 type TextService_RetrierClient struct {

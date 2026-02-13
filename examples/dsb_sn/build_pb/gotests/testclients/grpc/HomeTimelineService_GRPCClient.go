@@ -2,11 +2,11 @@
 package grpc
 
 import (
+	"blueprint/testclients/ot"
 	"context"
 	"time"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/testclients/ot"
 )
 
 type HomeTimelineService_GRPCClient struct {

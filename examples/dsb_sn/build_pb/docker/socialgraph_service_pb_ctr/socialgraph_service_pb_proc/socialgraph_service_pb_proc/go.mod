@@ -48,6 +48,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 )
 
-replace github.com/blueprint-uservices/blueprint/runtime => ../runtime
-
 replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
+
+replace github.com/blueprint-uservices/blueprint/runtime => ../runtime

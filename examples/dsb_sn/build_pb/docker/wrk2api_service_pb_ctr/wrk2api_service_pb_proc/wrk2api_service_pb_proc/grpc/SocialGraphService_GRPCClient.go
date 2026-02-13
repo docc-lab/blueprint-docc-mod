@@ -2,11 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/wrk2api_service_pb_proc/ot"
 	"context"
 	"time"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/wrk2api_service_pb_proc/ot"
 )
 
 type SocialGraphService_GRPCClient struct {

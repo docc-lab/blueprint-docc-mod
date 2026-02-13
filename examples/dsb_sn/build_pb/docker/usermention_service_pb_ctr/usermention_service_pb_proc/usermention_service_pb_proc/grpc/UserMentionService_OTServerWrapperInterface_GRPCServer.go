@@ -2,10 +2,10 @@
 package grpc
 
 import (
-	"google.golang.org/grpc"
-	"blueprint/goproc/usermention_service_pb_proc/ot"
 	"context"
 	"net"
+	"google.golang.org/grpc"
+	"blueprint/goproc/usermention_service_pb_proc/ot"
 )
 
 type UserMentionService_GRPCServerHandler struct {

@@ -2,8 +2,8 @@
 package retries
 
 import (
-	"blueprint/testclients/ot"
 	"context"
+	"blueprint/testclients/ot"
 )
 
 type SocialGraphService_RetrierClient struct {

@@ -2,9 +2,9 @@
 package retries
 
 import (
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"blueprint/testclients/ot"
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserService_RetrierClient struct {

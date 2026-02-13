@@ -9,15 +9,15 @@
 package main
 
 import (
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 	"blueprint/goproc/composepost_service_pb_proc/grpc"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"blueprint/goproc/composepost_service_pb_proc/retries"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"blueprint/goproc/composepost_service_pb_proc/ot"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
+	"blueprint/goproc/composepost_service_pb_proc/retries"
 )
 
 // Initializes the composepost_service_pb_proc namespace by defining all of the nodes that run

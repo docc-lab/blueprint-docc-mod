@@ -69,6 +69,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
-
 replace blueprint/goproc/usertimeline_service_pb_proc => ../usertimeline_service_pb_proc
+
+replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow

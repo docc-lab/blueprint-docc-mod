@@ -10,13 +10,13 @@ package main
 
 import (
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
-	"blueprint/goproc/usertimeline_service_pb_proc/retries"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 	"blueprint/goproc/usertimeline_service_pb_proc/ot"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
+	"blueprint/goproc/usertimeline_service_pb_proc/retries"
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
 	"blueprint/goproc/usertimeline_service_pb_proc/grpc"

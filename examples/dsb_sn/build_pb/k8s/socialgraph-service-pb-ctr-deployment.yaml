@@ -33,18 +33,13 @@ spec:
         - name: USERID_SERVICE_PB_GRPC_DIAL_ADDR
           value: userid-service-pb-ctr:12345
         - name: GC_INTERVAL_SEC
-          value: '0.01'
+          value: "0.01"
         - name: GOGC
-          value: 'off'
+          value: "off"
         image: 10.10.1.1:30000/socialgraph-service-pb-ctr:latest
         name: socialgraph-service-pb-ctr
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 4000m
       hostname: socialgraph-service-pb-ctr
       restartPolicy: Always
-      nodeSelector:
-        kubernetes.io/hostname: node-2

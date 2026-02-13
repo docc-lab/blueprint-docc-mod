@@ -9,17 +9,17 @@
 package main
 
 import (
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
-	"blueprint/goproc/user_service_pb_proc/grpc"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 	"blueprint/goproc/user_service_pb_proc/ot"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
+	"blueprint/goproc/user_service_pb_proc/grpc"
 	"blueprint/goproc/user_service_pb_proc/retries"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 )
 
 // Initializes the user_service_pb_proc namespace by defining all of the nodes that run

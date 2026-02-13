@@ -2,13 +2,13 @@
 package ot
 
 import (
-	"sync/atomic"
 	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
+	"sync/atomic"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 

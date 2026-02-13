@@ -9,14 +9,14 @@
 package main
 
 import (
-	"blueprint/goproc/uniqueid_service_pb_proc/ot"
-	"blueprint/goproc/uniqueid_service_pb_proc/grpc"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"blueprint/goproc/uniqueid_service_pb_proc/ot"
+	"blueprint/goproc/uniqueid_service_pb_proc/grpc"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 )
 
 // Initializes the uniqueid_service_pb_proc namespace by defining all of the nodes that run

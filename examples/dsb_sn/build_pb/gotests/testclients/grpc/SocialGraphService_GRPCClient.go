@@ -2,11 +2,11 @@
 package grpc
 
 import (
+	"context"
 	"time"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"blueprint/testclients/ot"
-	"context"
 )
 
 type SocialGraphService_GRPCClient struct {

@@ -2,8 +2,8 @@
 package retries
 
 import (
-	"blueprint/goproc/composepost_service_pb_proc/ot"
 	"context"
+	"blueprint/goproc/composepost_service_pb_proc/ot"
 )
 
 type UniqueIdService_RetrierClient struct {
