@@ -31,13 +31,18 @@ spec:
         - name: USER_DB_CGPB_DIAL_ADDR
           value: user-db-cgpb-ctr:27017
         - name: GC_INTERVAL_SEC
-          value: "0.01"
+          value: '0.01'
         - name: GOGC
-          value: "off"
+          value: 'off'
         image: 10.10.1.1:30000/userid-service-cgpb-ctr:latest
         name: userid-service-cgpb-ctr
         ports:
         - containerPort: 12345
           protocol: TCP
+        resources:
+          requests:
+            cpu: 4000m
       hostname: userid-service-cgpb-ctr
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-5

@@ -1,16 +1,109 @@
+# # Example configuration for pinning services to nodes
+# # Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# # Service names should match the deployment names (without -deployment.yaml suffix)
+
+# node-1:
+#   - composepost-service-cgpb-ctr:
+#       requests_cpu: 7000
+#       # limits_cpu: 2000
+#   - hometimeline-cache-cgpb-ctr:
+#       requests_cpu: 2000
+#       # limits_cpu: 2000
+#   - hometimeline-service-cgpb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-2:
+#   - social-cache-cgpb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - social-db-cgpb-ctr:
+#       requests_cpu: 20000
+#     #   limits_cpu: 2000
+#   - socialgraph-service-cgpb-ctr:
+#       requests_cpu: 300
+#     #   limits_cpu: 2000
+
+# node-3:
+#   - uniqueid-service-cgpb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - usermention-service-cgpb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+#   # - wrk2api-service-cgpb-ctr:
+#   #     # requests_cpu: 2000
+#   #   #   limits_cpu: 2000
+
+# node-4:
+#   - usertimeline-cache-cgpb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - usertimeline-db-cgpb-ctr:
+#       requests_cpu: 7000
+#     #   limits_cpu: 2000
+#   - usertimeline-service-cgpb-ctr:
+#       requests_cpu: 8000
+#     #   limits_cpu: 2000
+
+# node-5:
+#   - media-service-cgpb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - text-service-cgpb-ctr:
+#       requests_cpu: 4000
+#     #   limits_cpu: 2000
+#   - userid-service-cgpb-ctr:
+#       requests_cpu: 4000
+#     #   limits_cpu: 2000
+
+# node-6:
+#   - post-cache-cgpb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - post-db-cgpb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - post-storage-service-cgpb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-7:
+#   - urlshorten-db-cgpb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - urlshorten-service-cgpb-ctr:
+#       requests_cpu: 3000
+#     #   limits_cpu: 2000
+
+# node-8:
+#   - user-service-cgpb-ctr:
+#       requests_cpu: 2000
+#     #   limits_cpu: 2000
+#   - user-cache-cgpb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+#   - user-db-cgpb-ctr:
+#       requests_cpu: 1000
+#     #   limits_cpu: 2000
+  
+# node-9:
+#   - jaeger-cgpb-ctr:
+#       requests_cpu: 15000
+
 # Example configuration for pinning services to nodes
 # Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
 # Service names should match the deployment names (without -deployment.yaml suffix)
 
 node-1:
   - composepost-service-cgpb-ctr:
-      requests_cpu: 7000
+      requests_cpu: 10000
       # limits_cpu: 2000
   - hometimeline-cache-cgpb-ctr:
-      requests_cpu: 2000
+      requests_cpu: 4000
       # limits_cpu: 2000
   - hometimeline-service-cgpb-ctr:
-      requests_cpu: 3000
+      requests_cpu: 4000
     #   limits_cpu: 2000
 
 node-2:
@@ -21,15 +114,15 @@ node-2:
       requests_cpu: 20000
     #   limits_cpu: 2000
   - socialgraph-service-cgpb-ctr:
-      requests_cpu: 300
+      requests_cpu: 4000
     #   limits_cpu: 2000
 
 node-3:
   - uniqueid-service-cgpb-ctr:
-      requests_cpu: 2000
+      requests_cpu: 3000
     #   limits_cpu: 2000
   - usermention-service-cgpb-ctr:
-      requests_cpu: 3000
+      requests_cpu: 4000
     #   limits_cpu: 2000
   # - wrk2api-service-cgpb-ctr:
   #     # requests_cpu: 2000
@@ -37,13 +130,13 @@ node-3:
 
 node-4:
   - usertimeline-cache-cgpb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 2000
     #   limits_cpu: 2000
   - usertimeline-db-cgpb-ctr:
-      requests_cpu: 7000
+      requests_cpu: 15000
     #   limits_cpu: 2000
   - usertimeline-service-cgpb-ctr:
-      requests_cpu: 8000
+      requests_cpu: 15000
     #   limits_cpu: 2000
 
 node-5:
@@ -51,7 +144,7 @@ node-5:
       requests_cpu: 2000
     #   limits_cpu: 2000
   - text-service-cgpb-ctr:
-      requests_cpu: 4000
+      requests_cpu: 5000
     #   limits_cpu: 2000
   - userid-service-cgpb-ctr:
       requests_cpu: 4000
@@ -59,35 +152,35 @@ node-5:
 
 node-6:
   - post-cache-cgpb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 4000
     #   limits_cpu: 2000
   - post-db-cgpb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 3000
     #   limits_cpu: 2000
   - post-storage-service-cgpb-ctr:
-      requests_cpu: 3000
+      requests_cpu: 4000
     #   limits_cpu: 2000
 
 node-7:
   - urlshorten-db-cgpb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 2000
     #   limits_cpu: 2000
   - urlshorten-service-cgpb-ctr:
-      requests_cpu: 3000
+      requests_cpu: 4000
     #   limits_cpu: 2000
 
 node-8:
   - user-service-cgpb-ctr:
-      requests_cpu: 2000
+      requests_cpu: 3000
     #   limits_cpu: 2000
   - user-cache-cgpb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 3000
     #   limits_cpu: 2000
   - user-db-cgpb-ctr:
-      requests_cpu: 1000
+      requests_cpu: 3000
     #   limits_cpu: 2000
   
 node-9:
   - jaeger-cgpb-ctr:
-      requests_cpu: 15000
+      requests_cpu: 20000
 

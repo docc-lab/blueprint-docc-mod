@@ -27,13 +27,18 @@ spec:
         - name: OTELCOL_CGPB_DIAL_ADDR
           value: otelcol-cgpb-ctr:4317
         - name: GC_INTERVAL_SEC
-          value: "0.01"
+          value: '0.01'
         - name: GOGC
-          value: "off"
+          value: 'off'
         image: 10.10.1.1:30000/media-service-cgpb-ctr:latest
         name: media-service-cgpb-ctr
         ports:
         - containerPort: 12345
           protocol: TCP
+        resources:
+          requests:
+            cpu: 2000m
       hostname: media-service-cgpb-ctr
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-5

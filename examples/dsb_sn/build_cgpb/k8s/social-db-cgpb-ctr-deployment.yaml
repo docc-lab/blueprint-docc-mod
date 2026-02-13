@@ -26,5 +26,10 @@ spec:
         ports:
         - containerPort: 27017
           protocol: TCP
+        resources:
+          requests:
+            cpu: 20000m
       hostname: social-db-cgpb-ctr
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-2
