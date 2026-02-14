@@ -55,7 +55,7 @@ def get_name_from_subdir(subdir_path):
     # Fallback to directory name if no name_ file found
     return subdir_path.name
 
-def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None, clamp_x=False, diff_base=None, diff_perc_base=None, pdf=False):
+def plot_results(results_dir, metric_type, output_filename=None, min_data_point=None, max_data_point=None, targets=None, clamp_x=False, diff_base=None, diff_perc_base=None, pdf=False, notitle=False):
     """Plots latency results from all subdirectories.
     
     Args:
@@ -69,6 +69,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         diff_base: If set, plot numeric difference (value - base) for each non-base series; value is subdir name
         diff_perc_base: If set, plot percentage difference ((value - base) / base * 100) for each non-base series
         pdf: If True, save as PDF instead of PNG
+        notitle: If True, omit the plot title
     """
     results_path = Path(results_dir)
     
@@ -177,50 +178,53 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         latencies = [results[level] for level in load_levels]
         plt.plot(load_levels, latencies, marker='o', label=name, linewidth=2)
     
-    plt.xlabel('Load Level (requests per second)', fontsize=12)
+    plt.xlabel('Load Level (requests per second)', fontsize=24)
     
     ref_name = base_display_name or base_key or ''
     if diff_base is not None:
         suffix = f" diff from {base_key}"
         ylabel = f'Difference from {ref_name} (ms)'
         if metric_type == 'mean':
-            title = 'Mean Latency' + suffix
+            title = 'Mean Response Time' + suffix
             default_filename = f'mean_latency_diff_from_{base_key}.png'
         elif metric_type == 'p99':
-            title = '99th Percentile Latency' + suffix
+            title = '99% Response Time' + suffix
             default_filename = f'p99_latency_diff_from_{base_key}.png'
         else:
-            title = 'Max Latency' + suffix
+            title = 'Max Response Time' + suffix
             default_filename = f'max_latency_diff_from_{base_key}.png'
     elif diff_perc_base is not None:
         suffix = f" % diff from {base_key}"
         ylabel = f'% difference from {ref_name}'
         if metric_type == 'mean':
-            title = 'Mean Latency' + suffix
+            title = 'Mean Response Time' + suffix
             default_filename = f'mean_latency_diff_perc_from_{base_key}.png'
         elif metric_type == 'p99':
-            title = '99th Percentile Latency' + suffix
+            title = '99% Response Time' + suffix
             default_filename = f'p99_latency_diff_perc_from_{base_key}.png'
         else:
-            title = 'Max Latency' + suffix
+            title = 'Max Response Time' + suffix
             default_filename = f'max_latency_diff_perc_from_{base_key}.png'
     elif metric_type == 'mean':
-        ylabel = 'Mean Latency (ms)'
-        title = 'Mean Latency Comparison Across Configurations'
+        ylabel = 'Mean Response Time (ms)'
+        title = 'Mean Response Time Comparison Across Configurations'
         default_filename = 'mean_latency_comparison.png'
     elif metric_type == 'p99':
-        ylabel = '99th Percentile Latency (ms)'
-        title = '99th Percentile Latency Comparison Across Configurations'
+        ylabel = '99% Response Time (ms)'
+        title = '99% Response Time Comparison Across Configurations'
         default_filename = 'p99_latency_comparison.png'
     else:  # max
-        ylabel = 'Max Latency (ms)'
-        title = 'Max Latency Comparison Across Configurations'
+        ylabel = 'Max Response Time (ms)'
+        title = 'Max Response Time Comparison Across Configurations'
         default_filename = 'max_latency_comparison.png'
     
-    plt.ylabel(ylabel, fontsize=12)
-    plt.title(title, fontsize=14, fontweight='bold')
-    plt.legend(loc='best', fontsize=10)
+    plt.ylabel(ylabel, fontsize=24)
+    if not notitle:
+        plt.title(title, fontsize=14, fontweight='bold')
+    plt.legend(loc='best', fontsize=20)
     plt.grid(True, alpha=0.3)
+    ax = plt.gca()
+    ax.tick_params(axis='both', labelsize=16)
     if clamp_x and plotted_load_levels:
         x_min, x_max = min(plotted_load_levels), max(plotted_load_levels)
         x_range = x_max - x_min
@@ -228,6 +232,10 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
         plt.xlim(x_min - pad, x_max + pad)
     else:
         plt.xlim(left=0)
+    # Align x-axis tick labels to actual data points (so start and end points have labels)
+    if plotted_load_levels:
+        ax = plt.gca()
+        ax.set_xticks(sorted(set(plotted_load_levels)))
     # For diff/diff-perc, y can be negative; otherwise start y-axis at 0
     if base_key is None:
         plt.ylim(bottom=0)
@@ -257,7 +265,7 @@ def plot_results(results_dir, metric_type, output_filename=None, min_data_point=
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...] [--clamp-x] [--pdf] [--diff=base_dir] [--diff-perc=base_dir]", file=sys.stderr)
+        print("Usage: python3 plot_results.py <results_directory> <type> [output_filename] [min_data_point] [max_data_point] [--targets=dir1,dir2,...] [--clamp-x] [--pdf] [--notitle] [--diff=base_dir] [--diff-perc=base_dir]", file=sys.stderr)
         print("  type: 'mean', 'p99', or 'max'", file=sys.stderr)
         print("  output_filename: optional custom output filename (default: based on type)", file=sys.stderr)
         print("  min_data_point: optional minimum load level to include (inclusive)", file=sys.stderr)
@@ -265,6 +273,7 @@ if __name__ == "__main__":
         print("  --targets=...: optional comma-separated list of subdirectory names to include", file=sys.stderr)
         print("  --clamp-x: set x-axis range to the min/max of plotted data points only", file=sys.stderr)
         print("  --pdf: save plot as PDF instead of PNG", file=sys.stderr)
+        print("  --notitle: omit the plot title", file=sys.stderr)
         print("  --diff=base_dir: plot numeric difference (value - base) for each non-base series", file=sys.stderr)
         print("  --diff-perc=base_dir: plot %% difference ((value - base) / base * 100) for each non-base series", file=sys.stderr)
         sys.exit(1)
@@ -279,10 +288,11 @@ if __name__ == "__main__":
     targets = None
     clamp_x = False
     pdf = False
+    notitle = False
     diff_base = None
     diff_perc_base = None
 
-    # Separate flag-style args (e.g., --targets=..., --clamp-x, --pdf, --diff=..., --diff-perc=...) from positional optional args
+    # Separate named options (--...) from positional optional args
     raw_optional_args = sys.argv[3:]
     positional_args = []
     for arg in raw_optional_args:
@@ -290,6 +300,8 @@ if __name__ == "__main__":
             clamp_x = True
         elif arg == "--pdf":
             pdf = True
+        elif arg == "--notitle":
+            notitle = True
         elif arg.startswith("--diff-perc="):
             diff_perc_base = arg.split("=", 1)[1].strip()
         elif arg.startswith("--diff="):
@@ -328,4 +340,4 @@ if __name__ == "__main__":
         # Third positional is always max_data_point
         max_data_point = int(positional_args[2])
     
-    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets, clamp_x, diff_base, diff_perc_base, pdf)
+    plot_results(results_dir, metric_type, output_filename, min_data_point, max_data_point, targets, clamp_x, diff_base, diff_perc_base, pdf, notitle)
