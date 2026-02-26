@@ -20,10 +20,12 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/linuxcontainer"
 	"github.com/blueprint-uservices/blueprint/plugins/mongodb"
 	"github.com/blueprint-uservices/blueprint/plugins/mysql"
+	"github.com/blueprint-uservices/blueprint/plugins/opentelemetry"
 	"github.com/blueprint-uservices/blueprint/plugins/retries"
 	"github.com/blueprint-uservices/blueprint/plugins/simple"
 	"github.com/blueprint-uservices/blueprint/plugins/workflow"
 	"github.com/blueprint-uservices/blueprint/plugins/workload"
+	"github.com/blueprint-uservices/blueprint/plugins/jaeger"
 )
 
 // A wiring spec that deploys each service into its own Docker container and using gRPC to communicate between services.
@@ -43,14 +45,14 @@ var Docker = cmdbuilder.SpecOption{
 
 func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 	// Define the trace collector, which will be used by all services
-	// trace_collector := jaeger.Collector(spec, "jaeger")
+	trace_collector := jaeger.Collector(spec, "jaeger")
 
 	// Modifiers that will be applied to all services
 	applyDockerDefaults := func(serviceName string, useHTTP ...bool) {
 		// Golang-level modifiers that add functionality
 		retries.AddRetries(spec, serviceName, 3)
 		clientpool.Create(spec, serviceName, 10)
-		// opentelemetry.Instrument(spec, serviceName, trace_collector)
+		opentelemetry.Instrument(spec, serviceName, trace_collector)
 		if len(useHTTP) > 0 && useHTTP[0] {
 			http.Deploy(spec, serviceName)
 		} else {
@@ -101,6 +103,5 @@ func makeDockerSpec(spec wiring.WiringSpec) ([]string, error) {
 
 	// Instantiate starting with the frontend which will trigger all other services to be instantiated
 	// Also include the tests and wlgen
-	// return []string{"frontend_ctr", wlgen, "gotests", "jaeger"}, nil
-	return []string{"frontend_ctr", wlgen, "gotests"}, nil
+	return []string{"frontend_ctr", wlgen, "gotests", "jaeger"}, nil
 }
