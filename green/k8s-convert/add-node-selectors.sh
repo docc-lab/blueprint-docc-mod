@@ -9,7 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Directory variables (relative to script location - go up one level from k8s-convert)
-SOCKSHOP_DIR="$SCRIPT_DIR/../examples/sockshop"
+SOCKSHOP_DIR="/users/maxLliu/blueprint-docc-mod/examples/sockshop"
 K8S_DIR="$SOCKSHOP_DIR/build/k8s"
 
 # Check if k8s directory exists
