@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb-sn/build_test/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: post-storage-service-pb-ctr
+  name: post-storage-service-pb-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: post-storage-service-pb-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb-sn/build_test/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: post-storage-service-pb-ctr
+    spec:
+      containers:
+      - env:
+        - name: OTELCOL_PB_DIAL_ADDR
+          value: otelcol-pb-ctr:4317
+        - name: POST_CACHE_PB_DIAL_ADDR
+          value: post-cache-pb-ctr:6379
+        - name: POST_DB_PB_DIAL_ADDR
+          value: post-db-pb-ctr:27017
+        - name: POST_STORAGE_SERVICE_PB_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        image: 10.10.1.1:30000/post-storage-service-pb-ctr:latest
+        name: post-storage-service-pb-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+      hostname: post-storage-service-pb-ctr
+      restartPolicy: Always

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb-sn/build_test/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: jaeger-pb-ctr
+  name: jaeger-pb-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: jaeger-pb-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb-sn/build_test/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: jaeger-pb-ctr
+    spec:
+      containers:
+      - env:
+        - name: QUERY_MAX_CLOCK_SKEW_ADJUSTMENT
+          value: 1m
+        image: 10.10.1.1:30000/jaegertracing-all-in-one:latest
+        name: jaeger-pb-ctr
+        ports:
+        - containerPort: 14268
+          protocol: TCP
+        - containerPort: 4317
+          protocol: TCP
+        - containerPort: 16686
+          protocol: TCP
+      hostname: jaeger-pb-ctr
+      restartPolicy: Always
