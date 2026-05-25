@@ -1,0 +1,25 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message ComposePostService_OTServerWrapperInterface_ComposePost_Request {
+    sint64 reqID = 1;
+    string username = 2;
+    sint64 userID = 3;
+    string text = 4;
+    repeated sint64 mediaIDs = 5;
+    repeated string mediaTypes = 6;
+    sint64 postType = 7;
+    string traceCtx = 8;
+}
+
+message ComposePostService_OTServerWrapperInterface_ComposePost_Response {
+    sint64 ret0 = 1;
+    repeated sint64 ret1 = 2;
+}
+
+service ComposePostService_OTServerWrapperInterface {
+    rpc ComposePost (ComposePostService_OTServerWrapperInterface_ComposePost_Request) returns (ComposePostService_OTServerWrapperInterface_ComposePost_Response) {}
+}
+

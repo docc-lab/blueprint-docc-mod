@@ -255,10 +255,19 @@ def update_service_for_daemon(service_content):
     
     return yaml.dump(doc)
 
-def process_output_files(output_dir, daemon_services=None):
-    """Process all YAML files in the output directory."""
+def process_output_files(output_dir, daemon_services=None, no_local_policy=None):
+    """Process all YAML files in the output directory.
+
+    Services in `daemon_services` are converted Deployment → DaemonSet AND
+    by default get `internalTrafficPolicy: Local` on their Service object.
+    Services additionally listed in `no_local_policy` are still converted
+    to DaemonSets but skip the internalTrafficPolicy=Local write, leaving
+    them with the cluster-wide routing default (Cluster).
+    """
     if daemon_services is None:
         daemon_services = []
+    if no_local_policy is None:
+        no_local_policy = []
     
     # First, collect all files that need processing
     yaml_files = list(Path(output_dir).glob('*.yaml'))
@@ -328,7 +337,11 @@ def process_output_files(output_dir, daemon_services=None):
         print(f"  - {f}")
     
     # Now update service files for DaemonSet services (after renaming)
+    skip_set = set(no_local_policy)
     for service_name in daemon_services:
+        if service_name in skip_set:
+            print(f"[INFO] Skipping internalTrafficPolicy: Local for {service_name} (per --no-local-policy)")
+            continue
         service_file = Path(output_dir) / f"{service_name}-service.yaml"
         if service_file.exists():
             print(f"[INFO] Updating service {service_name} to use internalTrafficPolicy: Local")
@@ -347,8 +360,12 @@ def main():
     parser.add_argument('--registry', help='Docker registry URL (e.g., localhost:5000)', required=True)
     parser.add_argument('--skip-build', action='store_true', help='Skip building and pushing Docker images')
     parser.add_argument('--daemon-services', help='Comma-separated list of services to convert to DaemonSets')
+    parser.add_argument('--no-local-policy',
+                        help='Comma-separated list of daemonset services that should NOT get '
+                             'internalTrafficPolicy: Local on their Service (default: every '
+                             'service in --daemon-services gets it).')
     parser.add_argument('--services', help='Comma-separated list of services to build (if not specified, all services will be built)')
-    
+
     args = parser.parse_args()
     
     if not os.path.exists(args.docker_compose_file):
@@ -360,24 +377,36 @@ def main():
     if args.daemon_services:
         daemon_services = [s.strip() for s in args.daemon_services.split(',')]
         print(f"[INFO] Services to be converted to DaemonSets: {daemon_services}")
-    
+
+    # Parse the opt-out list for internalTrafficPolicy: Local
+    no_local_policy = []
+    if args.no_local_policy:
+        no_local_policy = [s.strip() for s in args.no_local_policy.split(',')]
+        # Sanity warning if any of these aren't also daemonsets — the flag is
+        # a no-op for non-daemon services since we only touch Service files
+        # for daemon-services anyway.
+        stray = [s for s in no_local_policy if s not in daemon_services]
+        if stray:
+            print(f"[WARNING] --no-local-policy entries not in --daemon-services (no effect): {stray}")
+        print(f"[INFO] DaemonSet services opting OUT of internalTrafficPolicy: Local: {no_local_policy}")
+
     # Parse selected services if provided
     selected_services = None
     if args.services:
         selected_services = [s.strip() for s in args.services.split(',')]
         print(f"[INFO] Services to be built: {selected_services}")
-    
+
     # Step 1: Run kompose conversion
     print("[INFO] Step 1: Converting docker-compose to Kubernetes manifests")
     k8s_manifests = run_kompose(args.docker_compose_file, args.output_dir)
-    
+
     # Step 2: Update image references in the generated manifests
     print("[INFO] Step 2: Updating image references in Kubernetes manifests")
     update_image_references(args.output_dir, args.registry)
-    
+
     # Step 3: Process the manifests (convert underscores to dashes, etc.)
     print("[INFO] Step 3: Processing Kubernetes manifests")
-    process_output_files(args.output_dir, daemon_services)
+    process_output_files(args.output_dir, daemon_services, no_local_policy)
     
     # Step 4: Build and push Docker images if not skipped
     if not args.skip_build:

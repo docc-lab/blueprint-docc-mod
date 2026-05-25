@@ -1,6 +1,8 @@
 package mongodb
 
 import (
+	"os"
+
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/address"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/backend"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/service"
@@ -10,6 +12,27 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/workflow/workflowspec"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
 )
+
+// MongoImageEnv overrides the docker image used for the prebuilt mongo
+// container. Read at compile time; empty falls back to defaultMongoImage.
+//
+// Examples:
+//
+//	MONGO_IMAGE=mongo:5.0 go run wiring/main.go ...
+//	MONGO_IMAGE=mongo:7.0-jammy go run wiring/main.go ...
+const MongoImageEnv = "MONGO_IMAGE"
+
+// defaultMongoImage is the safe pin used when MONGO_IMAGE is unset.
+// mongo:4.4 is the last tag that runs on hosts without AVX support and
+// also avoids the silent latest-tag pull during cluster bring-up.
+const defaultMongoImage = "mongo:4.4"
+
+func mongoImage() string {
+	if v := os.Getenv(MongoImageEnv); v != "" {
+		return v
+	}
+	return defaultMongoImage
+}
 
 // Blueprint IR Node that represents the server side docker container
 type MongoDBContainer struct {
@@ -68,5 +91,5 @@ func (m *MongoDBContainer) GetInterface(ctx ir.BuildContext) (service.ServiceInt
 // Implements docker.ProvidesContainerInstance
 func (node *MongoDBContainer) AddContainerInstance(target docker.ContainerWorkspace) error {
 	node.BindAddr.Port = 27017
-	return target.DeclarePrebuiltInstance(node.InstanceName, "mongo", node.BindAddr)
+	return target.DeclarePrebuiltInstance(node.InstanceName, mongoImage(), node.BindAddr)
 }

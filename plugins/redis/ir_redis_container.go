@@ -1,6 +1,8 @@
 package redis
 
 import (
+	"os"
+
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/address"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/backend"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/service"
@@ -10,6 +12,27 @@ import (
 	"github.com/blueprint-uservices/blueprint/plugins/workflow/workflowspec"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
 )
+
+// RedisImageEnv overrides the docker image used for the prebuilt redis
+// container. Read at compile time; empty falls back to defaultRedisImage.
+//
+// Examples:
+//
+//	REDIS_IMAGE=redis:7.4 go run wiring/main.go ...
+//	REDIS_IMAGE=redis:8-alpine go run wiring/main.go ...
+const RedisImageEnv = "REDIS_IMAGE"
+
+// defaultRedisImage is the safe pin used when REDIS_IMAGE is unset.
+// 8.6 is the current stable minor (auto-bumps patch releases) while
+// staying off the floating `latest` tag.
+const defaultRedisImage = "redis:8.6"
+
+func redisImage() string {
+	if v := os.Getenv(RedisImageEnv); v != "" {
+		return v
+	}
+	return defaultRedisImage
+}
 
 // Blueprint IR Node that represents a redis container
 type RedisContainer struct {
@@ -69,5 +92,5 @@ func (node *RedisContainer) GetInterface(ctx ir.BuildContext) (service.ServiceIn
 // Implements docker.ProvidesContainerInstance
 func (node *RedisContainer) AddContainerInstance(target docker.ContainerWorkspace) error {
 	node.BindAddr.Port = 6379 // Just use default redis port
-	return target.DeclarePrebuiltInstance(node.InstanceName, "redis", node.BindAddr)
+	return target.DeclarePrebuiltInstance(node.InstanceName, redisImage(), node.BindAddr)
 }

@@ -2,6 +2,7 @@ package dockergen
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/blueprint"
@@ -9,6 +10,25 @@ import (
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/ir"
 	"github.com/blueprint-uservices/blueprint/plugins/linux"
 	"golang.org/x/exp/slog"
+)
+
+// Compile-time env-var hooks for baking Go runtime tuning into every
+// Blueprint-built service container's environment block. Unset → nothing
+// is injected (preserves vanilla Blueprint behavior); set → the value is
+// written verbatim into the compose `environment:` and propagates through
+// kompose into the generated k8s deployment env entries.
+//
+// Common pairing for the docc-mod experiments:
+//
+//	BLUEPRINT_GC_INTERVAL_SEC=0.01 BLUEPRINT_GOGC=off BLUEPRINT_BRIDGE_KIND=sb \
+//	    go run ./wiring -w docker_sb ...
+//
+// Override at deploy time with `kubectl set env deployment --all NAME=VAL`
+// (but that triggers a rolling update — prefer the compile-time hook).
+const (
+	BlueprintGCIntervalEnv = "BLUEPRINT_GC_INTERVAL_SEC"
+	BlueprintGOGCEnv       = "BLUEPRINT_GOGC"
+	BlueprintBridgeKindEnv = "BLUEPRINT_BRIDGE_KIND"
 )
 
 /*
@@ -142,6 +162,21 @@ func (d *DockerComposeFile) addInstance(instanceName string, image string, conta
 		Config:            make(map[string]string),
 		Passthrough:       make(map[string]struct{}),
 	}
+
+	// Only inject Go runtime tuning into BUILT services — prebuilt images
+	// like mongo/redis/jaeger ignore these vars and don't benefit from them.
+	if containerTemplateName != "" {
+		if v := os.Getenv(BlueprintGCIntervalEnv); v != "" {
+			instance.Config["GC_INTERVAL_SEC"] = v
+		}
+		if v := os.Getenv(BlueprintGOGCEnv); v != "" {
+			instance.Config["GOGC"] = v
+		}
+		if v := os.Getenv(BlueprintBridgeKindEnv); v != "" {
+			instance.Config["BRIDGE_KIND"] = v
+		}
+	}
+
 	d.Instances[instanceName] = &instance
 	return nil
 }

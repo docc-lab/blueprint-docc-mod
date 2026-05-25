@@ -17,10 +17,15 @@ func main() {
 	// Configure the location of our tests
 	workflowspec.AddModule("github.com/blueprint-uservices/blueprint/examples/dsb_sn/tests")
 
-	// Build a supported wiring spec
+	// Build a supported wiring spec. Pick a variant with `-w docker_<suffix>`;
+	// the suffix tags every generated identifier and selects the collector
+	// config. See examples/dsb_sn/wiring/specs/docker.go for details.
 	name := "SocialNetwork"
 	cmdbuilder.MakeAndExecute(
 		name,
-		specs.Docker,
+		specs.DockerPB,
+		specs.DockerCGPB,
+		specs.DockerSB,
+		specs.DockerV,
 	)
 }
