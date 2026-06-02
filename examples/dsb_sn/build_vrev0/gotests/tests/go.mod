@@ -35,6 +35,6 @@ require (
 
 replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
 
-replace blueprint/testclients => ../testclients
-
 replace github.com/blueprint-uservices/blueprint/runtime => ../runtime
+
+replace blueprint/testclients => ../testclients

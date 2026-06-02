@@ -2,10 +2,10 @@
 package grpc
 
 import (
-	"context"
-	"net"
 	"google.golang.org/grpc"
 	"blueprint/goproc/hometimeline_service_vrev0_proc/ot"
+	"context"
+	"net"
 )
 
 type HomeTimelineService_GRPCServerHandler struct {

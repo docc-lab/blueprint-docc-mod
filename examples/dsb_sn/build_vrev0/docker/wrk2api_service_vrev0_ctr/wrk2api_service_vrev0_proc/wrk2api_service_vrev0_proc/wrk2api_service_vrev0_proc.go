@@ -10,15 +10,15 @@ package main
 
 import (
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"blueprint/goproc/wrk2api_service_vrev0_proc/ot"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
 	"blueprint/goproc/wrk2api_service_vrev0_proc/grpc"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"blueprint/goproc/wrk2api_service_vrev0_proc/retries"
-	"blueprint/goproc/wrk2api_service_vrev0_proc/http"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
-	"blueprint/goproc/wrk2api_service_vrev0_proc/ot"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"blueprint/goproc/wrk2api_service_vrev0_proc/http"
 )
 
 // Initializes the wrk2api_service_vrev0_proc namespace by defining all of the nodes that run

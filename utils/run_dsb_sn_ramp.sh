@@ -118,7 +118,7 @@ for iternum in $(seq 0 $LOOPS); do
         T=$(( (C + 9) / 10 ))
         printf "\n\n"; echo "rps=$rps (c=$C, t=$T):"
         RANDOM_SEED=$((42*iternum + T*rps/STEP))
-        wrk -t $T -c $C -d ${DURATION}s -L -s $LUA $URL -R $rps 2>&1 | grep -A 2 -e "Thread Stats" -e "Mean"
+        wrk -t $T -c $C -d ${DURATION}s -L -s $LUA $URL -R $rps 2>&1 | grep -A 2 -e "Thread Stats" -e "Mean" -e "Requests/sec" -e "Non-2xx" -e "Socket errors"
         sleep $BREAK
         rps=$((rps + STEP))
     done

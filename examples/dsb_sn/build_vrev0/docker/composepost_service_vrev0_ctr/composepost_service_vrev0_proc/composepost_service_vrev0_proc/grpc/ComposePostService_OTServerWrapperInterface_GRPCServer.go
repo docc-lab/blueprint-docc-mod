@@ -2,10 +2,10 @@
 package grpc
 
 import (
-	"google.golang.org/grpc"
-	"blueprint/goproc/composepost_service_vrev0_proc/ot"
 	"context"
 	"net"
+	"google.golang.org/grpc"
+	"blueprint/goproc/composepost_service_vrev0_proc/ot"
 )
 
 type ComposePostService_GRPCServerHandler struct {

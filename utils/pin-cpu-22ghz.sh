@@ -10,6 +10,13 @@
 #   4. intel_pstate/hwp_dynamic_boost   = 0          → defeat HWP boost
 #   5. cpu*/cpufreq/scaling_governor    = performance → never select a lower P-state
 #
+# Fallback (intel_cpufreq driver, i.e. intel_pstate in passive mode, or
+# acpi-cpufreq): pin via the generic cpufreq sysfs interface instead —
+#   1. cpu*/cpufreq/scaling_min_freq    = 2200000 kHz
+#   2. cpu*/cpufreq/scaling_max_freq    = 2200000 kHz  (also caps turbo)
+#   3. cpu*/cpufreq/scaling_governor    = performance
+# Same end state (every CPU clamped at 2.2 GHz), different sysfs surface.
+#
 # Usage:
 #   pin-cpu-22ghz.sh pin              # apply on this host (auto sudo)
 #   pin-cpu-22ghz.sh check            # print current state (read-only)
@@ -38,34 +45,60 @@ usage() {
 # ------------- local execution (paths under /sys directly) -------------
 
 cmd_check() {
-    local mean_mhz
+    local mean_mhz drv
     mean_mhz=$(awk '/^cpu MHz/ {s+=$4; n++} END {if (n) printf "%.0f", s/n}' /proc/cpuinfo)
-    printf 'host=%-12s gov=%-12s no_turbo=%s perf_pct=%s/%s hwp_boost=%s mean_freq=%s MHz\n' \
-        "$(hostname)" \
-        "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
-        "$(cat /sys/devices/system/cpu/intel_pstate/no_turbo)" \
-        "$(cat /sys/devices/system/cpu/intel_pstate/min_perf_pct)" \
-        "$(cat /sys/devices/system/cpu/intel_pstate/max_perf_pct)" \
-        "$(cat /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null || echo n/a)" \
-        "$mean_mhz"
+    drv=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
+    case "$drv" in
+        intel_pstate)
+            printf 'host=%-12s drv=%-14s gov=%-12s no_turbo=%s perf_pct=%s/%s hwp_boost=%s mean_freq=%s MHz\n' \
+                "$(hostname)" "$drv" \
+                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
+                "$(cat /sys/devices/system/cpu/intel_pstate/no_turbo)" \
+                "$(cat /sys/devices/system/cpu/intel_pstate/min_perf_pct)" \
+                "$(cat /sys/devices/system/cpu/intel_pstate/max_perf_pct)" \
+                "$(cat /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null || echo n/a)" \
+                "$mean_mhz"
+            ;;
+        *)
+            printf 'host=%-12s drv=%-14s gov=%-12s min=%s max=%s mean_freq=%s MHz\n' \
+                "$(hostname)" "$drv" \
+                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
+                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq)" \
+                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq)" \
+                "$mean_mhz"
+            ;;
+    esac
 }
 
 apply_pin() {
     local drv
     drv=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
-    if [[ "$drv" != "intel_pstate" ]]; then
-        echo "ERROR: scaling_driver='$drv' (expected intel_pstate)" >&2
-        exit 2
-    fi
-    echo 1   > /sys/devices/system/cpu/intel_pstate/no_turbo
-    echo 100 > /sys/devices/system/cpu/intel_pstate/max_perf_pct
-    echo 100 > /sys/devices/system/cpu/intel_pstate/min_perf_pct
-    if [[ -w /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ]]; then
-        echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
-    fi
-    for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-        echo performance > "$g"
-    done
+    case "$drv" in
+        intel_pstate)
+            echo 1   > /sys/devices/system/cpu/intel_pstate/no_turbo
+            echo 100 > /sys/devices/system/cpu/intel_pstate/max_perf_pct
+            echo 100 > /sys/devices/system/cpu/intel_pstate/min_perf_pct
+            if [[ -w /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ]]; then
+                echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
+            fi
+            for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+                echo performance > "$g"
+            done
+            ;;
+        intel_cpufreq|acpi-cpufreq)
+            for c in /sys/devices/system/cpu/cpu*/cpufreq; do
+                echo performance > "$c/scaling_governor"
+                # Lower min before raising max (or vice versa) to avoid
+                # the kernel's transient "min > max" rejection.
+                echo 2200000 > "$c/scaling_max_freq"
+                echo 2200000 > "$c/scaling_min_freq"
+            done
+            ;;
+        *)
+            echo "ERROR: scaling_driver='$drv' (no pin path for this driver)" >&2
+            exit 2
+            ;;
+    esac
     sleep 0.4
 }
 
@@ -116,27 +149,55 @@ EOF
 REMOTE_CHECK_SH='
 host=/host
 mean=$(awk "/^cpu MHz/{s+=\$4;n++}END{if(n)printf \"%.0f\",s/n}" "$host/proc/cpuinfo")
-printf "gov=%-12s no_turbo=%s perf_pct=%s/%s hwp_boost=%s mean_freq=%s MHz\n" \
-    "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
-    "$(cat "$host"/sys/devices/system/cpu/intel_pstate/no_turbo)" \
-    "$(cat "$host"/sys/devices/system/cpu/intel_pstate/min_perf_pct)" \
-    "$(cat "$host"/sys/devices/system/cpu/intel_pstate/max_perf_pct)" \
-    "$(cat "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null || echo n/a)" \
-    "$mean"
+drv=$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
+case "$drv" in
+    intel_pstate)
+        printf "drv=%-14s gov=%-12s no_turbo=%s perf_pct=%s/%s hwp_boost=%s mean_freq=%s MHz\n" \
+            "$drv" \
+            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
+            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/no_turbo)" \
+            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/min_perf_pct)" \
+            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/max_perf_pct)" \
+            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null || echo n/a)" \
+            "$mean"
+        ;;
+    *)
+        printf "drv=%-14s gov=%-12s min=%s max=%s mean_freq=%s MHz\n" \
+            "$drv" \
+            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
+            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq)" \
+            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq)" \
+            "$mean"
+        ;;
+esac
 '
 
 REMOTE_PIN_SH='
 host=/host
 drv=$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
-if [ "$drv" != "intel_pstate" ]; then echo "ERROR: scaling_driver=$drv" >&2; exit 2; fi
-echo 1   > "$host"/sys/devices/system/cpu/intel_pstate/no_turbo
-echo 100 > "$host"/sys/devices/system/cpu/intel_pstate/max_perf_pct
-echo 100 > "$host"/sys/devices/system/cpu/intel_pstate/min_perf_pct
-[ -w "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && \
-    echo 0 > "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
-for g in "$host"/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-    echo performance > "$g"
-done
+case "$drv" in
+    intel_pstate)
+        echo 1   > "$host"/sys/devices/system/cpu/intel_pstate/no_turbo
+        echo 100 > "$host"/sys/devices/system/cpu/intel_pstate/max_perf_pct
+        echo 100 > "$host"/sys/devices/system/cpu/intel_pstate/min_perf_pct
+        [ -w "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && \
+            echo 0 > "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
+        for g in "$host"/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+            echo performance > "$g"
+        done
+        ;;
+    intel_cpufreq|acpi-cpufreq)
+        for c in "$host"/sys/devices/system/cpu/cpu*/cpufreq; do
+            echo performance > "$c/scaling_governor"
+            echo 2200000 > "$c/scaling_max_freq"
+            echo 2200000 > "$c/scaling_min_freq"
+        done
+        ;;
+    *)
+        echo "ERROR: scaling_driver=$drv (no pin path)" >&2
+        exit 2
+        ;;
+esac
 sleep 0.4
 '"$REMOTE_CHECK_SH"
 

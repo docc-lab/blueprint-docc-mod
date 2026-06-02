@@ -18,6 +18,8 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Tunables for the export path. ExportInterval bounds the latency between
@@ -28,6 +30,10 @@ import (
 const (
 	ExportInterval = 100 * time.Millisecond
 	BatchSize      = 512
+	// MetricsInterval bounds how often the processor logs its counter
+	// snapshot to slog. 1s matches the ramp's per-step granularity so
+	// you can correlate counter deltas with rps steps in real time.
+	MetricsInterval = 1 * time.Second
 )
 
 // bufferedSpan is one buffered span pending export. The Span proto is kept
@@ -58,8 +64,28 @@ type VanillaProcessor struct {
 	// them to drain before closing the gRPC client.
 	exportWG sync.WaitGroup
 
-	// Metrics for monitoring (atomic — incremented from per-batch goroutines).
-	eventsSent int64
+	// Counters for drop monitoring. All atomic so the metrics goroutine
+	// can read them concurrently with OnEnd / flushBuffer.
+	// Invariants:
+	//   spansReceived = OnEnd entries (input to processor)
+	//   spansFlushed  = spans drained from the buffer in flushBuffer ticks
+	//                 = spansSent + spansDropped (every flushed span
+	//                   either uploads successfully or is counted dropped)
+	//   batchesSent + batchesDropped = batches dispatched
+	// The send_* counters bucket dropped batches by gRPC status code so
+	// you can tell whether drops are deadline / unavailable / queue
+	// overflow / other.
+	spansReceived   int64
+	spansFlushed    int64
+	spansSent       int64
+	batchesSent     int64
+	spansDropped    int64
+	batchesDropped  int64
+	sendDeadline    int64 // gRPC code = DeadlineExceeded
+	sendUnavailable int64 // gRPC code = Unavailable
+	sendExhausted   int64 // gRPC code = ResourceExhausted
+	sendCanceled    int64 // gRPC code = Canceled
+	sendOther       int64 // any other error class
 
 	// Shared Resource proto for every export. A TracerProvider has exactly
 	// one Resource, so we capture it lazily on the first OnEnd and reuse
@@ -106,7 +132,70 @@ func NewVanillaProcessor(ctx context.Context, agentEndpoint string, additionalPo
 	processor.wg.Add(1)
 	go processor.processEvents()
 
+	// Start the metrics logger goroutine. Shares stopChan with
+	// processEvents — Shutdown closes once and both unwind.
+	processor.wg.Add(1)
+	go processor.logMetricsLoop()
+
 	return processor, nil
+}
+
+// logMetricsLoop emits one slog.Info line per MetricsInterval with the
+// full counter snapshot, until stopChan is closed. Picked up by anything
+// tailing kubectl logs.
+func (p *VanillaProcessor) logMetricsLoop() {
+	defer p.wg.Done()
+	t := time.NewTicker(MetricsInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-p.stopChan:
+			return
+		case <-t.C:
+			p.logMetrics()
+		}
+	}
+}
+
+// logMetrics emits one snapshot of every counter plus the current
+// in-memory buffer depth. Counters are loaded atomically; buffer depth
+// is a brief lock for an O(1) read.
+func (p *VanillaProcessor) logMetrics() {
+	p.spanLock.Lock()
+	bufDepth := len(p.spanBuf)
+	p.spanLock.Unlock()
+	slog.Info("vanilla_processor_metrics",
+		"spans_received", atomic.LoadInt64(&p.spansReceived),
+		"spans_flushed", atomic.LoadInt64(&p.spansFlushed),
+		"spans_sent", atomic.LoadInt64(&p.spansSent),
+		"batches_sent", atomic.LoadInt64(&p.batchesSent),
+		"spans_dropped", atomic.LoadInt64(&p.spansDropped),
+		"batches_dropped", atomic.LoadInt64(&p.batchesDropped),
+		"send_deadline", atomic.LoadInt64(&p.sendDeadline),
+		"send_unavailable", atomic.LoadInt64(&p.sendUnavailable),
+		"send_exhausted", atomic.LoadInt64(&p.sendExhausted),
+		"send_canceled", atomic.LoadInt64(&p.sendCanceled),
+		"send_other", atomic.LoadInt64(&p.sendOther),
+		"buffer_depth", bufDepth,
+	)
+}
+
+// categorizeSendError increments the appropriate per-code counter for a
+// failed UploadTraces. Uses status.Code which unwraps the gRPC status
+// out of fmt.Errorf %w wrappers.
+func (p *VanillaProcessor) categorizeSendError(err error) {
+	switch status.Code(err) {
+	case codes.DeadlineExceeded:
+		atomic.AddInt64(&p.sendDeadline, 1)
+	case codes.Unavailable:
+		atomic.AddInt64(&p.sendUnavailable, 1)
+	case codes.ResourceExhausted:
+		atomic.AddInt64(&p.sendExhausted, 1)
+	case codes.Canceled:
+		atomic.AddInt64(&p.sendCanceled, 1)
+	default:
+		atomic.AddInt64(&p.sendOther, 1)
+	}
 }
 
 // processEvents runs in the background to periodically drain the event
@@ -190,15 +279,24 @@ func (p *VanillaProcessor) flushBuffer() {
 					Spans: chunk,
 				}},
 			}
+			// Count the chunk as flushed BEFORE we dispatch — at this point
+			// the spans have permanently left the buffer, so whatever
+			// happens to the upload they'll be accounted for under one of
+			// {sent, dropped}.
+			atomic.AddInt64(&p.spansFlushed, int64(len(chunk)))
 			p.exportWG.Add(1)
 			go func(rs *tracepb.ResourceSpans, n int) {
 				defer p.exportWG.Done()
 				if err := p.sendData([]*tracepb.ResourceSpans{rs}); err != nil {
 					slog.Error("Failed to send batch", "error", err, "count", n)
+					atomic.AddInt64(&p.batchesDropped, 1)
+					atomic.AddInt64(&p.spansDropped, int64(n))
+					p.categorizeSendError(err)
 					return
 				}
 				slog.Debug("Sent batch", "count", n)
-				atomic.AddInt64(&p.eventsSent, int64(n))
+				atomic.AddInt64(&p.batchesSent, 1)
+				atomic.AddInt64(&p.spansSent, int64(n))
 			}(rs, len(chunk))
 		}
 	}
@@ -233,6 +331,8 @@ func (p *VanillaProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteS
 
 // OnEnd implements SpanProcessor.OnEnd
 func (p *VanillaProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
+	atomic.AddInt64(&p.spansReceived, 1)
+
 	// Capture the (single, immutable) Resource on the first OnEnd. A
 	// TracerProvider has exactly one Resource for its lifetime, so this
 	// runs at most once.
@@ -522,8 +622,11 @@ func (p *VanillaProcessor) Shutdown(ctx context.Context) error {
 		slog.Error("❌ Failed to stop client", "error", err)
 	}
 
-	slog.Info("✅ VanillaProcessor shutdown complete",
-		"eventsSent", atomic.LoadInt64(&p.eventsSent))
+	// Emit one final counter snapshot before returning so tail-end stats
+	// land in the logs even if the shutdown is the last thing the process
+	// does.
+	slog.Info("🔴 VanillaProcessor shutdown complete — final metrics:")
+	p.logMetrics()
 	return nil
 }
 
