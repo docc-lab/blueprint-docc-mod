@@ -238,13 +238,26 @@ func (node *OTCollectorContainer) processCustomConfig(customConfig string) strin
 	}
 	receiversMap := receivers.(map[string]interface{})
 
-	// Add/update the OTLP receiver without overwriting custom receivers
-	receiversMap["otlp"] = map[string]interface{}{
-		"protocols": map[string]interface{}{
-			"grpc": map[string]interface{}{
-				"endpoint": "0.0.0.0:4317",
-			},
-		},
+	// Ensure the OTLP receiver has a gRPC endpoint WITHOUT clobbering other
+	// protocols (e.g. http) or fields the source YAML defined. Only inject
+	// the gRPC endpoint when missing so a user-overridden bind addr survives.
+	otlpRecv, _ := receiversMap["otlp"].(map[string]interface{})
+	if otlpRecv == nil {
+		otlpRecv = map[string]interface{}{}
+		receiversMap["otlp"] = otlpRecv
+	}
+	protos, _ := otlpRecv["protocols"].(map[string]interface{})
+	if protos == nil {
+		protos = map[string]interface{}{}
+		otlpRecv["protocols"] = protos
+	}
+	grpc, _ := protos["grpc"].(map[string]interface{})
+	if grpc == nil {
+		grpc = map[string]interface{}{}
+		protos["grpc"] = grpc
+	}
+	if _, hasEndpoint := grpc["endpoint"]; !hasEndpoint {
+		grpc["endpoint"] = "0.0.0.0:4317"
 	}
 
 	// Get or create exporters section
@@ -255,18 +268,30 @@ func (node *OTCollectorContainer) processCustomConfig(customConfig string) strin
 	}
 	exportersMap := exporters.(map[string]interface{})
 
-	// Add the dynamic exporter based on type
+	// Inject the dial-address into the dynamic exporter while PRESERVING any
+	// user-supplied tuning (sending_queue, retry_on_failure, timeout, headers,
+	// etc.). Only the endpoint is owned by Blueprint — everything else is
+	// passed through from the source YAML so cross-variant configs keep their
+	// hand-tuned settings.
 	switch exporterType {
 	case "zipkin":
-		exportersMap["zipkin"] = map[string]interface{}{
-			"endpoint": fmt.Sprintf("http://${%s}/api/v2/spans", backendEnvVarName),
+		zipkin, _ := exportersMap["zipkin"].(map[string]interface{})
+		if zipkin == nil {
+			zipkin = map[string]interface{}{}
+			exportersMap["zipkin"] = zipkin
 		}
+		zipkin["endpoint"] = fmt.Sprintf("http://${%s}/api/v2/spans", backendEnvVarName)
 	case "otlp":
-		exportersMap["otlp"] = map[string]interface{}{
-			"endpoint": fmt.Sprintf("${%s}", backendEnvVarName),
-			"tls": map[string]interface{}{
-				"insecure": true,
-			},
+		otlpExp, _ := exportersMap["otlp"].(map[string]interface{})
+		if otlpExp == nil {
+			otlpExp = map[string]interface{}{}
+			exportersMap["otlp"] = otlpExp
+		}
+		otlpExp["endpoint"] = fmt.Sprintf("${%s}", backendEnvVarName)
+		// Default to insecure TLS only if the user hasn't said otherwise —
+		// preserves an explicit tls block from the source YAML.
+		if _, hasTLS := otlpExp["tls"]; !hasTLS {
+			otlpExp["tls"] = map[string]interface{}{"insecure": true}
 		}
 	}
 

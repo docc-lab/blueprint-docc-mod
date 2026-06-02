@@ -91,9 +91,16 @@ def build_and_push_images(services, registry_url, docker_compose_dir, selected_s
     try:
         os.chdir(docker_compose_dir)
         
-        # Filter services if specific services are requested
+        # Filter services if specific services are requested. The CLI list is
+        # pre-normalized to hyphenated form (matches the kompose-generated
+        # k8s names), but compose dict keys still contain underscores, so
+        # normalize each key before comparison.
         if selected_services:
-            services_to_process = {k: v for k, v in services.items() if k in selected_services}
+            selected_set = set(selected_services)
+            services_to_process = {
+                k: v for k, v in services.items()
+                if k.replace('_', '-') in selected_set
+            }
             print(f"[INFO] Building only selected services: {list(services_to_process.keys())}")
         else:
             services_to_process = services
@@ -372,16 +379,24 @@ def main():
         print(f"Error: {args.docker_compose_file} does not exist", file=sys.stderr)
         sys.exit(1)
     
+    # Kompose normalizes service names by replacing underscores with dashes
+    # (e.g. otelcol_v_ctr -> otelcol-v-ctr) in every generated k8s manifest
+    # filename and metadata.name. Internally we always work in the hyphenated
+    # form so name lookups against the kompose output match. Users can pass
+    # either form on the CLI; we normalize on entry.
+    def _norm(s):
+        return s.strip().replace('_', '-')
+
     # Parse daemon services if provided
     daemon_services = []
     if args.daemon_services:
-        daemon_services = [s.strip() for s in args.daemon_services.split(',')]
+        daemon_services = [_norm(s) for s in args.daemon_services.split(',')]
         print(f"[INFO] Services to be converted to DaemonSets: {daemon_services}")
 
     # Parse the opt-out list for internalTrafficPolicy: Local
     no_local_policy = []
     if args.no_local_policy:
-        no_local_policy = [s.strip() for s in args.no_local_policy.split(',')]
+        no_local_policy = [_norm(s) for s in args.no_local_policy.split(',')]
         # Sanity warning if any of these aren't also daemonsets — the flag is
         # a no-op for non-daemon services since we only touch Service files
         # for daemon-services anyway.
@@ -393,7 +408,7 @@ def main():
     # Parse selected services if provided
     selected_services = None
     if args.services:
-        selected_services = [s.strip() for s in args.services.split(',')]
+        selected_services = [_norm(s) for s in args.services.split(',')]
         print(f"[INFO] Services to be built: {selected_services}")
 
     # Step 1: Run kompose conversion
