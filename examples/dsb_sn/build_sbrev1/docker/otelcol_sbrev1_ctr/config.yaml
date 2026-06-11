@@ -1,0 +1,45 @@
+exporters:
+    otlp:
+        endpoint: ${JAEGER_SBREV1_OTLP_DIAL_ADDR}
+        retry_on_failure:
+            enabled: true
+            initial_interval: 5s
+            max_elapsed_time: 0
+            max_interval: 30s
+        sending_queue:
+            enabled: true
+            num_consumers: 10
+            queue_size: 10
+            block_on_overflow: true
+        tls:
+            insecure: true
+processors:
+    batch: null
+    priority:
+        check_interval: 100ms
+        soft_percentage: 50
+        hard_percentage: 70
+        num_workers: 10
+        eviction_ratio: 2
+receivers:
+    otlp:
+        protocols:
+            grpc:
+                endpoint: 0.0.0.0:4317
+                include_metadata: true
+            http:
+                endpoint: 0.0.0.0:4318
+                include_metadata: true
+service:
+    pipelines:
+        traces:
+            exporters:
+                - otlp
+            processors:
+                - priority
+                - batch
+            receivers:
+                - otlp
+    telemetry:
+        logs:
+            level: DEBUG

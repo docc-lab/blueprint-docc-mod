@@ -1,0 +1,40 @@
+exporters:
+    otlp:
+        endpoint: ${JAEGER_V_ESREV0_OTLP_DIAL_ADDR}
+        retry_on_failure:
+            enabled: true
+            initial_interval: 5s
+            max_elapsed_time: 0
+            max_interval: 30s
+        sending_queue:
+            block_on_overflow: false
+            enabled: true
+            queue_size: 1000
+        tls:
+            insecure: true
+processors:
+    batch: null
+    memory_limiter:
+        check_interval: 100ms
+        limit_percentage: 70
+        spike_limit_percentage: 20
+receivers:
+    otlp:
+        protocols:
+            grpc:
+                endpoint: 0.0.0.0:4317
+            http:
+                endpoint: 0.0.0.0:4318
+service:
+    pipelines:
+        traces:
+            exporters:
+                - otlp
+            processors:
+                - memory_limiter
+                - batch
+            receivers:
+                - otlp
+    telemetry:
+        logs:
+            level: DEBUG

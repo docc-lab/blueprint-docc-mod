@@ -9,17 +9,17 @@
 package main
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
 	"blueprint/goproc/user_service_vrev0_proc/grpc"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 	"blueprint/goproc/user_service_vrev0_proc/ot"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
+	"blueprint/goproc/user_service_vrev0_proc/retries"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
-	"blueprint/goproc/user_service_vrev0_proc/retries"
 )
 
 // Initializes the user_service_vrev0_proc namespace by defining all of the nodes that run

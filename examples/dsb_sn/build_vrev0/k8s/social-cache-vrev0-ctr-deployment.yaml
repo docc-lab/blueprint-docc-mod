@@ -26,5 +26,10 @@ spec:
         ports:
         - containerPort: 6379
           protocol: TCP
+        resources:
+          requests:
+            cpu: 4000m
       hostname: social-cache-vrev0-ctr
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-2

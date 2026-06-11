@@ -27,5 +27,7 @@ func main() {
 		specs.DockerCGPB,
 		specs.DockerSB,
 		specs.DockerV,
+		specs.DockerVES,
+		specs.DockerSBES,
 	)
 }

@@ -2,11 +2,11 @@
 package pool
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
-	"blueprint/testclients/ot"
 	"context"
 	"fmt"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/clientpool"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
+	"blueprint/testclients/ot"
 )
 
 type Wrk2APIService_OTClientWrapperInterface_ClientPool struct {

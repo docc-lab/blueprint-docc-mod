@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -18,12 +19,52 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
+
+// MetadataPriorityKey is the gRPC metadata key the SB SDK stamps onto
+// every UploadTraces call so the collector-side priority processor can
+// admit/refuse each batch by priority class without inspecting spans.
+// Must match priorityprocessor.MetadataPriorityKey exactly.
+const MetadataPriorityKey = "bridges-priority"
+
+// SB processor tunables. SBExportInterval is the flush cadence for BOTH
+// the high-prio and low-prio buffers — they tick on the same schedule so
+// drops we observe later cannot be attributed to a cadence skew between
+// the two priority classes. SBBatchSize bounds the per-RPC payload so we
+// stay under the default 4 MiB gRPC receive ceiling; each per-priority
+// buffer is sliced into SBBatchSize-sized chunks at flush time and each
+// chunk is its own goroutine + UploadTraces call. SBMetricsInterval
+// bounds how often the processor logs its per-priority counter snapshot
+// to slog.
+const (
+	SBExportInterval  = 100 * time.Millisecond
+	SBBatchSize       = 512
+	SBMetricsInterval = 1 * time.Second
+)
+
+// sbBufEntry carries one buffered span plus its InstrumentationScope and
+// CP/LP classification. We no longer pre-wrap each span in its own
+// ResourceSpans envelope (that pattern serialized the ~300 B Resource
+// blob per-span and was responsible for ~5 GB of redundant bytes on the
+// busiest collector pod under the 2k→4k ramp). Instead the buffer holds
+// raw Spans + Scope; flushBuffer groups by Scope and builds ONE
+// ResourceSpans per batch — the shared Resource is captured once via
+// resourceOnce on first OnEnd. The isCheckpoint bit lets the flush path
+// attribute send outcomes (cpDropped vs lpDropped) per priority.
+type sbBufEntry struct {
+	span         *tracepb.Span
+	scope        instrumentation.Scope
+	isCheckpoint bool
+}
 
 type StructuralBridgeProcessor struct {
 	mu sync.RWMutex
@@ -43,12 +84,77 @@ type StructuralBridgeProcessor struct {
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 
-	// Metrics for monitoring
-	eventsSent int64
+	// Tracks in-flight per-batch export goroutines so Shutdown can wait
+	// for them to drain before closing the gRPC client.
+	exportWG sync.WaitGroup
 
-	// Buffer for batch export
-	eventsBuf  []*tracepb.ResourceSpans
+	// sbBufEntry pairs a ResourceSpans with its CP/LP classification so
+	// the flush path can attribute send-failure drops to the correct
+	// priority bucket (cpDropped vs lpDropped). The priority bit is
+	// already known at routeToPipeline time — we just have to carry it.
+
+	// Two physical buffers, separated by CP/LP classification at OnEnd.
+	// flushBuffer drains them sequentially with HP preference: it snaps
+	// both under one lock, then dispatches all HP chunks as parallel
+	// goroutines before dispatching LP chunks. Dispatch order favors HP
+	// — the collector's priority processor sees HP RPCs land first on
+	// average within each tick, which gives the priority-aware refusal
+	// policy a tighter signal to operate on.
+	//
+	// Each buffer is the same `sbBufEntry` slice the single-buffer
+	// version used; isCheckpoint is now an implicit per-buffer property
+	// (true for hpBuf, false for lpBuf) but we keep the field for
+	// exportBatch's accounting path so the goroutine doesn't need to
+	// re-look-up which buffer the chunk came from.
+	hpBuf      []sbBufEntry
+	lpBuf      []sbBufEntry
 	eventsLock sync.Mutex
+
+	// Shared Resource proto for every export. A TracerProvider has exactly
+	// one Resource per service instance, so we capture it lazily on the
+	// first OnEnd and reuse the same pointer for every flush. This
+	// eliminates the per-span Resource duplication that previously
+	// inflated the wire payload by a factor of ~3 (matches the same fix
+	// vanilla_processor.go already had).
+	resource     *resourcepb.Resource
+	resourceOnce sync.Once
+
+	// Counters for drop monitoring. All atomic so the metrics goroutine
+	// can read them concurrently with OnEnd / flushBuffer.
+	// Invariants:
+	//   spansReceived = OnEnd entries (input to processor)
+	//   spansFlushed  = spans drained from the buffer in flushBuffer ticks
+	//                 = spansSent + spansDropped
+	//   batchesSent + batchesDropped = batches dispatched
+	// The send_* counters bucket dropped batches by gRPC status code so
+	// you can tell whether drops are deadline / unavailable / queue
+	// overflow / other.
+	spansReceived   int64
+	spansFlushed    int64
+	spansSent       int64
+	batchesSent     int64
+	spansDropped    int64
+	batchesDropped  int64
+	sendDeadline    int64 // gRPC code = DeadlineExceeded
+	sendUnavailable int64 // gRPC code = Unavailable
+	sendExhausted   int64 // gRPC code = ResourceExhausted
+	sendCanceled    int64 // gRPC code = Canceled
+	sendOther       int64 // any other error class
+
+	// Per-priority counters. The SDK already classifies every span in
+	// OnEnd before calling routeToPipeline; these track how that
+	// classification breaks down at received / sent / dropped, so the
+	// bridges thesis can quote exact CP-loss numbers at the SDK layer
+	// instead of estimating from an assumed CP fraction.
+	//   cpReceived + lpReceived = spansReceived
+	//   cpSent     + lpSent     = spansSent
+	//   cpDropped  + lpDropped  = spansDropped
+	cpReceived int64
+	lpReceived int64
+	cpSent     int64
+	lpSent     int64
+	cpDropped  int64
+	lpDropped  int64
 
 	// AI_ADDED: Removed serverSideSpans map and ssLock - now using hasChildren attribute instead
 
@@ -149,66 +255,241 @@ func NewStructuralBridgeProcessor(ctx context.Context, agentEndpoint string, con
 	processor.wg.Add(1)
 	go processor.processEvents()
 
+	// Start the metrics logger goroutine. Shares stopChan with
+	// processEvents — Shutdown closes once and both unwind.
+	processor.wg.Add(1)
+	go processor.logMetricsLoop()
+
 	return processor, nil
 }
 
-// processEvents runs in the background to periodically send events
+// logMetricsLoop emits one slog.Info line per SBMetricsInterval with the
+// full per-priority counter snapshot, until stopChan is closed. Tail via
+// `kubectl logs deploy/<svc> | grep sb_processor_metrics`.
+func (p *StructuralBridgeProcessor) logMetricsLoop() {
+	defer p.wg.Done()
+	t := time.NewTicker(SBMetricsInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-p.stopChan:
+			return
+		case <-t.C:
+			p.logMetrics()
+		}
+	}
+}
+
+// logMetrics emits one snapshot of every counter plus the current
+// per-priority in-memory buffer depths. Counters are loaded atomically;
+// buffer depths are read under a brief lock.
+func (p *StructuralBridgeProcessor) logMetrics() {
+	p.eventsLock.Lock()
+	hpDepth := len(p.hpBuf)
+	lpDepth := len(p.lpBuf)
+	p.eventsLock.Unlock()
+	slog.Info("sb_processor_metrics",
+		"spans_received", atomic.LoadInt64(&p.spansReceived),
+		"spans_flushed", atomic.LoadInt64(&p.spansFlushed),
+		"spans_sent", atomic.LoadInt64(&p.spansSent),
+		"batches_sent", atomic.LoadInt64(&p.batchesSent),
+		"spans_dropped", atomic.LoadInt64(&p.spansDropped),
+		"batches_dropped", atomic.LoadInt64(&p.batchesDropped),
+		"cp_received", atomic.LoadInt64(&p.cpReceived),
+		"lp_received", atomic.LoadInt64(&p.lpReceived),
+		"cp_sent", atomic.LoadInt64(&p.cpSent),
+		"lp_sent", atomic.LoadInt64(&p.lpSent),
+		"cp_dropped", atomic.LoadInt64(&p.cpDropped),
+		"lp_dropped", atomic.LoadInt64(&p.lpDropped),
+		"send_deadline", atomic.LoadInt64(&p.sendDeadline),
+		"send_unavailable", atomic.LoadInt64(&p.sendUnavailable),
+		"send_exhausted", atomic.LoadInt64(&p.sendExhausted),
+		"send_canceled", atomic.LoadInt64(&p.sendCanceled),
+		"send_other", atomic.LoadInt64(&p.sendOther),
+		"hp_buffer_depth", hpDepth,
+		"lp_buffer_depth", lpDepth,
+	)
+}
+
+// categorizeSendError increments the appropriate per-code counter for a
+// failed UploadTraces. Uses status.Code which unwraps the gRPC status
+// out of fmt.Errorf %w wrappers.
+func (p *StructuralBridgeProcessor) categorizeSendError(err error) {
+	switch status.Code(err) {
+	case codes.DeadlineExceeded:
+		atomic.AddInt64(&p.sendDeadline, 1)
+	case codes.Unavailable:
+		atomic.AddInt64(&p.sendUnavailable, 1)
+	case codes.ResourceExhausted:
+		atomic.AddInt64(&p.sendExhausted, 1)
+	case codes.Canceled:
+		atomic.AddInt64(&p.sendCanceled, 1)
+	default:
+		atomic.AddInt64(&p.sendOther, 1)
+	}
+}
+
+// processEvents runs in the background to periodically drain the event
+// buffer and dispatch batches for export. Each ticker fire snapshots the
+// buffer once and spawns one goroutine per SBBatchSize-sized chunk;
+// export I/O is therefore fully off the OnEnd hot path.
 func (p *StructuralBridgeProcessor) processEvents() {
 	defer p.wg.Done()
 
-	ticker := time.NewTicker(1000 * time.Millisecond)
+	ticker := time.NewTicker(SBExportInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-p.stopChan:
-			// Send any remaining buffered events before shutting down
+			// Final drain: spawns chunk goroutines and returns; Shutdown
+			// waits on exportWG after wg.Wait().
 			p.flushBuffer()
 			return
 		case <-ticker.C:
-			// Send buffered events
 			go p.flushBuffer()
 		}
 	}
 }
 
-// flushBuffer sends all buffered events
+// flushBuffer atomically snaps both priority buffers, then dispatches
+// HP chunks first, then LP chunks. Each chunk carries one priority class
+// (never mixed) tagged with a "bridges-priority: hp|lp" gRPC metadata
+// header. Chunks are dispatched as parallel goroutines (matching the
+// vanilla processor pattern); the HP-first ordering of the dispatch
+// loop means HP UploadTraces calls enter flight (and reach the
+// collector) on average before LP calls within the same tick.
+//
+// Chunking bounds each OTLP RPC under the default 4 MiB gRPC receive
+// ceiling regardless of arrival rate.
 func (p *StructuralBridgeProcessor) flushBuffer() {
-	// Get events from buffer and reset the buffer
 	p.eventsLock.Lock()
-	events := p.eventsBuf
-	p.eventsBuf = make([]*tracepb.ResourceSpans, 0, len(p.eventsBuf)) // Reset length, keep capacity
+	hpSnap := p.hpBuf
+	lpSnap := p.lpBuf
+	p.hpBuf = make([]sbBufEntry, 0, cap(p.hpBuf))
+	p.lpBuf = make([]sbBufEntry, 0, cap(p.lpBuf))
 	p.eventsLock.Unlock()
 
-	if len(events) > 0 {
-		if err := p.sendData(events); err != nil {
-			slog.Error("Failed to send events", "error", err, "count", len(events))
-		} else {
-			slog.Debug("Successfully sent events", "count", len(events))
-			p.eventsSent += int64(len(events))
+	if len(hpSnap) == 0 && len(lpSnap) == 0 {
+		return
+	}
+
+	atomic.AddInt64(&p.spansFlushed, int64(len(hpSnap)+len(lpSnap)))
+
+	// Dispatch HP first, then LP. Within each priority class, group by
+	// InstrumentationScope (almost always one scope per Blueprint
+	// service) and chunk at SBBatchSize.
+	p.dispatchPriority(hpSnap, true)
+	p.dispatchPriority(lpSnap, false)
+}
+
+// dispatchPriority groups one priority class's snapshot by scope,
+// chunks each scope group at SBBatchSize, and spawns one goroutine per
+// chunk. Each chunk becomes a single ResourceSpans (shared
+// p.resource) wrapping a single ScopeSpans wrapping ≤SBBatchSize Spans.
+func (p *StructuralBridgeProcessor) dispatchPriority(snap []sbBufEntry, isHP bool) {
+	if len(snap) == 0 {
+		return
+	}
+	type scopeKey struct{ name, version string }
+	type scopeGroup struct {
+		scope instrumentation.Scope
+		spans []*tracepb.Span
+	}
+	groups := make(map[scopeKey]*scopeGroup, 1)
+	for _, e := range snap {
+		k := scopeKey{e.scope.Name, e.scope.Version}
+		g, ok := groups[k]
+		if !ok {
+			g = &scopeGroup{scope: e.scope}
+			groups[k] = g
+		}
+		g.spans = append(g.spans, e.span)
+	}
+	for _, g := range groups {
+		scopeProto := &commonpb.InstrumentationScope{
+			Name:    g.scope.Name,
+			Version: g.scope.Version,
+		}
+		for start := 0; start < len(g.spans); start += SBBatchSize {
+			end := start + SBBatchSize
+			if end > len(g.spans) {
+				end = len(g.spans)
+			}
+			chunk := g.spans[start:end]
+			rs := &tracepb.ResourceSpans{
+				Resource: p.resource,
+				ScopeSpans: []*tracepb.ScopeSpans{{
+					Scope: scopeProto,
+					Spans: chunk,
+				}},
+			}
+			p.exportWG.Add(1)
+			go p.exportBatch([]*tracepb.ResourceSpans{rs}, int64(len(chunk)), isHP)
 		}
 	}
 }
 
-// sendData sends data to the endpoint
-func (p *StructuralBridgeProcessor) sendData(events []*tracepb.ResourceSpans) error {
+// exportBatch sends one priority-homogeneous batch and updates
+// counters based on outcome. On failure the spans in the batch are
+// permanently dropped (no retry — the bridges design intends the
+// priority processor + structural breadcrumb mechanism to absorb
+// pressure, not SDK-side retry queues). isHP determines both the
+// gRPC metadata header attached to the call AND which counter
+// (cpDropped/lpDropped, cpSent/lpSent) accounts for the outcome.
+func (p *StructuralBridgeProcessor) exportBatch(events []*tracepb.ResourceSpans, n int64, isHP bool) {
+	defer p.exportWG.Done()
+	err := p.sendData(events, isHP)
+	if err != nil {
+		atomic.AddInt64(&p.batchesDropped, 1)
+		atomic.AddInt64(&p.spansDropped, n)
+		if isHP {
+			atomic.AddInt64(&p.cpDropped, n)
+		} else {
+			atomic.AddInt64(&p.lpDropped, n)
+		}
+		p.categorizeSendError(err)
+		slog.Error("Failed to send batch", "error", err, "count", n, "hp", isHP)
+		return
+	}
+	atomic.AddInt64(&p.batchesSent, 1)
+	atomic.AddInt64(&p.spansSent, n)
+	if isHP {
+		atomic.AddInt64(&p.cpSent, n)
+	} else {
+		atomic.AddInt64(&p.lpSent, n)
+	}
+	slog.Debug("Sent batch", "count", n, "hp", isHP)
+}
+
+// sendData sends one priority-homogeneous batch with the
+// "bridges-priority: hp|lp" gRPC metadata header attached. The
+// collector-side priority processor reads this header (via
+// client.FromContext on the receiver-populated ctx) to admit or
+// refuse the batch in one O(1) decision.
+func (p *StructuralBridgeProcessor) sendData(events []*tracepb.ResourceSpans, isHP bool) error {
 	if len(events) == 0 {
 		return nil
 	}
 
-	slog.Debug("🔵 Sending data", "count", len(events))
+	slog.Debug("🔵 Sending data", "count", len(events), "hp", isHP)
 
-	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
+	priorityVal := "lp"
+	if isHP {
+		priorityVal = "hp"
+	}
+	ctx = metadata.AppendToOutgoingContext(ctx, MetadataPriorityKey, priorityVal)
+
 	err := p.client.UploadTraces(ctx, events)
 	if err != nil {
-		slog.Error("❌ Failed to send data", "error", err, "count", len(events))
+		slog.Error("❌ Failed to send data", "error", err, "count", len(events), "hp", isHP)
 		return fmt.Errorf("failed to send data: %w", err)
 	}
 
-	slog.Debug("✅ Data sent successfully", "count", len(events))
+	slog.Debug("✅ Data sent successfully", "count", len(events), "hp", isHP)
 	return nil
 }
 
@@ -323,13 +604,15 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 		}
 	}
 
-	// Pre-reset packed form is the ancestry payload emitted with high-priority spans.
+	// Pre-reset packed form is the breadcrumb payload that will be
+	// wire-emitted iff this span ends up high-priority. Computed BEFORE
+	// the checkpoint reset so it carries the full inherited chain.
 	preResetPacked := packSBridgeBR(depthMod, ckpt8, ordinalGroups, endEvents, deeBytes)
 
-	// Checkpoint: ckpt8 = this span's raw 8-byte ID; clear groups/events/dee.
-	priority := 0
+	// On a checkpoint (depthMod == 0): reset ckpt8 to this span's ID,
+	// clear groups/events/dee. The post-reset state is what we
+	// propagate to children via baggage.
 	if depthMod == 0 {
-		priority = 1
 		sid := s.SpanContext().SpanID()
 		copy(ckpt8[:], sid[:])
 		ordinalGroups = nil
@@ -339,111 +622,175 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 
 	propagationPacked := packSBridgeBR(depthMod, ckpt8, ordinalGroups, endEvents, deeBytes)
 
+	// Two attributes are written here — that's the entire SB-processor
+	// wire+intra-process surface. The first becomes outgoing baggage
+	// (stripped from the exported span); the second is the wire-emit
+	// candidate, kept iff the span ends up high-priority. There is NO
+	// separate priority bit: OnEnd recovers the depth from the second
+	// attribute's leading varint (see decodeBRDepth) and re-derives
+	// `depth % cpd == 0` from there, matching the simulator's
+	// compute-on-the-fly model.
 	s.SetAttributes(
-		attribute.Int("__bag.prio", priority),
+		// Becomes outgoing `_br` baggage via Blueprint's __bag.* →
+		// baggage translation. Carries the POST-RESET propagation
+		// snapshot.
 		attribute.String(AttrBR, encodeBR(propagationPacked)),
-		attribute.Int("depth", depthMod),
-		attribute.String(AncestryModeKey, string(p.ancestryMode)),
-		attribute.String(AncestryKey, encodeBR(preResetPacked)),
+		// Wire-export candidate: the PRE-RESET packed payload. Set on
+		// every span; convertAttributes keeps it only for high-priority
+		// spans. Presence on the wire IS the checkpoint signal —
+		// matches trace_simulator.py's emit-iff-checkpoint model.
+		attribute.String(AttrBREmit, encodeBR(preResetPacked)),
 	)
 }
 
-// OnEnd implements SpanProcessor.OnEnd
+// OnEnd implements SpanProcessor.OnEnd. The priority decision lives
+// entirely here — there is no OnStart-time priority attribute to carry
+// across. We:
+//
+//  1. Recover OnStart-time depth by peeking at the leading varint of
+//     AttrBREmit (set unconditionally in OnStart). depth % cpd == 0
+//     re-derives "was-CP-at-OnStart".
+//  2. Apply the leaf-server override: a Server-kind span with no
+//     children gets forced to CP regardless of depth. We use the
+//     childCount / eventCount attributes set by Blueprint's gRPC/HTTP
+//     wrappers as the leaf signal.
+//  3. Flush any pending end-event marker into the cross-trace DEE
+//     channel so the next OnStart in the same service can piggyback
+//     it.
+//
+// The final isCheckpoint bool is passed to routeToPipeline, which
+// flows through buildSpanProto → convertAttributes. convertAttributes
+// then keeps or strips AttrBREmit based on that bool — that's how the
+// breadcrumb's wire-presence ends up matching the priority decision.
 func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
-	// No mutex needed - only reading span attributes and routing to buffers (which have their own locks)
-	// slog.Debug("🔴 StructuralBridgeProcessor OnEnd called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
+	var preResetEncoded, remEndEvents string
+	var hasChildren, forceLP bool
 
-	// Extract priority from span attributes
-	var priority int
-	var hasPriority bool
-	// var depth int
-	// var hasDepth bool
-	var hasChildren bool
-	var remEndEvents string
-
-	// Iterate through attributes to find __bag.prio, __bag.depth, and hasChildren
 	for _, attr := range s.Attributes() {
 		switch attr.Key {
-		case "__bag.prio":
-			val := attr.Value.AsInt64()
-			priority = int(val)
-			hasPriority = true
-		case "childCount":
-			// AI_ADDED: Check for hasChildren attribute to determine if server span is a leaf
-			hasChildren = attr.Value.AsInt64() > 0
-		case "eventCount":
-			// AI_ADDED: Check for hasChildren attribute to determine if server span is a leaf
-			hasChildren = attr.Value.AsInt64() > 0
+		case AttrBREmit:
+			preResetEncoded = attr.Value.AsString()
+		case "childCount", "eventCount":
+			// Int variants — set by older Blueprint server templates
+			// (serverTemplate, serverTemplateCGPB) which record the
+			// raw child/event count as int.
+			if attr.Value.AsInt64() > 0 {
+				hasChildren = true
+			}
+		case "hasChildren":
+			// Bool variant — set by the CURRENT active server template
+			// (serverTemplatePath in plugins/opentelemetry/ir_ot_server.go).
+			// Reads as `attribute.Bool("hasChildren", childCount > 0)`.
+			// Without this case, the leaf-server override fires for
+			// every server span and the classification collapses to
+			// 100% CP. (Found 2026-06-05 after composepost reported
+			// 100% CP / 33% drop, which is structurally impossible at
+			// cpd=3 for a depth-2 server with depth-3 client children.)
+			if attr.Value.AsBool() {
+				hasChildren = true
+			}
 		case "remEndEvents":
 			remEndEvents = attr.Value.AsString()
 			if remEndEvents != "" {
-				// Send to channel (blocking to ensure event is never dropped)
+				// Send to the cross-trace DEE channel so a later
+				// OnStart in this service can pick it up. Blocking
+				// send — the channel is buffered (10000) and the
+				// next OnStart drains opportunistically.
 				event := s.SpanContext().TraceID().String() + "::" + remEndEvents
 				p.delayedEndEventsChan <- event
+			}
+		case AttrForceLP:
+			// Synthetic pressure spans (e.g. TracePressureService)
+			// set this to force LP classification regardless of depth.
+			// Without this escape hatch, manually-created spans inside
+			// a request handler all classify identically to the root
+			// (no inter-process baggage hop → same depthMod), which
+			// makes it impossible to generate pure-LP volume for
+			// stress-testing the collector's priority-aware shedding.
+			if attr.Value.AsBool() {
+				forceLP = true
 			}
 		}
 	}
 
-	if s.SpanKind() == trace.SpanKindServer {
-		// AI_ADDED: Use hasChildren attribute instead of map-based counting
-		if hasChildren {
-			// Non-leaf server span - force to low priority (priority = 0)
-			// slog.Info("🔵 Non-leaf server span (hasChildren=true)", "span_name", s.Name())
-			priority += 0
-		} else {
-			// Leaf server span - always checkpoint (priority = 1)
-			// slog.Info("🔵 Leaf server span (hasChildren=false or missing)", "span_name", s.Name())
-			priority = 1
+	// Step 1: recover OnStart's depth decision from the breadcrumb's
+	// leading varint.
+	isCheckpoint := false
+	if depth, ok := decodeBRDepth(preResetEncoded); ok {
+		cpd := int(p.checkpointDistance)
+		if cpd < 1 {
+			cpd = 1
 		}
+		isCheckpoint = depth%cpd == 0
 	}
 
-	// if !hasPriority && priority == 0 {
-	if !hasPriority {
-		// Default to low priority if no priority found
-		priority = 0
-		// slog.Debug("🔴 No priority found, defaulting to low priority", "span_name", s.Name())
+	// Step 2: leaf-server override. A server span with no children is
+	// always a checkpoint, regardless of where it lands modulo cpd.
+	if s.SpanKind() == trace.SpanKindServer && !hasChildren {
+		isCheckpoint = true
 	}
-	// if !hasDepth {
-	// 	depth = 0
-	// 	// slog.Debug("🔴 No depth found, defaulting to 0", "span_name", s.Name())
-	// }
 
-	// slog.Debug("🔴 Routing span based on priority",
-	// 	"priority", priority,
-	// 	"depth", depth,
-	// 	"span_name", s.Name(),
-	// 	"trace_id", s.SpanContext().TraceID(),
-	// 	"span_id", s.SpanContext().SpanID())
+	// Step 3: force-LP escape hatch for synthetic pressure spans.
+	// Applied LAST so it overrides both the depth-based decision and
+	// the leaf-server CP override.
+	if forceLP {
+		isCheckpoint = false
+	}
 
-	// Route span to pipeline
-	p.routeToPipeline(s, priority == 1)
-
-	// Note: All baggage attributes (including __bag.prio and __bag.bloom_filter)
-	// are now exported as span attributes for analysis and debugging.
+	p.routeToPipeline(s, isCheckpoint)
 }
 
-// routeToPipeline adds the span to the buffer
+// routeToPipeline builds the ResourceSpans envelope and appends it to
+// the single buffer. The `highPriority` arg flows down to
+// convertAttributes, which keeps the `_br` breadcrumb attribute on the
+// wire iff highPriority — that PRESENCE is the priority signal the
+// collector-side priority processor reads. The SDK itself no longer
+// treats priorities differently at the export layer.
 func (p *StructuralBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, highPriority bool) {
-	// Convert span to ResourceSpans and add to buffer
-	resourceSpans := p.createResourceSpans(s, highPriority)
-
+	atomic.AddInt64(&p.spansReceived, 1)
+	if highPriority {
+		atomic.AddInt64(&p.cpReceived, 1)
+	} else {
+		atomic.AddInt64(&p.lpReceived, 1)
+	}
+	// Capture the (single, immutable) Resource on the first OnEnd. A
+	// TracerProvider has exactly one Resource for its lifetime, so this
+	// runs at most once. flushBuffer reuses this pointer for every chunk
+	// so the Resource is serialized once per batch, not once per span.
+	p.resourceOnce.Do(func() {
+		p.resource = p.convertResourceToProto(s.Resource())
+	})
+	spanProto := p.buildSpanProto(s, highPriority)
+	entry := sbBufEntry{
+		span:         spanProto,
+		scope:        s.InstrumentationScope(),
+		isCheckpoint: highPriority,
+	}
 	p.eventsLock.Lock()
-	p.eventsBuf = append(p.eventsBuf, resourceSpans)
+	if highPriority {
+		p.hpBuf = append(p.hpBuf, entry)
+	} else {
+		p.lpBuf = append(p.lpBuf, entry)
+	}
+	hpSize := len(p.hpBuf)
+	lpSize := len(p.lpBuf)
 	p.eventsLock.Unlock()
-
-	slog.Debug("🔴 Routed to pipeline", "span_name", s.Name(), "buffer_size", len(p.eventsBuf))
+	slog.Debug("🔴 Routed to pipeline", "span_name", s.Name(), "hp_buffer_size", hpSize, "lp_buffer_size", lpSize, "high_prio", highPriority)
 }
 
-// createResourceSpans converts a ReadOnlySpan to ResourceSpans protobuf format
-func (p *StructuralBridgeProcessor) createResourceSpans(s sdktrace.ReadOnlySpan, highPriority bool) *tracepb.ResourceSpans {
-	// Get trace and span IDs as byte arrays
+// buildSpanProto materializes a single *tracepb.Span from a ReadOnlySpan.
+// The Resource and ScopeSpans envelopes are NOT built here — they're
+// added at flush time so that a single ResourceSpans wraps many spans
+// (sharing the Resource bytes) rather than one ResourceSpans per span.
+// highPriority is threaded through to convertAttributes which keeps the
+// `_br` breadcrumb attribute iff highPriority (that presence is the
+// collector's priority signal).
+func (p *StructuralBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, highPriority bool) *tracepb.Span {
 	traceID := s.SpanContext().TraceID()
 	spanID := s.SpanContext().SpanID()
-
-	// Create span with trace ID, span ID, start time, end time, and attributes
 	spanProto := &tracepb.Span{
-		TraceId:           traceID[:], // Convert [16]byte to []byte
-		SpanId:            spanID[:],  // Convert [8]byte to []byte
+		TraceId:           traceID[:],
+		SpanId:            spanID[:],
 		StartTimeUnixNano: uint64(s.StartTime().UnixNano()),
 		EndTimeUnixNano:   uint64(s.EndTime().UnixNano()),
 		Name:              s.Name(),
@@ -453,28 +800,11 @@ func (p *StructuralBridgeProcessor) createResourceSpans(s sdktrace.ReadOnlySpan,
 		Events:            p.convertEvents(s.Events()),
 		Links:             p.convertLinks(s.Links()),
 	}
-
-	// Add parent span ID if exists
 	if s.Parent().IsValid() {
 		parentSpanID := s.Parent().SpanID()
-		spanProto.ParentSpanId = parentSpanID[:] // Convert [8]byte to []byte
+		spanProto.ParentSpanId = parentSpanID[:]
 	}
-
-	// Get resource from the span and convert to protobuf format
-	resourceProto := p.convertResourceToProto(s.Resource())
-
-	return &tracepb.ResourceSpans{
-		Resource: resourceProto,
-		ScopeSpans: []*tracepb.ScopeSpans{
-			{
-				Scope: &commonpb.InstrumentationScope{
-					Name:    s.InstrumentationScope().Name,
-					Version: s.InstrumentationScope().Version,
-				},
-				Spans: []*tracepb.Span{spanProto},
-			},
-		},
-	}
+	return spanProto
 }
 
 // convertResourceToProto converts an OpenTelemetry resource to protobuf format
@@ -642,33 +972,46 @@ func (p *StructuralBridgeProcessor) convertStatus(status sdktrace.Status) *trace
 	}
 }
 
-// convertAttributes converts span attributes to protobuf format, including all baggage attributes
+// convertAttributes applies the SB processor's wire-emission policy,
+// matching the bridges trace_simulator model exactly:
+//
+//  1. Strip every `__bag.*` attribute — those are intra-process signals
+//     (OnStart-to-OnEnd priority, outgoing baggage triggers, etc.) and
+//     never belong on the wire.
+//  2. Strip Blueprint instrumentation helpers (`depth`, `hasChildren`,
+//     `childCount`, `eventCount`, `remEndEvents`) — these are used by
+//     OnEnd's classification logic, not part of the wire payload.
+//  3. Strip `_br` (AttrBREmit, the breadcrumb wire-emission) unless
+//     this span ended up high-priority. The breadcrumb's PRESENCE on
+//     the wire IS the checkpoint signal — there is no separate
+//     priority bit. Matches trace_simulator's emit-iff-checkpoint model
+//     and the simulator's `BRPropertyNameOverheadBytes + TypeID +
+//     payload` accounting (we encode the type marker implicitly via
+//     the attribute key "_br").
+//  4. Pass every other attribute through unchanged.
+//
+// Build the result with `append`, not by fixed-index assignment, so
+// skipped entries don't leave nil holes in the returned slice.
 func (p *StructuralBridgeProcessor) convertAttributes(attrs []attribute.KeyValue, highPriority bool) []*commonpb.KeyValue {
-	if len(attrs) == 0 {
-		return nil
-	}
-
-	// Include all attributes (including baggage attributes)
-	protoAttrs := make([]*commonpb.KeyValue, len(attrs))
-	for i, attr := range attrs {
+	out := make([]*commonpb.KeyValue, 0, len(attrs))
+	for _, attr := range attrs {
+		// (1) intra-process baggage signals — never go on the wire.
 		if strings.HasPrefix(string(attr.Key), "__bag.") {
 			continue
 		}
+		// (2) Blueprint wrapper helpers — also stay intra-process.
 		switch attr.Key {
-		case "depth", "hasChildren", "childCount", "remEndEvents":
+		case "depth", "hasChildren", "childCount", "eventCount", "remEndEvents":
 			continue
 		}
-		if highPriority {
-			protoAttrs[i] = p.convertAttribute(attr)
-		} else {
-			switch attr.Key {
-			case AncestryKey, AncestryModeKey:
-				continue
-			}
-			protoAttrs[i] = p.convertAttribute(attr)
+		// (3) breadcrumb wire-emit: keep iff this is a high-prio span.
+		if attr.Key == AttrBREmit && !highPriority {
+			continue
 		}
+		// (4) everything else passes through.
+		out = append(out, p.convertAttribute(attr))
 	}
-	return protoAttrs
+	return out
 }
 
 // convertEvents converts span events to protobuf format
@@ -896,17 +1239,26 @@ func (p *StructuralBridgeProcessor) Shutdown(ctx context.Context) error {
 
 	slog.Info("🔴 StructuralBridgeProcessor shutting down")
 
-	// Stop the background workers
+	// Stop the ticker + metrics-logger goroutines (the ticker also runs
+	// one final flushBuffer to drain both priority buffers into export
+	// goroutines tracked by exportWG).
 	close(p.stopChan)
 	p.wg.Wait()
 
-	// Stop the client
+	// Wait for all in-flight per-batch export goroutines to finish
+	// before closing the gRPC client — otherwise their UploadTraces
+	// calls would race the client.Stop and lose the final tail of spans.
+	p.exportWG.Wait()
+
 	if err := p.client.Stop(ctx); err != nil {
 		slog.Error("❌ Failed to stop client", "error", err)
 	}
 
-	slog.Info("✅ StructuralBridgeProcessor shutdown complete",
-		"eventsSent", p.eventsSent)
+	// Emit one final per-priority counter snapshot so tail-end stats
+	// land in the logs even if the shutdown is the last thing the
+	// process does.
+	slog.Info("🔴 StructuralBridgeProcessor shutdown complete — final metrics:")
+	p.logMetrics()
 	return nil
 }
 

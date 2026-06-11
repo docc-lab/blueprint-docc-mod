@@ -69,8 +69,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
-
 replace blueprint/testclients => ../testclients
 
 replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/tests => ../tests
+
+replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow

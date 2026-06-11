@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/blueprint"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/address"
@@ -26,9 +27,12 @@ import (
 // Override at deploy time with `kubectl set env deployment --all NAME=VAL`
 // (but that triggers a rolling update — prefer the compile-time hook).
 const (
-	BlueprintGCIntervalEnv = "BLUEPRINT_GC_INTERVAL_SEC"
-	BlueprintGOGCEnv       = "BLUEPRINT_GOGC"
-	BlueprintBridgeKindEnv = "BLUEPRINT_BRIDGE_KIND"
+	BlueprintGCIntervalEnv     = "BLUEPRINT_GC_INTERVAL_SEC"
+	BlueprintGOGCEnv           = "BLUEPRINT_GOGC"
+	BlueprintBridgeKindEnv     = "BLUEPRINT_BRIDGE_KIND"
+	BlueprintSpanPaddingEnv    = "BLUEPRINT_SPAN_PADDING_BYTES"
+	BlueprintOTLPRetryEnv      = "BLUEPRINT_OTLP_RETRY"
+	BlueprintOTLPDeadlineMSEnv = "BLUEPRINT_OTLP_DEADLINE_MS"
 )
 
 /*
@@ -52,6 +56,7 @@ type instance struct {
 	Expose            map[uint16]struct{} // Ports exposed with expose directive
 	Config            map[string]string   // Map from environment variable name to value
 	Passthrough       map[string]struct{} // Environment variables that just get passed through to the container
+	Command           []string            // Optional command override; emitted as compose `command:` (kompose translates to k8s `args:`). Used when env-var-based config isn't viable (e.g. elasticsearch settings with dots).
 }
 
 func NewDockerComposeFile(workspaceName, workspaceDir, fileName string) *DockerComposeFile {
@@ -105,6 +110,19 @@ func (d *DockerComposeFile) AddEnvVar(instanceName string, key string, val strin
 	}
 	key = linux.EnvVar(key)
 	instance.Config[key] = val
+	return nil
+}
+
+// Sets the container's command (entrypoint args) for instanceName. Emitted
+// in the compose file as a `command: [a, b, c]` list. Useful when a setting
+// can't be passed as an env var (e.g. ES requires `discovery.type=single-node`
+// with a literal dot in the key, which Kubernetes env-var names disallow).
+func (d *DockerComposeFile) SetCommand(instanceName string, args []string) error {
+	instance, err := d.getInstance(instanceName)
+	if err != nil {
+		return err
+	}
+	instance.Command = args
 	return nil
 }
 
@@ -165,15 +183,47 @@ func (d *DockerComposeFile) addInstance(instanceName string, image string, conta
 
 	// Only inject Go runtime tuning into BUILT services — prebuilt images
 	// like mongo/redis/jaeger ignore these vars and don't benefit from them.
+	//
+	// EXCEPTION: otelcol containers skip the GOGC injection. Blueprint's
+	// GOGC=off convention is meant for app pods, where Blueprint's own
+	// goproc runtime calls runtime.GC() on a GC_INTERVAL_SEC ticker to
+	// give deterministic GC timing. The otelcontribcol process does not
+	// read GC_INTERVAL_SEC and has no equivalent ticker, so injecting
+	// GOGC=off leaves the otelcol with no automatic GC at all — only
+	// the manual force-GC that memory_limiter / priorityprocessor call
+	// from their check loops. At 1s memory_limiter check interval that
+	// becomes too coarse to keep RSS under tight cgroup caps (observed:
+	// alloc spikes past hard threshold + 30% RSS overhead → OOMKill
+	// under SB SDK throughput at 256 MiB).
 	if containerTemplateName != "" {
+		isOtelcol := strings.HasPrefix(instanceName, "otelcol")
 		if v := os.Getenv(BlueprintGCIntervalEnv); v != "" {
 			instance.Config["GC_INTERVAL_SEC"] = v
 		}
-		if v := os.Getenv(BlueprintGOGCEnv); v != "" {
+		if v := os.Getenv(BlueprintGOGCEnv); v != "" && !isOtelcol {
 			instance.Config["GOGC"] = v
 		}
 		if v := os.Getenv(BlueprintBridgeKindEnv); v != "" {
 			instance.Config["BRIDGE_KIND"] = v
+		}
+		// SPAN_PADDING_BYTES is read by the vanilla/SB processors and
+		// injects N bytes per span as a wire-going attribute. Only
+		// useful on app containers (otelcol just forwards). Skip
+		// otelcol to avoid confusion in pod env dumps.
+		if v := os.Getenv(BlueprintSpanPaddingEnv); v != "" && !isOtelcol {
+			instance.Config["SPAN_PADDING_BYTES"] = v
+		}
+		// OTLP_RETRY controls whether the SDK's gRPC client retries
+		// on retriable errors (default: on; set to "off" to disable).
+		// Only meaningful for app containers — the otelcol uses its
+		// own retry config in the OTLP exporter.
+		if v := os.Getenv(BlueprintOTLPRetryEnv); v != "" && !isOtelcol {
+			instance.Config["OTLP_RETRY"] = v
+		}
+		// OTLP_DEADLINE_MS is the per-RPC context.WithTimeout deadline
+		// the SDK applies to UploadTraces calls. Default 1000ms.
+		if v := os.Getenv(BlueprintOTLPDeadlineMSEnv); v != "" && !isOtelcol {
+			instance.Config["OTLP_DEADLINE_MS"] = v
 		}
 	}
 
@@ -208,6 +258,12 @@ services:
     environment:
     {{- range $name, $value := .Config}}
      - {{$name}}={{$value}}
+    {{- end}}
+    {{- end}}
+    {{- if .Command}}
+    command:
+    {{- range $_, $arg := .Command}}
+     - "{{$arg}}"
     {{- end}}
     {{- end}}
     restart: always

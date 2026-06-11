@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process userid_service_vrev0_proc
 #
 
-FROM golang:1.26.2-bookworm AS userid_service_vrev0_proc
+FROM golang:1.26.3-bookworm AS userid_service_vrev0_proc
 
 COPY ./userid_service_vrev0_proc /src
 

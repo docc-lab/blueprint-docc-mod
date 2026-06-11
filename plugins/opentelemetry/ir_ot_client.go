@@ -447,17 +447,11 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Server always sets these values, so we can skip ok checks to reduce overhead
 	// Cache pointers after first lookup to avoid repeated context.Value() calls
 	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
-	endEventsPtr := ctx.Value("endEvents").(*string)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
 	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
 	seqNum := int(eventCountPtr.Add(1))
 
 	ctx = context.WithValue(ctx, "seqNum", seqNum)
-	childrenMutexPtr.Lock()
-	curEndEvents := *endEventsPtr
-	*endEventsPtr = ""
-	childrenMutexPtr.Unlock()
-
-	ctx = context.WithValue(ctx, "curEndEvents", curEndEvents)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
@@ -500,12 +494,15 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	endSeqNum := int(eventCountPtr.Add(1))
-	toAppend := "," + strconv.Itoa(seqNum) + ":" + strconv.Itoa(endSeqNum)
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
 	childrenMutexPtr.Lock()
-	*endEventsPtr = *endEventsPtr + toAppend
+	*endEventsPtr = append(*endEventsPtr, seqNum)
 	childrenMutexPtr.Unlock()
-	
+
 	return
 }
 {{end}}

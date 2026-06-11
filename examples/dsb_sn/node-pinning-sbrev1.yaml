@@ -1,0 +1,93 @@
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-sbrev1-ctr:
+      requests_cpu: 12000
+      # limits_cpu: 2000
+  - hometimeline-cache-sbrev1-ctr:
+      requests_cpu: 2000
+      # limits_cpu: 2000
+  - hometimeline-service-sbrev1-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+
+node-2:
+  - social-cache-sbrev1-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  - social-db-sbrev1-ctr:
+      requests_cpu: 25000
+    #   limits_cpu: 2000
+  - socialgraph-service-sbrev1-ctr:
+      requests_cpu: 6000
+    #   limits_cpu: 2000
+
+node-3:
+  - uniqueid-service-sbrev1-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - usermention-service-sbrev1-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  # - wrk2api-service-sbrev1-ctr:
+  #     # requests_cpu: 2000
+  #   #   limits_cpu: 2000
+
+node-4:
+  - usertimeline-cache-sbrev1-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - usertimeline-db-sbrev1-ctr:
+      requests_cpu: 11000
+    #   limits_cpu: 2000
+  - usertimeline-service-sbrev1-ctr:
+      requests_cpu: 8000
+    #   limits_cpu: 2000
+
+node-5:
+  - media-service-sbrev1-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - text-service-sbrev1-ctr:
+      requests_cpu: 8000
+    #   limits_cpu: 2000
+  - userid-service-sbrev1-ctr:
+      requests_cpu: 6000
+    #   limits_cpu: 2000
+
+node-6:
+  - post-cache-sbrev1-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - post-db-sbrev1-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - post-storage-service-sbrev1-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+
+node-7:
+  - urlshorten-db-sbrev1-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - urlshorten-service-sbrev1-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+
+node-8:
+  - user-service-sbrev1-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - user-cache-sbrev1-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - user-db-sbrev1-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  
+node-9:
+  - jaeger-sbrev1-ctr:
+      requests_cpu: 20000
+

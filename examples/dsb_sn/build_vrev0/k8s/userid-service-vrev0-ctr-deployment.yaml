@@ -41,5 +41,10 @@ spec:
         ports:
         - containerPort: 12345
           protocol: TCP
+        resources:
+          requests:
+            cpu: 6000m
       hostname: userid-service-vrev0-ctr
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-5

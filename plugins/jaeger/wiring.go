@@ -84,3 +84,98 @@ func Collector(spec wiring.WiringSpec, collectorName string) string {
 	// Return the pointer; anybody who wants to access the Jaeger collector should do so through the pointer
 	return collectorName
 }
+
+// [CollectorWithElasticsearch] is a variant of [Collector] that backs jaeger
+// with a co-located single-node Elasticsearch storage instance instead of
+// jaeger's default in-memory storage. The ES container is named `esName`
+// and bound on its REST port (9200). At wire time, jaeger receives
+// SPAN_STORAGE_TYPE=elasticsearch + ES_SERVER_URLS pointing at the ES
+// container.
+//
+// Useful for long-running tests where jaeger's in-memory storage would
+// otherwise consume unbounded heap and eventually OOM the host node.
+// Also exposes realistic downstream write-path backpressure — when ES
+// commits slow down under load, jaeger's OTLP receiver backs up, which
+// propagates pressure into the otelcol's exporter sending_queue.
+//
+// # Wiring Spec Usage
+//
+//	jaeger.CollectorWithElasticsearch(spec, "jaeger", "elasticsearch")
+func CollectorWithElasticsearch(spec wiring.WiringSpec, collectorName string, esName string) string {
+	// The nodes that we are defining for jaeger
+	collectorAddr := collectorName + ".addr"
+	collectorUIAddr := collectorName + ".ui.addr"
+	collectorOTLPAddr := collectorName + ".otlp.addr"
+	collectorCtr := collectorName + ".ctr"
+	collectorClient := collectorName + ".client"
+
+	// The nodes for elasticsearch
+	esAddr := esName + ".addr"
+	esCtr := esName + ".ctr"
+
+	// Define the Elasticsearch container
+	spec.Define(esCtr, &ElasticsearchContainer{}, func(ns wiring.Namespace) (ir.IRNode, error) {
+		es := newElasticsearchContainer(esCtr)
+		if err := address.Bind[*ElasticsearchContainer](ns, esAddr, es, &es.BindAddr); err != nil {
+			return nil, err
+		}
+		return es, nil
+	})
+	address.Define[*ElasticsearchContainer](spec, esAddr, esCtr)
+
+	// Define the Jaeger collector — same as Collector(), but additionally
+	// dials the ES container and stamps SPAN_STORAGE_TYPE+ES_SERVER_URLS
+	// onto the jaeger container's env.
+	spec.Define(collectorCtr, &JaegerCollectorContainer{}, func(ns wiring.Namespace) (ir.IRNode, error) {
+		collector, err := newJaegerCollectorContainer(collectorCtr)
+		if err != nil {
+			return nil, err
+		}
+		if err := address.Bind[*JaegerCollectorContainer](ns, collectorAddr, collector, &collector.BindAddr); err != nil {
+			return nil, err
+		}
+		if err := address.Bind[*JaegerCollectorContainer](ns, collectorUIAddr, collector, &collector.UIBindAddr); err != nil {
+			return nil, err
+		}
+		if err := address.Bind[*JaegerCollectorContainer](ns, collectorOTLPAddr, collector, &collector.OTLPBindAddr); err != nil {
+			return nil, err
+		}
+		// Dial ES so the jaeger container ships pointing at it.
+		esDial, err := address.Dial[*ElasticsearchContainer](ns, esAddr)
+		if err != nil {
+			return nil, err
+		}
+		collector.ESDialAddr = esDial.Dial
+		// Pass the ES container's name explicitly — it's the compose
+		// service name that jaeger's ES_SERVER_URLS env var will dial.
+		// DialConfig.Hostname isn't resolved yet at AddContainerInstance
+		// time, so we can't rely on it.
+		collector.ESContainerName = esCtr
+		return collector, nil
+	})
+
+	// Create a pointer to the collector
+	ptr := pointer.CreatePointer[*JaegerCollectorClient](spec, collectorName, collectorCtr)
+
+	// Define the address that points to the Jaeger collector
+	address.Define[*JaegerCollectorContainer](spec, collectorUIAddr, collectorCtr)
+	address.Define[*JaegerCollectorContainer](spec, collectorAddr, collectorCtr)
+	address.Define[*JaegerCollectorContainer](spec, collectorOTLPAddr, collectorCtr)
+
+	// Add the addresses to the pointer
+	ptr.AddAddrModifier(spec, collectorUIAddr)
+	ptr.AddAddrModifier(spec, collectorAddr)
+	ptr.AddAddrModifier(spec, collectorOTLPAddr)
+
+	// Define the Jaeger client and add it to the client side of the pointer
+	clientNext := ptr.AddSrcModifier(spec, collectorClient)
+	spec.Define(collectorClient, &JaegerCollectorClient{}, func(ns wiring.Namespace) (ir.IRNode, error) {
+		addr, err := address.Dial[*JaegerCollectorContainer](ns, clientNext)
+		if err != nil {
+			return nil, err
+		}
+		return newJaegerCollectorClient(collectorClient, addr.Dial)
+	})
+
+	return collectorName
+}

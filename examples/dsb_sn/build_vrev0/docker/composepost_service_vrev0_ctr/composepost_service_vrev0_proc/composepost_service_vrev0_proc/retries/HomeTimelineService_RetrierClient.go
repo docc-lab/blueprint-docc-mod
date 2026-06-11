@@ -2,8 +2,8 @@
 package retries
 
 import (
-	"blueprint/goproc/composepost_service_vrev0_proc/ot"
 	"context"
+	"blueprint/goproc/composepost_service_vrev0_proc/ot"
 )
 
 type HomeTimelineService_RetrierClient struct {

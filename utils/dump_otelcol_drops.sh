@@ -42,6 +42,7 @@ done
 METRICS=(
     otelcol_receiver_refused_spans
     otelcol_receiver_failed_spans
+    otelcol_exporter_enqueue_failed_spans
     otelcol_exporter_send_failed_spans
     otelcol_exporter_sent_spans
 )
@@ -80,24 +81,47 @@ trap cleanup EXIT INT TERM
 # --- counter scrape -------------------------------------------------------
 # scrape_metric: prints a single number — the sum of label-time-series for
 # a given counter name, taken from the prometheus exposition body passed
-# on stdin. Skips _bucket / _sum / _count rows from histograms.
+# on stdin. Skips _bucket / _sum / _count rows from histograms. Optional
+# second arg is a label-substring filter (e.g. 'exporter="otlp"') applied
+# to $1 before summing — used to dedupe the per-exporter counters since
+# otelcol emits one time series per configured exporter and we'd otherwise
+# double-count each span (debug + otlp).
+#
+# Prom exposition format puts a metric's labelset directly attached to its
+# name as one whitespace token, e.g.
+#   otelcol_exporter_sent_spans{exporter="otlp",...} 844437
+# So $1 looks like "<name>{<labels>}" and we need to match $1 == <name>
+# (unlabeled, rare) OR $1 starts with "<name>{". The "{" must go inside a
+# character class — bare "{" in an awk regex is a repetition-operator
+# trigger and silently fails to match in gawk.
 scrape_metric() {
     local name=$1
-    awk -v m="$name" '
-        $1 ~ "^"m"$" || $1 ~ "^"m"{" {
-            if ($1 !~ /_bucket|_sum|_count/) sum += $NF
+    local label_filter="${2:-}"
+    awk -v m="$name" -v lf="$label_filter" '
+        $1 == m || $1 ~ ("^" m "[{]") {
+            if ($1 ~ /_bucket|_sum|_count/) next
+            if (lf != "" && index($1, lf) == 0) next
+            sum += $NF
         }
         END { printf "%d", sum+0 }
     '
 }
 
 # scrape_all: prints one TSV row per pod, columns = METRICS in order.
+# Per-exporter counters (otelcol_exporter_*) are filtered to the otlp
+# exporter only so the debug exporter doesn't double the totals — every
+# span passes through both exporters in our pipeline.
 scrape_all() {
     for pod in "${PODS[@]}"; do
         body=$(curl -sS -m 3 "http://localhost:${POD_PORT[$pod]}/metrics" 2>/dev/null || true)
         printf '%s' "$pod"
         for m in "${METRICS[@]}"; do
-            v=$(printf '%s' "$body" | scrape_metric "$m")
+            case "$m" in
+                otelcol_exporter_*)
+                    v=$(printf '%s' "$body" | scrape_metric "$m" 'exporter="otlp"');;
+                *)
+                    v=$(printf '%s' "$body" | scrape_metric "$m");;
+            esac
             printf '\t%d' "$v"
         done
         printf '\n'

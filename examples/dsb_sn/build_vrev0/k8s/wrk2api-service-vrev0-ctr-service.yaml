@@ -8,9 +8,10 @@ metadata:
     io.kompose.service: wrk2api-service-vrev0-ctr
   name: wrk2api-service-vrev0-ctr
 spec:
+  internalTrafficPolicy: Local
   ports:
-  - name: '12373'
-    port: 12373
+  - name: '12374'
+    port: 12374
     targetPort: 2000
   - name: '2000'
     port: 2000

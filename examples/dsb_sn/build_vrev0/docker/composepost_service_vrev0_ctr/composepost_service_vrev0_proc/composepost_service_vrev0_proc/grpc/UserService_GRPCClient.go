@@ -2,12 +2,12 @@
 package grpc
 
 import (
-	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/composepost_service_vrev0_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"time"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"blueprint/goproc/composepost_service_vrev0_proc/ot"
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserService_GRPCClient struct {

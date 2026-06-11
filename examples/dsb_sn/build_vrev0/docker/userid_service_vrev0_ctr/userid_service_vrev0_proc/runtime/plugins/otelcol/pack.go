@@ -26,6 +26,23 @@ func decodeBR(s string) ([]byte, bool) {
 	return b, true
 }
 
+// decodeBRDepth extracts only the depth field (the leading varint) from
+// an encoded BR payload string, without unpacking the full message.
+// Lets OnEnd recover OnStart's depth decision without having to keep
+// an intra-process `__bag.prio` attribute around. Returns (0, false)
+// on malformed input.
+func decodeBRDepth(s string) (int, bool) {
+	raw, ok := decodeBR(s)
+	if !ok {
+		return 0, false
+	}
+	depth, n := binary.Uvarint(raw)
+	if n <= 0 {
+		return 0, false
+	}
+	return int(depth), true
+}
+
 // Wire-format constants ported from bridges/bridge/pack.go. Kept bit-exact
 // so that bagsize numbers measured by the trace_sim Go port apply to the
 // real processor output.
@@ -50,10 +67,43 @@ const (
 // payload travels on the wire (replaces the per-field baggage keys).
 const BaggageBRKey = "_br"
 
-// AttrBR is the span attribute name the processor writes the packed _br
-// payload into. The opentelemetry plugin wrappers translate `__bag.*`
-// attributes into outgoing baggage.
+// AttrBR is the SDK span attribute that becomes the OUTGOING `_br`
+// baggage on the next downstream RPC. The opentelemetry plugin wrappers
+// translate `__bag.*` attributes into outgoing baggage by stripping the
+// prefix, so __bag._br → baggage key "_br". The value is the packed
+// PROPAGATION snapshot (post-reset if this span is a checkpoint).
 const AttrBR = "__bag._br"
+
+// AttrBREmit is the WIRE-EXPORT attribute the processor attaches to a
+// span when the span is a checkpoint. Its presence on the exported OTLP
+// span IS the priority signal — matching the simulator's model, where
+// emit-bytes are produced iff the span is a checkpoint (no separate
+// priority bit). The value carries the PRE-RESET packed payload (the
+// full inherited chain ending at this span). Stripped at export time
+// for non-checkpoint spans by createResourceSpans/convertAttributes.
+const AttrBREmit = "_br"
+
+// AttrBagPrio is the INTRA-PROCESS span attribute the SDK uses to
+// communicate the OnStart-time priority decision to OnEnd. Stripped at
+// export time along with every other __bag.* attribute — does NOT
+// reach the wire. The collector-side priorityprocessor does NOT read
+// this; it reads AttrBREmit presence instead.
+const AttrBagPrio = "__bag.prio"
+
+// AttrForceLP is an intra-process escape hatch for synthetic pressure
+// spans. When a span carries `__bag.force_lp = true`, the SB processor's
+// OnEnd classifies the span as LP regardless of depth or leaf-server
+// status. Stripped at export time (__bag.* prefix), so this attribute
+// never reaches the wire.
+//
+// Use case: a service like TracePressureService creates many child spans
+// inside one HTTP request handler via tracer.Start(...). All of those
+// children share the same OTel parent context, which means OnStart sees
+// identical baggage for each and computes identical depthMod. Without
+// this escape hatch, all such children would classify identically to
+// the root span, making it impossible to generate pure-LP volume for
+// stress-testing the priority-aware shedding policy.
+const AttrForceLP = "__bag.force_lp"
 
 // varintEncode encodes a non-negative integer as a protobuf-style varint.
 func varintEncode(n int) []byte {

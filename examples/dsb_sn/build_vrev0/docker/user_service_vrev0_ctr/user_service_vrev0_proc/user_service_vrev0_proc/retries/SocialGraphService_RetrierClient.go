@@ -2,8 +2,8 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/user_service_vrev0_proc/ot"
+	"context"
 )
 
 type SocialGraphService_RetrierClient struct {

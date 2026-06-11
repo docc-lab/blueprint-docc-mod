@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process urlshorten_service_vrev0_proc
 #
 
-FROM golang:1.26.2-bookworm AS urlshorten_service_vrev0_proc
+FROM golang:1.26.3-bookworm AS urlshorten_service_vrev0_proc
 
 COPY ./urlshorten_service_vrev0_proc /src
 

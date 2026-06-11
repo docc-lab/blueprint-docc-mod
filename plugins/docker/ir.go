@@ -134,6 +134,13 @@ type (
 		// Returns an error if an instance doesn't exist with the name `instanceName`.
 		SetEnvironmentVariable(instanceName string, key string, val string) error
 
+		// Overrides the container's default command/entrypoint args. Emitted as
+		// compose `command: [a, b, c]`. Used when a setting can't be passed as
+		// an env var (e.g. ES needs `discovery.type=single-node` with a literal
+		// dot, which Kubernetes env-var names disallow). Default behavior (when
+		// not called) is to let the image's own ENTRYPOINT/CMD apply.
+		SetContainerCommand(instanceName string, args []string) error
+
 		ImplementsContainerWorkspace()
 	}
 

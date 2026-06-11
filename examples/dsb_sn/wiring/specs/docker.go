@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/wiring"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
@@ -84,28 +85,36 @@ var extraSuffix = flag.String("extra", "",
 // time in `runtime/plugins/otelcol/trace.go` — that's the other hand-edit
 // site, not driven by this spec yet.
 var (
-	DockerPB   = makeVariant("pb", bridgesConfig)
-	DockerCGPB = makeVariant("cgpb", bridgesConfig)
-	DockerSB   = makeVariant("sb", bridgesConfig)
-	DockerV    = makeVariant("v", vanillaConfig)
+	DockerPB   = makeVariant("pb", bridgesConfig, false)
+	DockerCGPB = makeVariant("cgpb", bridgesConfig, false)
+	DockerSB   = makeVariant("sb", bridgesConfig, false)
+	DockerV    = makeVariant("v", vanillaConfig, false)
+	// `docker_v_es` — vanilla wiring, but jaeger uses a co-located
+	// Elasticsearch container as its persistent storage backend.
+	// Useful for long-running tests where the default in-memory
+	// storage would otherwise OOM the host node.
+	DockerVES = makeVariant("v_es", vanillaConfig, true)
+	// `docker_sb_es` — SB wiring with ES-backed jaeger.
+	DockerSBES = makeVariant("sb_es", bridgesConfig, true)
 )
 
-func makeVariant(kind, configPath string) cmdbuilder.SpecOption {
+func makeVariant(kind, configPath string, useES bool) cmdbuilder.SpecOption {
 	return cmdbuilder.SpecOption{
 		Name:        "docker_" + kind,
 		Description: fmt.Sprintf("DSB SocialNetwork, bridge kind %q, collector config %s (use -extra N to tag identifiers as %s_N)", kind, configPath, kind),
 		Build: func(spec wiring.WiringSpec) ([]string, error) {
 			// Default BRIDGE_KIND for runtime dispatch to the kind being
-			// compiled. The dockercompose plugin reads BLUEPRINT_BRIDGE_KIND
-			// at instance-declaration time and bakes BRIDGE_KIND into every
-			// built service's compose env (which kompose propagates to k8s).
-			// LookupEnv (not Getenv) preserves an explicit empty override.
-			if _, set := os.LookupEnv("BLUEPRINT_BRIDGE_KIND"); !set {
-				os.Setenv("BLUEPRINT_BRIDGE_KIND", kind)
+			// compiled. For ES variants the bridge kind is the prefix
+			// before `_es` ("v"→vanilla, "sb"→structural). Set this
+			// before any spec call so the dockercompose plugin sees it.
+			bridgeKind := kind
+			if strings.HasSuffix(kind, "_es") {
+				bridgeKind = strings.TrimSuffix(kind, "_es")
 			}
-			// `-extra` is read here (post flag.Parse) so each run can vary
-			// the suffix without re-registering the variant.
-			return makeDockerSpec(spec, kind+*extraSuffix, configPath)
+			if _, set := os.LookupEnv("BLUEPRINT_BRIDGE_KIND"); !set {
+				os.Setenv("BLUEPRINT_BRIDGE_KIND", bridgeKind)
+			}
+			return makeDockerSpec(spec, kind+*extraSuffix, configPath, useES)
 		},
 	}
 }
@@ -119,13 +128,21 @@ func makeVariant(kind, configPath string) cmdbuilder.SpecOption {
 //
 // `suffix` is appended to every identifier so multiple build variants can
 // coexist in one cluster / build tree.
-func makeDockerSpec(spec wiring.WiringSpec, suffix, configPath string) ([]string, error) {
+func makeDockerSpec(spec wiring.WiringSpec, suffix, configPath string, useES bool) ([]string, error) {
 	sn := func(name string) string { return name + "_" + suffix }
 
 	var containers []string
 	var allServices []string
 
-	jaeger_collector := jaeger.Collector(spec, sn("jaeger"))
+	var jaeger_collector string
+	if useES {
+		// Single-node ES container co-located with jaeger as storage
+		// backend — jaeger gets SPAN_STORAGE_TYPE=elasticsearch +
+		// ES_SERVER_URLS env vars wired automatically.
+		jaeger_collector = jaeger.CollectorWithElasticsearch(spec, sn("jaeger"), sn("elasticsearch"))
+	} else {
+		jaeger_collector = jaeger.Collector(spec, sn("jaeger"))
+	}
 	trace_collector := otelcol.CollectorWithConfig(
 		spec, sn("otelcol"),
 		jaeger_collector,
@@ -222,8 +239,21 @@ func makeDockerSpec(spec wiring.WiringSpec, suffix, configPath string) ([]string
 	containers = append(containers, applyHTTPDefaults(wrk2api_service, trace_collector))
 	allServices = append(allServices, wrk2api_service)
 
+	// Synthetic span-pressure pump. Same HTTP-deploy pattern as wrk2api so
+	// an external wrk can pace request rate. Each request emits N forced-LP
+	// child spans via the TracePressureService implementation. Becomes a
+	// DaemonSet with non-local traffic policy at d2k8s time.
+	tracepressure_service := workflow.Service[socialnetwork.TracePressureService](spec, sn("tracepressure_service"))
+	containers = append(containers, applyHTTPDefaults(tracepressure_service, trace_collector))
+	allServices = append(allServices, tracepressure_service)
+
 	tests := gotests.Test(spec, allServices...)
 	containers = append(containers, tests, sn("otelcol"), sn("jaeger"))
+	if useES {
+		// ES has no pointer wrapper (jaeger talks to it over plain
+		// TCP), so we add the .ctr IR node name directly.
+		containers = append(containers, sn("elasticsearch")+".ctr")
+	}
 
 	return containers, nil
 }

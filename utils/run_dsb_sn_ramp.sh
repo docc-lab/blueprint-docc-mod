@@ -23,7 +23,11 @@ Options:
   --step RPS               Ramp step size (default 100).
   --duration SECS          Seconds per ramp step (default 60).
   --break SECS             Seconds between ramp steps (default 30).
-  --warmup-rps RPS         Warmup rate (default = --start).
+  --warmup-rps RPS         Warmup rate (default 100 — low-rate cache-priming
+                           warmup matching utils/run_dsb_sn_tests.sh; do NOT
+                           default to --start, which hammers the cluster
+                           cold at the ramp floor and triggers a flood of
+                           DeadlineExceeded errors before the actual ramp).
   --warmup-duration SECS   Warmup duration (default 100).
   -h, --help               Show this help and exit.
 
@@ -64,7 +68,7 @@ if [[ -z "$TARGET" ]]; then
     usage >&2
     exit 1
 fi
-[[ -z "$WARMUP_RPS" ]] && WARMUP_RPS="$START"
+[[ -z "$WARMUP_RPS" ]] && WARMUP_RPS=100
 
 THIS_DIR=$(pwd)
 LUA=/users/tomislav/blueprint-docc-mod/examples/dsb_sn/scripts/compose-post.lua

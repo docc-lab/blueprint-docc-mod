@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_vrev1/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: post-storage-service-vrev1-ctr
+  name: post-storage-service-vrev1-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: post-storage-service-vrev1-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_vrev1/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: post-storage-service-vrev1-ctr
+    spec:
+      containers:
+      - env:
+        - name: BRIDGE_KIND
+          value: v
+        - name: GC_INTERVAL_SEC
+          value: '0.1'
+        - name: GOGC
+          value: 'off'
+        - name: OTELCOL_VREV1_DIAL_ADDR
+          value: otelcol-vrev1-ctr:4317
+        - name: POST_CACHE_VREV1_DIAL_ADDR
+          value: post-cache-vrev1-ctr:6379
+        - name: POST_DB_VREV1_DIAL_ADDR
+          value: post-db-vrev1-ctr:27017
+        - name: POST_STORAGE_SERVICE_VREV1_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: SPAN_PADDING_BYTES
+          value: '1024'
+        image: 10.10.1.1:30000/post-storage-service-vrev1-ctr:latest
+        name: post-storage-service-vrev1-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+      hostname: post-storage-service-vrev1-ctr
+      restartPolicy: Always

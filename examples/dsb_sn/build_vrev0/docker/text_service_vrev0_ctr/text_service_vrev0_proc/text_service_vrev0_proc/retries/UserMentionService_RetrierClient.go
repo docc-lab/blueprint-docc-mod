@@ -2,9 +2,9 @@
 package retries
 
 import (
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"blueprint/goproc/text_service_vrev0_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserMentionService_RetrierClient struct {

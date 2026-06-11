@@ -2,8 +2,8 @@
 package retries
 
 import (
-	"blueprint/goproc/wrk2api_service_vrev0_proc/ot"
 	"context"
+	"blueprint/goproc/wrk2api_service_vrev0_proc/ot"
 )
 
 type UserTimelineService_RetrierClient struct {

@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process socialgraph_service_vrev0_proc
 #
 
-FROM golang:1.26.2-bookworm AS socialgraph_service_vrev0_proc
+FROM golang:1.26.3-bookworm AS socialgraph_service_vrev0_proc
 
 COPY ./socialgraph_service_vrev0_proc /src
 

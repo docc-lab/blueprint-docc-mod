@@ -1,0 +1,19 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UniqueIdService_OTServerWrapperInterface_ComposeUniqueId_Request {
+    sint64 reqID = 1;
+    sint64 postType = 2;
+    string traceCtx = 3;
+}
+
+message UniqueIdService_OTServerWrapperInterface_ComposeUniqueId_Response {
+    sint64 ret0 = 1;
+}
+
+service UniqueIdService_OTServerWrapperInterface {
+    rpc ComposeUniqueId (UniqueIdService_OTServerWrapperInterface_ComposeUniqueId_Request) returns (UniqueIdService_OTServerWrapperInterface_ComposeUniqueId_Response) {}
+}
+

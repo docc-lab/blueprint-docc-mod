@@ -25,12 +25,19 @@ spec:
           value: v
         - name: GC_INTERVAL_SEC
           value: '0.1'
-        - name: GOGC
-          value: 'off'
+        - name: GOMEMLIMIT
+          value: 180MiB
         - name: JAEGER_VREV0_OTLP_DIAL_ADDR
           value: jaeger-vrev0-ctr:4317
         image: 10.10.1.1:30000/otelcol-vrev0-ctr:latest
         name: otelcol-vrev0-ctr
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 256Mi
+          limits:
+            cpu: "500m"
+            memory: 256Mi
         ports:
         - containerPort: 4317
           protocol: TCP

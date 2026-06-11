@@ -101,7 +101,6 @@ services:
     environment:
      - BRIDGE_KIND=v
      - GC_INTERVAL_SEC=0.1
-     - GOGC=off
      - JAEGER_VREV0_OTLP_DIAL_ADDR=jaeger_vrev0_ctr:4317
     restart: always
 
@@ -197,6 +196,23 @@ services:
      - TEXT_SERVICE_VREV0_GRPC_BIND_ADDR=0.0.0.0:12345
      - URLSHORTEN_SERVICE_VREV0_GRPC_DIAL_ADDR=urlshorten_service_vrev0_ctr:12345
      - USERMENTION_SERVICE_VREV0_GRPC_DIAL_ADDR=usermention_service_vrev0_ctr:12345
+    restart: always
+
+  tracepressure_service_vrev0_ctr:
+    build:
+      context: tracepressure_service_vrev0_ctr
+      dockerfile: ./Dockerfile
+    hostname: tracepressure_service_vrev0_ctr
+    expose:
+     - "2000"
+    ports:
+     - "${TRACEPRESSURE_SERVICE_VREV0_HTTP_BIND_ADDR?tracepressure_service_vrev0.http.bind_addr must be set by the calling environment}:2000"
+    environment:
+     - BRIDGE_KIND=v
+     - GC_INTERVAL_SEC=0.1
+     - GOGC=off
+     - OTELCOL_VREV0_DIAL_ADDR=otelcol_vrev0_ctr:4317
+     - TRACEPRESSURE_SERVICE_VREV0_HTTP_BIND_ADDR=0.0.0.0:2000
     restart: always
 
   uniqueid_service_vrev0_ctr:

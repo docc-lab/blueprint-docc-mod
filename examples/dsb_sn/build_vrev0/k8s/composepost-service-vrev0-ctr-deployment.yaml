@@ -51,5 +51,10 @@ spec:
         ports:
         - containerPort: 12345
           protocol: TCP
+        resources:
+          requests:
+            cpu: 12000m
       hostname: composepost-service-vrev0-ctr
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-1
