@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: tracepressure-service-sb-esrev1-ctr
+  name: tracepressure-service-sb-esrev1-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: tracepressure-service-sb-esrev1-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: tracepressure-service-sb-esrev1-ctr
+    spec:
+      containers:
+      - env:
+        - name: BRIDGE_KIND
+          value: sb
+        - name: GC_INTERVAL_SEC
+          value: '0.1'
+        - name: GOGC
+          value: 'off'
+        - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+          value: otelcol-sb-esrev1-ctr:4317
+        - name: TRACEPRESSURE_SERVICE_SB_ESREV1_HTTP_BIND_ADDR
+          value: 0.0.0.0:2000
+        image: 10.10.1.1:30000/tracepressure-service-sb-esrev1-ctr:latest
+        name: tracepressure-service-sb-esrev1-ctr
+        ports:
+        - containerPort: 2000
+          protocol: TCP
+      hostname: tracepressure-service-sb-esrev1-ctr
+      restartPolicy: Always

@@ -102,20 +102,26 @@ for pod in data['items']:
 " >> "$SNAP" 2>/dev/null
 
   # SDK-side metrics
-  if [ "$VARIANT" = "vrev0" ]; then
-    MKEY="vanilla_processor_metrics"
-  else
+  # Vanilla SDK emits "vanilla_processor_metrics"; SB emits "sb_processor_metrics".
+  # VARIANT can be vrev0 / vesrev0 / v-esrev0 / sb_rev0 / sb-esrev0 / etc.
+  # Treat anything containing "sb" as SB; everything else as vanilla.
+  if [[ "$VARIANT" == *sb* ]]; then
     MKEY="sb_processor_metrics"
+  else
+    MKEY="vanilla_processor_metrics"
   fi
   for svc in wrk2api composepost hometimeline media post-storage socialgraph text uniqueid urlshorten user userid usermention usertimeline; do
     local pod=$(kubectl get pods --no-headers 2>/dev/null | grep "^${svc}-service-${VARIANT}-ctr" | awk '{print $1}' | head -1)
     [ -z "$pod" ] && continue
     local line=$(kubectl logs "$pod" --tail=2 2>/dev/null | grep "$MKEY" | tail -1)
     [ -z "$line" ] && continue
-    for k in spans_received spans_sent spans_dropped spans_flushed batches_sent batches_dropped send_unavailable send_deadline send_exhausted send_canceled send_other buffer_depth; do
-      local v=$(echo "$line" | grep -oP "$k=\K[0-9]+")
-      [ -n "$v" ] && echo -e "$T\tsnap\t$STEP\tsdk\t$svc\t$k\t$v" >> "$SNAP"
+    for k in spans_received spans_sent spans_dropped spans_flushed batches_sent batches_dropped send_unavailable send_deadline send_exhausted send_canceled send_other buffer_depth cp_received lp_received cp_sent lp_sent cp_dropped lp_dropped; do
+      local v=$(echo "$line" | grep -oP "$k=\K[0-9]+" || true)
+      if [ -n "$v" ]; then
+        echo -e "$T\tsnap\t$STEP\tsdk\t$svc\t$k\t$v" >> "$SNAP"
+      fi
     done
+    true  # ensure loop exit is success even if last iter's grep matched nothing
   done
 }
 

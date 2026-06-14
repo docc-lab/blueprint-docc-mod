@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: jaeger-sb-esrev1-ctr
+  name: jaeger-sb-esrev1-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: jaeger-sb-esrev1-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: jaeger-sb-esrev1-ctr
+    spec:
+      containers:
+      - env:
+        - name: ES_SERVER_URLS
+          value: http://elasticsearch-sb-esrev1-ctr:9200
+        - name: QUERY_MAX_CLOCK_SKEW_ADJUSTMENT
+          value: 1m
+        - name: SPAN_STORAGE_TYPE
+          value: elasticsearch
+        - name: COLLECTOR_OTLP_GRPC_MAX_MESSAGE_SIZE
+          value: '33554432'
+        - name: ES_BULK_WORKERS
+          value: '10'
+        - name: ES_BULK_SIZE
+          value: '10000000'
+        - name: ES_BULK_ACTIONS
+          value: '5000'
+        - name: ES_BULK_FLUSH_INTERVAL
+          value: 200ms
+        - name: COLLECTOR_QUEUE_SIZE
+          value: '10000'
+        - name: COLLECTOR_NUM_WORKERS
+          value: '100'
+        image: 10.10.1.1:30000/jaegertracing-all-in-one:latest
+        name: jaeger-sb-esrev1-ctr
+        ports:
+        - containerPort: 14268
+          protocol: TCP
+        - containerPort: 4317
+          protocol: TCP
+        - containerPort: 16686
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 20000m
+      hostname: jaeger-sb-esrev1-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-9

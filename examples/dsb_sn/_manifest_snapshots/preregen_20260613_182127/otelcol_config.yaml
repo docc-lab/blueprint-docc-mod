@@ -1,0 +1,57 @@
+exporters:
+    debug:
+        verbosity: detailed
+    otlp:
+        endpoint: ${JAEGER_SB_ESREV1_OTLP_DIAL_ADDR}
+        retry_on_failure:
+            enabled: true
+            initial_interval: 5s
+            max_elapsed_time: 0
+            max_interval: 30s
+        sending_queue:
+            enabled: true
+            num_consumers: 10
+            queue_size: 1000
+            block_on_overflow: false
+        tls:
+            insecure: true
+processors:
+    batch: null
+    priority:
+        check_interval: 100ms
+        soft_percentage: 50
+        hard_percentage: 70
+        cp_safety_factor: 1
+        force_gc: false
+receivers:
+    configdiscovery:
+        endpoint: ":8080"
+        config_map:
+            cpd: 3
+    otlp:
+        protocols:
+            grpc:
+                endpoint: 0.0.0.0:4317
+                include_metadata: true
+            http:
+                endpoint: 0.0.0.0:4318
+                include_metadata: true
+service:
+    pipelines:
+        traces:
+            exporters:
+                - otlp
+            processors:
+                - priority
+                - batch
+            receivers:
+                - otlp
+        logs/configdiscovery:
+            exporters:
+                - debug
+            processors: []
+            receivers:
+                - configdiscovery
+    telemetry:
+        logs:
+            level: DEBUG

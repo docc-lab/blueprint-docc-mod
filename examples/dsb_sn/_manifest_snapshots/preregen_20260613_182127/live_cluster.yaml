@@ -1,0 +1,2444 @@
+apiVersion: v1
+items:
+- apiVersion: apps/v1
+  kind: DaemonSet
+  metadata:
+    annotations:
+      deprecated.daemonset.template.generation: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"DaemonSet","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"otelcol-sb-esrev1-ctr"},"name":"otelcol-sb-esrev1-ctr","namespace":"default"},"spec":{"selector":{"matchLabels":{"io.kompose.service":"otelcol-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"otelcol-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"JAEGER_SB_ESREV1_OTLP_DIAL_ADDR","value":"jaeger-sb-esrev1-ctr:4317"},{"name":"GOMEMLIMIT","value":"180MiB"}],"image":"10.10.1.1:30000/otelcol-sb-esrev1-ctr:latest","name":"otelcol-sb-esrev1-ctr","ports":[{"containerPort":4317,"protocol":"TCP"},{"containerPort":8080,"protocol":"TCP"}],"resources":{"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"500m","memory":"256Mi"}}}],"hostname":"otelcol-sb-esrev1-ctr","restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: otelcol-sb-esrev1-ctr
+    name: otelcol-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214250"
+    uid: d01af59a-4bb3-496b-9943-041aef499d06
+  spec:
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: otelcol-sb-esrev1-ctr
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: otelcol-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: JAEGER_SB_ESREV1_OTLP_DIAL_ADDR
+            value: jaeger-sb-esrev1-ctr:4317
+          - name: GOMEMLIMIT
+            value: 180MiB
+          image: 10.10.1.1:30000/otelcol-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: otelcol-sb-esrev1-ctr
+          ports:
+          - containerPort: 4317
+            protocol: TCP
+          - containerPort: 8080
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 500m
+              memory: 256Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: otelcol-sb-esrev1-ctr
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+    updateStrategy:
+      rollingUpdate:
+        maxSurge: 0
+        maxUnavailable: 1
+      type: RollingUpdate
+  status:
+    currentNumberScheduled: 9
+    desiredNumberScheduled: 9
+    numberAvailable: 9
+    numberMisscheduled: 0
+    numberReady: 9
+    observedGeneration: 1
+    updatedNumberScheduled: 9
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"composepost-service-sb-esrev1-ctr"},"name":"composepost-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"composepost-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"composepost-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"COMPOSEPOST_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"HOMETIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"hometimeline-service-sb-esrev1-ctr:12345"},{"name":"MEDIA_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"media-service-sb-esrev1-ctr:12345"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"POST_STORAGE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"post-storage-service-sb-esrev1-ctr:12345"},{"name":"TEXT_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"text-service-sb-esrev1-ctr:12345"},{"name":"UNIQUEID_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"uniqueid-service-sb-esrev1-ctr:12345"},{"name":"USERTIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"usertimeline-service-sb-esrev1-ctr:12345"},{"name":"USER_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"user-service-sb-esrev1-ctr:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/composepost-service-sb-esrev1-ctr:latest","name":"composepost-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"12000m"}}}],"hostname":"composepost-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-1"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: composepost-service-sb-esrev1-ctr
+    name: composepost-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214247"
+    uid: 88a47eda-f20d-44ab-bceb-ea87c4544e3e
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: composepost-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: composepost-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: COMPOSEPOST_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: HOMETIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: hometimeline-service-sb-esrev1-ctr:12345
+          - name: MEDIA_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: media-service-sb-esrev1-ctr:12345
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: POST_STORAGE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: post-storage-service-sb-esrev1-ctr:12345
+          - name: TEXT_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: text-service-sb-esrev1-ctr:12345
+          - name: UNIQUEID_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: uniqueid-service-sb-esrev1-ctr:12345
+          - name: USERTIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: usertimeline-service-sb-esrev1-ctr:12345
+          - name: USER_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: user-service-sb-esrev1-ctr:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/composepost-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: composepost-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "12"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: composepost-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-1
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:35Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:25Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: ReplicaSet "composepost-service-sb-esrev1-ctr-8b5ccb947" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"elasticsearch-sb-esrev1-ctr"},"name":"elasticsearch-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"elasticsearch-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"elasticsearch-sb-esrev1-ctr"}},"spec":{"containers":[{"args":["elasticsearch","-Ediscovery.type=single-node","-Expack.security.enabled=false","-Ebootstrap.memory_lock=false"],"env":[{"name":"ES_JAVA_OPTS","value":"-Xms4g -Xmx4g"}],"image":"10.10.1.1:30000/docker.elastic.co-elasticsearch-elasticsearch:7.17.20","name":"elasticsearch-sb-esrev1-ctr","ports":[{"containerPort":9200,"protocol":"TCP"}],"resources":{"requests":{"cpu":"4000m"}}}],"hostname":"elasticsearch-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-9"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: elasticsearch-sb-esrev1-ctr
+    name: elasticsearch-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214104"
+    uid: 1c140a15-c2f8-4476-8302-ddcd0806ad59
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: elasticsearch-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: elasticsearch-sb-esrev1-ctr
+      spec:
+        containers:
+        - args:
+          - elasticsearch
+          - -Ediscovery.type=single-node
+          - -Expack.security.enabled=false
+          - -Ebootstrap.memory_lock=false
+          env:
+          - name: ES_JAVA_OPTS
+            value: -Xms4g -Xmx4g
+          image: 10.10.1.1:30000/docker.elastic.co-elasticsearch-elasticsearch:7.17.20
+          imagePullPolicy: IfNotPresent
+          name: elasticsearch-sb-esrev1-ctr
+          ports:
+          - containerPort: 9200
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "4"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: elasticsearch-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-9
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:30Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:25Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: ReplicaSet "elasticsearch-sb-esrev1-ctr-74b549f4d6" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"hometimeline-cache-sb-esrev1-ctr"},"name":"hometimeline-cache-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"hometimeline-cache-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"hometimeline-cache-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/redis:8.6","name":"hometimeline-cache-sb-esrev1-ctr","ports":[{"containerPort":6379,"protocol":"TCP"}],"resources":{"requests":{"cpu":"2000m"}}}],"hostname":"hometimeline-cache-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-1"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: hometimeline-cache-sb-esrev1-ctr
+    name: hometimeline-cache-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214177"
+    uid: f9f99b22-ef5b-4f26-b947-6c1f89664b55
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: hometimeline-cache-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: hometimeline-cache-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/redis:8.6
+          imagePullPolicy: IfNotPresent
+          name: hometimeline-cache-sb-esrev1-ctr
+          ports:
+          - containerPort: 6379
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: hometimeline-cache-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-1
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:32Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:25Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: ReplicaSet "hometimeline-cache-sb-esrev1-ctr-5b666cd78c" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"hometimeline-service-sb-esrev1-ctr"},"name":"hometimeline-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"hometimeline-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"hometimeline-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"HOMETIMELINE_CACHE_SB_ESREV1_DIAL_ADDR","value":"hometimeline-cache-sb-esrev1-ctr:6379"},{"name":"HOMETIMELINE_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"POST_STORAGE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"post-storage-service-sb-esrev1-ctr:12345"},{"name":"SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"socialgraph-service-sb-esrev1-ctr:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/hometimeline-service-sb-esrev1-ctr:latest","name":"hometimeline-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"5000m"}}}],"hostname":"hometimeline-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-1"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: hometimeline-service-sb-esrev1-ctr
+    name: hometimeline-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214315"
+    uid: dee751b0-8e5f-4230-a092-ef60ea97ac35
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: hometimeline-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: hometimeline-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: HOMETIMELINE_CACHE_SB_ESREV1_DIAL_ADDR
+            value: hometimeline-cache-sb-esrev1-ctr:6379
+          - name: HOMETIMELINE_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: POST_STORAGE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: post-storage-service-sb-esrev1-ctr:12345
+          - name: SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: socialgraph-service-sb-esrev1-ctr:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/hometimeline-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: hometimeline-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "5"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: hometimeline-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-1
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:38Z"
+      lastUpdateTime: "2026-06-13T22:56:38Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:25Z"
+      lastUpdateTime: "2026-06-13T22:56:38Z"
+      message: ReplicaSet "hometimeline-service-sb-esrev1-ctr-546667dd96" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"jaeger-sb-esrev1-ctr"},"name":"jaeger-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"jaeger-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"jaeger-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"ES_SERVER_URLS","value":"http://elasticsearch-sb-esrev1-ctr:9200"},{"name":"QUERY_MAX_CLOCK_SKEW_ADJUSTMENT","value":"1m"},{"name":"SPAN_STORAGE_TYPE","value":"elasticsearch"}],"image":"10.10.1.1:30000/jaegertracing-all-in-one:latest","name":"jaeger-sb-esrev1-ctr","ports":[{"containerPort":14268,"protocol":"TCP"},{"containerPort":4317,"protocol":"TCP"},{"containerPort":16686,"protocol":"TCP"}],"resources":{"requests":{"cpu":"20000m"}}}],"hostname":"jaeger-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-9"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: jaeger-sb-esrev1-ctr
+    name: jaeger-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214534"
+    uid: 868c3dbe-7f9d-4f11-8017-e0a8ea5b78a8
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: jaeger-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: jaeger-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: ES_SERVER_URLS
+            value: http://elasticsearch-sb-esrev1-ctr:9200
+          - name: QUERY_MAX_CLOCK_SKEW_ADJUSTMENT
+            value: 1m
+          - name: SPAN_STORAGE_TYPE
+            value: elasticsearch
+          image: 10.10.1.1:30000/jaegertracing-all-in-one:latest
+          imagePullPolicy: Always
+          name: jaeger-sb-esrev1-ctr
+          ports:
+          - containerPort: 14268
+            protocol: TCP
+          - containerPort: 4317
+            protocol: TCP
+          - containerPort: 16686
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "20"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: jaeger-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-9
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:25Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: ReplicaSet "jaeger-sb-esrev1-ctr-798df679b4" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2026-06-13T22:56:56Z"
+      lastUpdateTime: "2026-06-13T22:56:56Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"media-service-sb-esrev1-ctr"},"name":"media-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"media-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"media-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"MEDIA_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/media-service-sb-esrev1-ctr:latest","name":"media-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"2000m"}}}],"hostname":"media-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-5"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: media-service-sb-esrev1-ctr
+    name: media-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214155"
+    uid: 82e7b3e6-4f93-487e-823b-06b67ba4e8d9
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: media-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: media-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: MEDIA_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/media-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: media-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: media-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-5
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:32Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:25Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: ReplicaSet "media-service-sb-esrev1-ctr-6fccc8dccc" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      meta.helm.sh/release-name: nfs-subdir-external-provisioner
+      meta.helm.sh/release-namespace: default
+    creationTimestamp: "2026-06-02T09:11:32Z"
+    generation: 1
+    labels:
+      app: nfs-subdir-external-provisioner
+      app.kubernetes.io/managed-by: Helm
+      chart: nfs-subdir-external-provisioner-4.0.18
+      heritage: Helm
+      release: nfs-subdir-external-provisioner
+    name: nfs-subdir-external-provisioner
+    namespace: default
+    resourceVersion: "9349"
+    uid: 28e1adce-3c00-472f-99e1-db1e72fca787
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: nfs-subdir-external-provisioner
+        release: nfs-subdir-external-provisioner
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: nfs-subdir-external-provisioner
+          release: nfs-subdir-external-provisioner
+      spec:
+        containers:
+        - env:
+          - name: PROVISIONER_NAME
+            value: cluster.local/nfs-subdir-external-provisioner
+          - name: NFS_SERVER
+            value: 10.10.1.1
+          - name: NFS_PATH
+            value: /storage/nfs
+          image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
+          imagePullPolicy: IfNotPresent
+          name: nfs-subdir-external-provisioner
+          resources: {}
+          securityContext: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /persistentvolumes
+            name: nfs-subdir-external-provisioner-root
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: nfs-subdir-external-provisioner
+        serviceAccountName: nfs-subdir-external-provisioner
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: nfs-subdir-external-provisioner-root
+          persistentVolumeClaim:
+            claimName: pvc-nfs-subdir-external-provisioner
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-02T09:11:38Z"
+      lastUpdateTime: "2026-06-02T09:11:38Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-02T09:11:32Z"
+      lastUpdateTime: "2026-06-02T09:11:38Z"
+      message: ReplicaSet "nfs-subdir-external-provisioner-5c8bf6748" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"post-cache-sb-esrev1-ctr"},"name":"post-cache-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"post-cache-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"post-cache-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/redis:8.6","name":"post-cache-sb-esrev1-ctr","ports":[{"containerPort":6379,"protocol":"TCP"}],"resources":{"requests":{"cpu":"2000m"}}}],"hostname":"post-cache-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-6"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: post-cache-sb-esrev1-ctr
+    name: post-cache-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214069"
+    uid: 5dba2803-23ff-4ae5-b445-3f1e1ad07e4b
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: post-cache-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: post-cache-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/redis:8.6
+          imagePullPolicy: IfNotPresent
+          name: post-cache-sb-esrev1-ctr
+          ports:
+          - containerPort: 6379
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: post-cache-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-6
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:30Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:26Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: ReplicaSet "post-cache-sb-esrev1-ctr-c669945f8" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"post-db-sb-esrev1-ctr"},"name":"post-db-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"post-db-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"post-db-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/mongo:4.4","name":"post-db-sb-esrev1-ctr","ports":[{"containerPort":27017,"protocol":"TCP"}],"resources":{"requests":{"cpu":"3000m"}}}],"hostname":"post-db-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-6"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: post-db-sb-esrev1-ctr
+    name: post-db-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214083"
+    uid: b54bba51-afae-4598-9ecd-8791be0c4b90
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: post-db-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: post-db-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/mongo:4.4
+          imagePullPolicy: IfNotPresent
+          name: post-db-sb-esrev1-ctr
+          ports:
+          - containerPort: 27017
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "3"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: post-db-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-6
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:30Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:26Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: ReplicaSet "post-db-sb-esrev1-ctr-7d6b46f945" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"post-storage-service-sb-esrev1-ctr"},"name":"post-storage-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"post-storage-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"post-storage-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"POST_CACHE_SB_ESREV1_DIAL_ADDR","value":"post-cache-sb-esrev1-ctr:6379"},{"name":"POST_DB_SB_ESREV1_DIAL_ADDR","value":"post-db-sb-esrev1-ctr:27017"},{"name":"POST_STORAGE_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/post-storage-service-sb-esrev1-ctr:latest","name":"post-storage-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"5000m"}}}],"hostname":"post-storage-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-6"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: post-storage-service-sb-esrev1-ctr
+    name: post-storage-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214148"
+    uid: ad758bf5-08a3-4a48-ac10-09a461214fe3
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: post-storage-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: post-storage-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: POST_CACHE_SB_ESREV1_DIAL_ADDR
+            value: post-cache-sb-esrev1-ctr:6379
+          - name: POST_DB_SB_ESREV1_DIAL_ADDR
+            value: post-db-sb-esrev1-ctr:27017
+          - name: POST_STORAGE_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/post-storage-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: post-storage-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "5"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: post-storage-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-6
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:32Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:26Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: ReplicaSet "post-storage-service-sb-esrev1-ctr-5944656c94" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"social-cache-sb-esrev1-ctr"},"name":"social-cache-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"social-cache-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"social-cache-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/redis:8.6","name":"social-cache-sb-esrev1-ctr","ports":[{"containerPort":6379,"protocol":"TCP"}],"resources":{"requests":{"cpu":"4000m"}}}],"hostname":"social-cache-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-2"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: social-cache-sb-esrev1-ctr
+    name: social-cache-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214007"
+    uid: a4fd1f54-804d-44b0-aa14-4a4781557aeb
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: social-cache-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: social-cache-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/redis:8.6
+          imagePullPolicy: IfNotPresent
+          name: social-cache-sb-esrev1-ctr
+          ports:
+          - containerPort: 6379
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "4"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: social-cache-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-2
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:29Z"
+      lastUpdateTime: "2026-06-13T22:56:29Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:26Z"
+      lastUpdateTime: "2026-06-13T22:56:29Z"
+      message: ReplicaSet "social-cache-sb-esrev1-ctr-6d56895659" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"social-db-sb-esrev1-ctr"},"name":"social-db-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"social-db-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"social-db-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/mongo:4.4","name":"social-db-sb-esrev1-ctr","ports":[{"containerPort":27017,"protocol":"TCP"}],"resources":{"requests":{"cpu":"25000m"}}}],"hostname":"social-db-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-2"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:25Z"
+    generation: 1
+    labels:
+      io.kompose.service: social-db-sb-esrev1-ctr
+    name: social-db-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214008"
+    uid: 988a708f-b69b-49f4-a6b2-e7d4649240b3
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: social-db-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: social-db-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/mongo:4.4
+          imagePullPolicy: IfNotPresent
+          name: social-db-sb-esrev1-ctr
+          ports:
+          - containerPort: 27017
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "25"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: social-db-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-2
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:29Z"
+      lastUpdateTime: "2026-06-13T22:56:29Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:26Z"
+      lastUpdateTime: "2026-06-13T22:56:29Z"
+      message: ReplicaSet "social-db-sb-esrev1-ctr-674f7d9d8b" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"socialgraph-service-sb-esrev1-ctr"},"name":"socialgraph-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"socialgraph-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"socialgraph-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"SOCIAL_CACHE_SB_ESREV1_DIAL_ADDR","value":"social-cache-sb-esrev1-ctr:6379"},{"name":"SOCIAL_DB_SB_ESREV1_DIAL_ADDR","value":"social-db-sb-esrev1-ctr:27017"},{"name":"USERID_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"userid-service-sb-esrev1-ctr:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/socialgraph-service-sb-esrev1-ctr:latest","name":"socialgraph-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"6000m"}}}],"hostname":"socialgraph-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-2"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: socialgraph-service-sb-esrev1-ctr
+    name: socialgraph-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214491"
+    uid: 7f6f0604-0709-4c43-8e73-eb9faa495fc3
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: socialgraph-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: socialgraph-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: SOCIAL_CACHE_SB_ESREV1_DIAL_ADDR
+            value: social-cache-sb-esrev1-ctr:6379
+          - name: SOCIAL_DB_SB_ESREV1_DIAL_ADDR
+            value: social-db-sb-esrev1-ctr:27017
+          - name: USERID_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: userid-service-sb-esrev1-ctr:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/socialgraph-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: socialgraph-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "6"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: socialgraph-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-2
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:49Z"
+      lastUpdateTime: "2026-06-13T22:56:49Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:26Z"
+      lastUpdateTime: "2026-06-13T22:56:49Z"
+      message: ReplicaSet "socialgraph-service-sb-esrev1-ctr-64c644db9c" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"text-service-sb-esrev1-ctr"},"name":"text-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"text-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"text-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"TEXT_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"URLSHORTEN_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"urlshorten-service-sb-esrev1-ctr:12345"},{"name":"USERMENTION_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"usermention-service-sb-esrev1-ctr:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/text-service-sb-esrev1-ctr:latest","name":"text-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"8000m"}}}],"hostname":"text-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-5"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: text-service-sb-esrev1-ctr
+    name: text-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214230"
+    uid: 36aa4591-c759-4b38-9fd2-048171b2567e
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: text-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: text-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: TEXT_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: URLSHORTEN_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: urlshorten-service-sb-esrev1-ctr:12345
+          - name: USERMENTION_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: usermention-service-sb-esrev1-ctr:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/text-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: text-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "8"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: text-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-5
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:35Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:26Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: ReplicaSet "text-service-sb-esrev1-ctr-5664d7ccd" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"tracepressure-service-sb-esrev1-ctr"},"name":"tracepressure-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"tracepressure-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"tracepressure-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"TRACEPRESSURE_SERVICE_SB_ESREV1_HTTP_BIND_ADDR","value":"0.0.0.0:2000"}],"image":"10.10.1.1:30000/tracepressure-service-sb-esrev1-ctr:latest","name":"tracepressure-service-sb-esrev1-ctr","ports":[{"containerPort":2000,"protocol":"TCP"}]}],"hostname":"tracepressure-service-sb-esrev1-ctr","restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: tracepressure-service-sb-esrev1-ctr
+    name: tracepressure-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214222"
+    uid: 541dad98-1f47-4d32-aeac-ac665fb0390f
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: tracepressure-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: tracepressure-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: TRACEPRESSURE_SERVICE_SB_ESREV1_HTTP_BIND_ADDR
+            value: 0.0.0.0:2000
+          image: 10.10.1.1:30000/tracepressure-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: tracepressure-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 2000
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: tracepressure-service-sb-esrev1-ctr
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:35Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:27Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: ReplicaSet "tracepressure-service-sb-esrev1-ctr-6bf49bb9fd" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"uniqueid-service-sb-esrev1-ctr"},"name":"uniqueid-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"uniqueid-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"uniqueid-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"UNIQUEID_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/uniqueid-service-sb-esrev1-ctr:latest","name":"uniqueid-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"3000m"}}}],"hostname":"uniqueid-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-3"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: uniqueid-service-sb-esrev1-ctr
+    name: uniqueid-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214169"
+    uid: 4cef6425-7a36-403f-bc10-fea57ee19fc8
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: uniqueid-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: uniqueid-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: UNIQUEID_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/uniqueid-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: uniqueid-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "3"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: uniqueid-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-3
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:32Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:27Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: ReplicaSet "uniqueid-service-sb-esrev1-ctr-b787749f7" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"urlshorten-db-sb-esrev1-ctr"},"name":"urlshorten-db-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"urlshorten-db-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"urlshorten-db-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/mongo:4.4","name":"urlshorten-db-sb-esrev1-ctr","ports":[{"containerPort":27017,"protocol":"TCP"}],"resources":{"requests":{"cpu":"2000m"}}}],"hostname":"urlshorten-db-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-7"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: urlshorten-db-sb-esrev1-ctr
+    name: urlshorten-db-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214101"
+    uid: a553d47f-7574-4155-8dcd-5aa454c3c337
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: urlshorten-db-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: urlshorten-db-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/mongo:4.4
+          imagePullPolicy: IfNotPresent
+          name: urlshorten-db-sb-esrev1-ctr
+          ports:
+          - containerPort: 27017
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: urlshorten-db-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-7
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:30Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:27Z"
+      lastUpdateTime: "2026-06-13T22:56:30Z"
+      message: ReplicaSet "urlshorten-db-sb-esrev1-ctr-758f998b54" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"urlshorten-service-sb-esrev1-ctr"},"name":"urlshorten-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"urlshorten-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"urlshorten-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"URLSHORTEN_DB_SB_ESREV1_DIAL_ADDR","value":"urlshorten-db-sb-esrev1-ctr:27017"},{"name":"URLSHORTEN_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/urlshorten-service-sb-esrev1-ctr:latest","name":"urlshorten-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"5000m"}}}],"hostname":"urlshorten-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-7"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: urlshorten-service-sb-esrev1-ctr
+    name: urlshorten-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214197"
+    uid: dc21ce6c-b9e9-403b-80d9-161df6576c22
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: urlshorten-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: urlshorten-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: URLSHORTEN_DB_SB_ESREV1_DIAL_ADDR
+            value: urlshorten-db-sb-esrev1-ctr:27017
+          - name: URLSHORTEN_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/urlshorten-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: urlshorten-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "5"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: urlshorten-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-7
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:33Z"
+      lastUpdateTime: "2026-06-13T22:56:33Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:27Z"
+      lastUpdateTime: "2026-06-13T22:56:33Z"
+      message: ReplicaSet "urlshorten-service-sb-esrev1-ctr-856f75797b" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"user-cache-sb-esrev1-ctr"},"name":"user-cache-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"user-cache-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"user-cache-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/redis:8.6","name":"user-cache-sb-esrev1-ctr","ports":[{"containerPort":6379,"protocol":"TCP"}],"resources":{"requests":{"cpu":"2000m"}}}],"hostname":"user-cache-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-8"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: user-cache-sb-esrev1-ctr
+    name: user-cache-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214140"
+    uid: 2816f3ab-c318-4b51-896c-df688cedd0df
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: user-cache-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: user-cache-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/redis:8.6
+          imagePullPolicy: IfNotPresent
+          name: user-cache-sb-esrev1-ctr
+          ports:
+          - containerPort: 6379
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: user-cache-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-8
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:31Z"
+      lastUpdateTime: "2026-06-13T22:56:31Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:27Z"
+      lastUpdateTime: "2026-06-13T22:56:31Z"
+      message: ReplicaSet "user-cache-sb-esrev1-ctr-69665d799c" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"user-db-sb-esrev1-ctr"},"name":"user-db-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"user-db-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"user-db-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/mongo:4.4","name":"user-db-sb-esrev1-ctr","ports":[{"containerPort":27017,"protocol":"TCP"}],"resources":{"requests":{"cpu":"2000m"}}}],"hostname":"user-db-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-8"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: user-db-sb-esrev1-ctr
+    name: user-db-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214192"
+    uid: 79a769a1-8d89-4e78-92c2-82fcbb70b0f6
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: user-db-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: user-db-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/mongo:4.4
+          imagePullPolicy: IfNotPresent
+          name: user-db-sb-esrev1-ctr
+          ports:
+          - containerPort: 27017
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: user-db-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-8
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:33Z"
+      lastUpdateTime: "2026-06-13T22:56:33Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:27Z"
+      lastUpdateTime: "2026-06-13T22:56:33Z"
+      message: ReplicaSet "user-db-sb-esrev1-ctr-8696dd7df8" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"user-service-sb-esrev1-ctr"},"name":"user-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"user-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"user-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"socialgraph-service-sb-esrev1-ctr:12345"},{"name":"USER_CACHE_SB_ESREV1_DIAL_ADDR","value":"user-cache-sb-esrev1-ctr:6379"},{"name":"USER_DB_SB_ESREV1_DIAL_ADDR","value":"user-db-sb-esrev1-ctr:27017"},{"name":"USER_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/user-service-sb-esrev1-ctr:latest","name":"user-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"3000m"}}}],"hostname":"user-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-8"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: user-service-sb-esrev1-ctr
+    name: user-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214293"
+    uid: 40a11bf2-9adc-4fca-ac80-93f7a011e404
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: user-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: user-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: socialgraph-service-sb-esrev1-ctr:12345
+          - name: USER_CACHE_SB_ESREV1_DIAL_ADDR
+            value: user-cache-sb-esrev1-ctr:6379
+          - name: USER_DB_SB_ESREV1_DIAL_ADDR
+            value: user-db-sb-esrev1-ctr:27017
+          - name: USER_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/user-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: user-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "3"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: user-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-8
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:38Z"
+      lastUpdateTime: "2026-06-13T22:56:38Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:27Z"
+      lastUpdateTime: "2026-06-13T22:56:38Z"
+      message: ReplicaSet "user-service-sb-esrev1-ctr-6499c89d55" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"userid-service-sb-esrev1-ctr"},"name":"userid-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"userid-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"userid-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"USERID_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"USER_CACHE_SB_ESREV1_DIAL_ADDR","value":"user-cache-sb-esrev1-ctr:6379"},{"name":"USER_DB_SB_ESREV1_DIAL_ADDR","value":"user-db-sb-esrev1-ctr:27017"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/userid-service-sb-esrev1-ctr:latest","name":"userid-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"6000m"}}}],"hostname":"userid-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-5"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: userid-service-sb-esrev1-ctr
+    name: userid-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214301"
+    uid: caf4cfc2-dd51-4718-81a7-abcf3da36283
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: userid-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: userid-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: USERID_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: USER_CACHE_SB_ESREV1_DIAL_ADDR
+            value: user-cache-sb-esrev1-ctr:6379
+          - name: USER_DB_SB_ESREV1_DIAL_ADDR
+            value: user-db-sb-esrev1-ctr:27017
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/userid-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: userid-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "6"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: userid-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-5
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:38Z"
+      lastUpdateTime: "2026-06-13T22:56:38Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:28Z"
+      lastUpdateTime: "2026-06-13T22:56:38Z"
+      message: ReplicaSet "userid-service-sb-esrev1-ctr-64b9b8dd65" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usermention-service-sb-esrev1-ctr"},"name":"usermention-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"usermention-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usermention-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"USERMENTION_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"USER_CACHE_SB_ESREV1_DIAL_ADDR","value":"user-cache-sb-esrev1-ctr:6379"},{"name":"USER_DB_SB_ESREV1_DIAL_ADDR","value":"user-db-sb-esrev1-ctr:27017"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/usermention-service-sb-esrev1-ctr:latest","name":"usermention-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"4000m"}}}],"hostname":"usermention-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-3"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: usermention-service-sb-esrev1-ctr
+    name: usermention-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214241"
+    uid: ac32185f-ba56-4bc3-b7fb-c36fe6c8507a
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: usermention-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: usermention-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: USERMENTION_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: USER_CACHE_SB_ESREV1_DIAL_ADDR
+            value: user-cache-sb-esrev1-ctr:6379
+          - name: USER_DB_SB_ESREV1_DIAL_ADDR
+            value: user-db-sb-esrev1-ctr:27017
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/usermention-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: usermention-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "4"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: usermention-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-3
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:35Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:28Z"
+      lastUpdateTime: "2026-06-13T22:56:35Z"
+      message: ReplicaSet "usermention-service-sb-esrev1-ctr-686d86d848" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usertimeline-cache-sb-esrev1-ctr"},"name":"usertimeline-cache-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"usertimeline-cache-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usertimeline-cache-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/redis:8.6","name":"usertimeline-cache-sb-esrev1-ctr","ports":[{"containerPort":6379,"protocol":"TCP"}],"resources":{"requests":{"cpu":"2000m"}}}],"hostname":"usertimeline-cache-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-4"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: usertimeline-cache-sb-esrev1-ctr
+    name: usertimeline-cache-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214183"
+    uid: 79f6bd0e-54a5-4a02-9e1a-1baeb01a2321
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: usertimeline-cache-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: usertimeline-cache-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/redis:8.6
+          imagePullPolicy: IfNotPresent
+          name: usertimeline-cache-sb-esrev1-ctr
+          ports:
+          - containerPort: 6379
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: usertimeline-cache-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-4
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:32Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:28Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: ReplicaSet "usertimeline-cache-sb-esrev1-ctr-5d595c6b5d" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usertimeline-db-sb-esrev1-ctr"},"name":"usertimeline-db-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"usertimeline-db-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usertimeline-db-sb-esrev1-ctr"}},"spec":{"containers":[{"image":"10.10.1.1:30000/mongo:4.4","name":"usertimeline-db-sb-esrev1-ctr","ports":[{"containerPort":27017,"protocol":"TCP"}],"resources":{"requests":{"cpu":"11000m"}}}],"hostname":"usertimeline-db-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-4"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: usertimeline-db-sb-esrev1-ctr
+    name: usertimeline-db-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214187"
+    uid: 32de9536-8ac7-4c05-87a1-2b3c18b82966
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: usertimeline-db-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: usertimeline-db-sb-esrev1-ctr
+      spec:
+        containers:
+        - image: 10.10.1.1:30000/mongo:4.4
+          imagePullPolicy: IfNotPresent
+          name: usertimeline-db-sb-esrev1-ctr
+          ports:
+          - containerPort: 27017
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "11"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: usertimeline-db-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-4
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:32Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:28Z"
+      lastUpdateTime: "2026-06-13T22:56:32Z"
+      message: ReplicaSet "usertimeline-db-sb-esrev1-ctr-6b654bddb9" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usertimeline-service-sb-esrev1-ctr"},"name":"usertimeline-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"usertimeline-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"usertimeline-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"POST_STORAGE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"post-storage-service-sb-esrev1-ctr:12345"},{"name":"USERTIMELINE_CACHE_SB_ESREV1_DIAL_ADDR","value":"usertimeline-cache-sb-esrev1-ctr:6379"},{"name":"USERTIMELINE_DB_SB_ESREV1_DIAL_ADDR","value":"usertimeline-db-sb-esrev1-ctr:27017"},{"name":"USERTIMELINE_SERVICE_SB_ESREV1_GRPC_BIND_ADDR","value":"0.0.0.0:12345"},{"name":"OTLP_RETRY","value":"off"}],"image":"10.10.1.1:30000/usertimeline-service-sb-esrev1-ctr:latest","name":"usertimeline-service-sb-esrev1-ctr","ports":[{"containerPort":12345,"protocol":"TCP"}],"resources":{"requests":{"cpu":"8000m"}}}],"hostname":"usertimeline-service-sb-esrev1-ctr","nodeSelector":{"kubernetes.io/hostname":"node-4"},"restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: usertimeline-service-sb-esrev1-ctr
+    name: usertimeline-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214256"
+    uid: e12c37f6-851b-4bb0-b419-653013ef2393
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: usertimeline-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: usertimeline-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: POST_STORAGE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: post-storage-service-sb-esrev1-ctr:12345
+          - name: USERTIMELINE_CACHE_SB_ESREV1_DIAL_ADDR
+            value: usertimeline-cache-sb-esrev1-ctr:6379
+          - name: USERTIMELINE_DB_SB_ESREV1_DIAL_ADDR
+            value: usertimeline-db-sb-esrev1-ctr:27017
+          - name: USERTIMELINE_SERVICE_SB_ESREV1_GRPC_BIND_ADDR
+            value: 0.0.0.0:12345
+          - name: OTLP_RETRY
+            value: "off"
+          image: 10.10.1.1:30000/usertimeline-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: usertimeline-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          resources:
+            requests:
+              cpu: "8"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: usertimeline-service-sb-esrev1-ctr
+        nodeSelector:
+          kubernetes.io/hostname: node-4
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:36Z"
+      lastUpdateTime: "2026-06-13T22:56:36Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:28Z"
+      lastUpdateTime: "2026-06-13T22:56:36Z"
+      message: ReplicaSet "usertimeline-service-sb-esrev1-ctr-d4fcbf86b" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+      kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+      kompose.version: 1.38.0 (a8f5d1cbd)
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"wrk2api-service-sb-esrev1-ctr"},"name":"wrk2api-service-sb-esrev1-ctr","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"io.kompose.service":"wrk2api-service-sb-esrev1-ctr"}},"template":{"metadata":{"annotations":{"kompose.cmd":"kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s","kompose.version":"1.38.0 (a8f5d1cbd)"},"labels":{"io.kompose.service":"wrk2api-service-sb-esrev1-ctr"}},"spec":{"containers":[{"env":[{"name":"BRIDGE_KIND","value":"sb"},{"name":"COMPOSEPOST_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"composepost-service-sb-esrev1-ctr:12345"},{"name":"GC_INTERVAL_SEC","value":"0.1"},{"name":"GOGC","value":"off"},{"name":"HOMETIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"hometimeline-service-sb-esrev1-ctr:12345"},{"name":"OTELCOL_SB_ESREV1_DIAL_ADDR","value":"otelcol-sb-esrev1-ctr:4317"},{"name":"SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"socialgraph-service-sb-esrev1-ctr:12345"},{"name":"USERTIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"usertimeline-service-sb-esrev1-ctr:12345"},{"name":"USER_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR","value":"user-service-sb-esrev1-ctr:12345"},{"name":"WRK2API_SERVICE_SB_ESREV1_HTTP_BIND_ADDR","value":"0.0.0.0:2000"}],"image":"10.10.1.1:30000/wrk2api-service-sb-esrev1-ctr:latest","name":"wrk2api-service-sb-esrev1-ctr","ports":[{"containerPort":2000,"protocol":"TCP"}]}],"hostname":"wrk2api-service-sb-esrev1-ctr","restartPolicy":"Always"}}}}
+    creationTimestamp: "2026-06-13T22:56:26Z"
+    generation: 1
+    labels:
+      io.kompose.service: wrk2api-service-sb-esrev1-ctr
+    name: wrk2api-service-sb-esrev1-ctr
+    namespace: default
+    resourceVersion: "4214332"
+    uid: 528eab85-868b-4e49-b241-4f411079c687
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        io.kompose.service: wrk2api-service-sb-esrev1-ctr
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_esrev1/k8s
+          kompose.version: 1.38.0 (a8f5d1cbd)
+        creationTimestamp: null
+        labels:
+          io.kompose.service: wrk2api-service-sb-esrev1-ctr
+      spec:
+        containers:
+        - env:
+          - name: BRIDGE_KIND
+            value: sb
+          - name: COMPOSEPOST_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: composepost-service-sb-esrev1-ctr:12345
+          - name: GC_INTERVAL_SEC
+            value: "0.1"
+          - name: GOGC
+            value: "off"
+          - name: HOMETIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: hometimeline-service-sb-esrev1-ctr:12345
+          - name: OTELCOL_SB_ESREV1_DIAL_ADDR
+            value: otelcol-sb-esrev1-ctr:4317
+          - name: SOCIALGRAPH_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: socialgraph-service-sb-esrev1-ctr:12345
+          - name: USERTIMELINE_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: usertimeline-service-sb-esrev1-ctr:12345
+          - name: USER_SERVICE_SB_ESREV1_GRPC_DIAL_ADDR
+            value: user-service-sb-esrev1-ctr:12345
+          - name: WRK2API_SERVICE_SB_ESREV1_HTTP_BIND_ADDR
+            value: 0.0.0.0:2000
+          image: 10.10.1.1:30000/wrk2api-service-sb-esrev1-ctr:latest
+          imagePullPolicy: Always
+          name: wrk2api-service-sb-esrev1-ctr
+          ports:
+          - containerPort: 2000
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        hostname: wrk2api-service-sb-esrev1-ctr
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-06-13T22:56:41Z"
+      lastUpdateTime: "2026-06-13T22:56:41Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-06-13T22:56:29Z"
+      lastUpdateTime: "2026-06-13T22:56:41Z"
+      message: ReplicaSet "wrk2api-service-sb-esrev1-ctr-6b76544bbb" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+kind: List
+metadata:
+  resourceVersion: ""

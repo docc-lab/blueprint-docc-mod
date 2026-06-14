@@ -19,9 +19,10 @@ processors:
     batch: null
     priority:
         check_interval: 100ms
-        ultrasoft_percentage: 35
         soft_percentage: 50
         hard_percentage: 70
+        cp_safety_factor: 1
+        force_gc: false
 receivers:
     configdiscovery:
         endpoint: ":8080"
