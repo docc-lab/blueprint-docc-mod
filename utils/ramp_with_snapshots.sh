@@ -102,10 +102,18 @@ for pod in data['items']:
 " >> "$SNAP" 2>/dev/null
 
   # SDK-side metrics
-  # Vanilla SDK emits "vanilla_processor_metrics"; SB emits "sb_processor_metrics".
-  # VARIANT can be vrev0 / vesrev0 / v-esrev0 / sb_rev0 / sb-esrev0 / etc.
-  # Treat anything containing "sb" as SB; everything else as vanilla.
-  if [[ "$VARIANT" == *sb* ]]; then
+  # Each bridge processor emits its own metrics log key. VARIANT can be
+  # vrev0 / vesrev0 / sb-esrev0 / pb_esrev2 / cgpb_esrev2 / etc. Order matters:
+  # "cgpb" contains the substring "pb", so test cgpb FIRST, then pb, then sb,
+  # else vanilla. All four lines carry the same cp/lp/spans/send_* key=value
+  # schema (PB/CGPB now mirror SB's per-priority counters exactly).
+  if [[ "$VARIANT" == *cgpb* ]]; then
+    MKEY="cgpb_processor_metrics"
+  elif [[ "$VARIANT" == *pb* ]]; then
+    MKEY="pb_processor_metrics"
+  elif [[ "$VARIANT" == *rc* ]]; then
+    MKEY="rc_processor_metrics"
+  elif [[ "$VARIANT" == *sb* ]]; then
     MKEY="sb_processor_metrics"
   else
     MKEY="vanilla_processor_metrics"
@@ -137,7 +145,7 @@ run_step() {
 
   echo "" >> "$LOG"
   echo "=== rps=$RPS c=$C t=$T url=$URL ===" >> "$LOG"
-  local OUT=$(wrk -t "$T" -c "$C" -d 60s -L -s "$LUA" "$URL" -R "$RPS" 2>&1)
+  local OUT=$(wrk -t "$T" -c "$C" -d "${STEP_SECS:-60}s" -L -s "$LUA" "$URL" -R "$RPS" 2>&1)
   echo "$OUT" >> "$LOG"
 
   local ACHIEVED=$(echo "$OUT" | grep "Requests/sec" | awk '{print $NF}')
@@ -160,8 +168,9 @@ wrk -t 1 -c 10 -d 100s -L -s "$LUA" "http://10.10.1.1:$NP" -R 100 >> "$LOG" 2>&1
 echo "=== Post-warmup snapshot ===" >&2
 snapshot post_warmup 0
 
-# Ramp
-for RPS in 2000 2200 2400 2600 2800 3000 3200 3400 3600 3800 4000; do
+# Ramp. RPS_STEPS (space-separated) and STEP_SECS are env-overridable; defaults
+# preserve the original 60s, 2000-4000-by-200 ramp so prior runs reproduce.
+for RPS in ${RPS_STEPS:-2000 2200 2400 2600 2800 3000 3200 3400 3600 3800 4000}; do
   snapshot before "$RPS"
   echo "=== Running step rps=$RPS ===" >&2
   run_step "$RPS"

@@ -1,0 +1,95 @@
+# Example configuration for pinning services to nodes
+# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
+# Service names should match the deployment names (without -deployment.yaml suffix)
+
+node-1:
+  - composepost-service-rc-esrev2-ctr:
+      requests_cpu: 12000
+      # limits_cpu: 2000
+  - hometimeline-cache-rc-esrev2-ctr:
+      requests_cpu: 2000
+      # limits_cpu: 2000
+  - hometimeline-service-rc-esrev2-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+
+node-2:
+  - social-cache-rc-esrev2-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  - social-db-rc-esrev2-ctr:
+      requests_cpu: 25000
+    #   limits_cpu: 2000
+  - socialgraph-service-rc-esrev2-ctr:
+      requests_cpu: 6000
+    #   limits_cpu: 2000
+
+node-3:
+  - uniqueid-service-rc-esrev2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - usermention-service-rc-esrev2-ctr:
+      requests_cpu: 4000
+    #   limits_cpu: 2000
+  # - wrk2api-service-rc-esrev2-ctr:
+  #     # requests_cpu: 2000
+  #   #   limits_cpu: 2000
+
+node-4:
+  - usertimeline-cache-rc-esrev2-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - usertimeline-db-rc-esrev2-ctr:
+      requests_cpu: 11000
+    #   limits_cpu: 2000
+  - usertimeline-service-rc-esrev2-ctr:
+      requests_cpu: 8000
+    #   limits_cpu: 2000
+
+node-5:
+  - media-service-rc-esrev2-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - text-service-rc-esrev2-ctr:
+      requests_cpu: 8000
+    #   limits_cpu: 2000
+  - userid-service-rc-esrev2-ctr:
+      requests_cpu: 6000
+    #   limits_cpu: 2000
+
+node-6:
+  - post-cache-rc-esrev2-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - post-db-rc-esrev2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - post-storage-service-rc-esrev2-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+
+node-7:
+  - urlshorten-db-rc-esrev2-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - urlshorten-service-rc-esrev2-ctr:
+      requests_cpu: 5000
+    #   limits_cpu: 2000
+
+node-8:
+  - user-service-rc-esrev2-ctr:
+      requests_cpu: 3000
+    #   limits_cpu: 2000
+  - user-cache-rc-esrev2-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  - user-db-rc-esrev2-ctr:
+      requests_cpu: 2000
+    #   limits_cpu: 2000
+  
+node-9:
+  - jaeger-rc-esrev2-ctr:
+      requests_cpu: 20000
+
+  - elasticsearch-rc-esrev2-ctr:
+      requests_cpu: 4000

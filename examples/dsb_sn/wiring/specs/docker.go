@@ -96,6 +96,19 @@ var (
 	DockerVES = makeVariant("v_es", vanillaConfig, true)
 	// `docker_sb_es` — SB wiring with ES-backed jaeger.
 	DockerSBES = makeVariant("sb_es", bridgesConfig, true)
+	// `docker_pb_es` — canonical path-bridge (ckpt4-anchored / PCRB) wiring
+	// with ES-backed jaeger. bridgeKind "pb" selects NewPathBridgeProcessor.
+	DockerPBES = makeVariant("pb_es", bridgesConfig, true)
+	// `docker_cgpb_es` — call-graph path bridge (CGPRB = PCRB + windowed HA)
+	// with ES-backed jaeger. bridgeKind "cgpb" selects NewCallGraphBridgeProcessor.
+	DockerCGPBES = makeVariant("cgpb_es", bridgesConfig, true)
+	// `docker_rc_es` — CONTROL: random-checkpoint processor (bridgeKind "rc"
+	// selects NewRandomCheckpointProcessor). No baggage/breadcrumbs; marks each
+	// span HP with probability 1/cpd, and (if RC_BR_BASE/RC_BR_SLOPE env are set
+	// on the app pods) attaches a base+cpd*slope-byte synthetic `_br` to
+	// checkpoints. Same priority+controller collector config as the bridges so
+	// only the SDK-side labeling differs.
+	DockerRCES = makeVariant("rc_es", bridgesConfig, true)
 )
 
 func makeVariant(kind, configPath string, useES bool) cmdbuilder.SpecOption {

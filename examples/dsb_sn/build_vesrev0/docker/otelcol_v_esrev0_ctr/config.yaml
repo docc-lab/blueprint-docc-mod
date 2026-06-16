@@ -18,6 +18,7 @@ processors:
         check_interval: 100ms
         limit_percentage: 70
         spike_limit_percentage: 20
+        min_gc_interval_when_soft_limited: 1s
 receivers:
     otlp:
         protocols:
@@ -31,7 +32,6 @@ service:
             exporters:
                 - otlp
             processors:
-                - memory_limiter
                 - batch
             receivers:
                 - otlp
