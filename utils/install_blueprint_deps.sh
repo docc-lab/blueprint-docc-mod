@@ -9,6 +9,10 @@
 #
 # Idempotent: safe to re-run. Uses sudo for /usr/local + apt (passwordless sudo assumed).
 #
+# Run with bash (or ./). If launched via `sh script`, re-exec under bash, since this
+# uses bash features (pipefail). On Ubuntu /bin/sh is dash and would error otherwise.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+
 set -euo pipefail
 
 log(){ printf '\n\033[1;32m=== %s ===\033[0m\n' "$*"; }
@@ -43,20 +47,20 @@ else
   rm -f "/tmp/${TARBALL}"
 fi
 
-# PATH config in ~/.bashrc and ~/.profile (idempotent, marker-guarded)
+# PATH config in ~/.bashrc and ~/.profile (idempotent, marker-guarded).
+# Plain printf (no bash-only `read -d`) so it's robust.
 PATH_BLOCK_BEGIN="# >>> blueprint go path >>>"
 PATH_BLOCK_END="# <<< blueprint go path <<<"
-read -r -d '' PATH_BLOCK <<EOF || true
-$PATH_BLOCK_BEGIN
-export PATH=\$PATH:/usr/local/go/bin:\$HOME/go/bin
-$PATH_BLOCK_END
-EOF
 for rc in "$HOME/.bashrc" "$HOME/.profile"; do
   touch "$rc"
   if grep -qF "$PATH_BLOCK_BEGIN" "$rc"; then
     echo "PATH block already present in $rc"
   else
-    printf '\n%s\n' "$PATH_BLOCK" >> "$rc"
+    {
+      printf '\n%s\n' "$PATH_BLOCK_BEGIN"
+      printf 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin\n'
+      printf '%s\n' "$PATH_BLOCK_END"
+    } >> "$rc"
     echo "added Go PATH block to $rc"
   fi
 done
