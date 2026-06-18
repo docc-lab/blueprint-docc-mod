@@ -366,6 +366,7 @@ def main():
     parser.add_argument('output_dir', help='Output directory for Kubernetes manifests')
     parser.add_argument('--registry', help='Docker registry URL (e.g., localhost:5000)', required=True)
     parser.add_argument('--skip-build', action='store_true', help='Skip building and pushing Docker images')
+    parser.add_argument('--build-only', action='store_true', help='Only build and push Docker images; skip kompose conversion and manifest generation (k8s manifests left untouched)')
     parser.add_argument('--daemon-services', help='Comma-separated list of services to convert to DaemonSets')
     parser.add_argument('--no-local-policy',
                         help='Comma-separated list of daemonset services that should NOT get '
@@ -411,18 +412,23 @@ def main():
         selected_services = [_norm(s) for s in args.services.split(',')]
         print(f"[INFO] Services to be built: {selected_services}")
 
-    # Step 1: Run kompose conversion
-    print("[INFO] Step 1: Converting docker-compose to Kubernetes manifests")
-    k8s_manifests = run_kompose(args.docker_compose_file, args.output_dir)
+    # Steps 1-3: kompose conversion + manifest processing (skipped with --build-only,
+    # which leaves any existing k8s manifests in output_dir untouched).
+    if args.build_only:
+        print("[INFO] --build-only: skipping kompose conversion + manifest generation")
+    else:
+        # Step 1: Run kompose conversion
+        print("[INFO] Step 1: Converting docker-compose to Kubernetes manifests")
+        k8s_manifests = run_kompose(args.docker_compose_file, args.output_dir)
 
-    # Step 2: Update image references in the generated manifests
-    print("[INFO] Step 2: Updating image references in Kubernetes manifests")
-    update_image_references(args.output_dir, args.registry)
+        # Step 2: Update image references in the generated manifests
+        print("[INFO] Step 2: Updating image references in Kubernetes manifests")
+        update_image_references(args.output_dir, args.registry)
 
-    # Step 3: Process the manifests (convert underscores to dashes, etc.)
-    print("[INFO] Step 3: Processing Kubernetes manifests")
-    process_output_files(args.output_dir, daemon_services, no_local_policy)
-    
+        # Step 3: Process the manifests (convert underscores to dashes, etc.)
+        print("[INFO] Step 3: Processing Kubernetes manifests")
+        process_output_files(args.output_dir, daemon_services, no_local_policy)
+
     # Step 4: Build and push Docker images if not skipped
     if not args.skip_build:
         print("[INFO] Step 4: Building and pushing Docker images")

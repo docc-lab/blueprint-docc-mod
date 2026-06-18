@@ -25,9 +25,9 @@ spec:
         - name: BRIDGE_KIND
           value: pb
         - name: GC_INTERVAL_SEC
-          value: '0.1'
+          value: '0'
         - name: GOGC
-          value: 'off'
+          value: '100'
         - name: OTELCOL_PB_ESREV2_DIAL_ADDR
           value: otelcol-pb-esrev2-ctr:4317
         - name: OTLP_RETRY
@@ -36,6 +36,8 @@ spec:
           value: urlshorten-db-pb-esrev2-ctr:27017
         - name: URLSHORTEN_SERVICE_PB_ESREV2_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
+        - name: GODEBUG
+          value: gctrace=1
         image: 10.10.1.1:30000/urlshorten-service-pb-esrev2-ctr:latest
         name: urlshorten-service-pb-esrev2-ctr
         ports:
@@ -45,6 +47,6 @@ spec:
           requests:
             cpu: 5000m
       hostname: urlshorten-service-pb-esrev2-ctr
-      restartPolicy: Always
       nodeSelector:
         kubernetes.io/hostname: node-7
+      restartPolicy: Always

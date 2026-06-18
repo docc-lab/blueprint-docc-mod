@@ -25,9 +25,9 @@ spec:
         - name: BRIDGE_KIND
           value: pb
         - name: GC_INTERVAL_SEC
-          value: '0.1'
+          value: '0'
         - name: GOGC
-          value: 'off'
+          value: '100'
         - name: OTELCOL_PB_ESREV2_DIAL_ADDR
           value: otelcol-pb-esrev2-ctr:4317
         - name: OTLP_RETRY
@@ -40,6 +40,8 @@ spec:
           value: usertimeline-db-pb-esrev2-ctr:27017
         - name: USERTIMELINE_SERVICE_PB_ESREV2_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
+        - name: GODEBUG
+          value: gctrace=1
         image: 10.10.1.1:30000/usertimeline-service-pb-esrev2-ctr:latest
         name: usertimeline-service-pb-esrev2-ctr
         ports:
@@ -49,6 +51,6 @@ spec:
           requests:
             cpu: 8000m
       hostname: usertimeline-service-pb-esrev2-ctr
-      restartPolicy: Always
       nodeSelector:
         kubernetes.io/hostname: node-4
+      restartPolicy: Always

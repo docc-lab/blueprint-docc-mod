@@ -25,15 +25,17 @@ spec:
         - name: BRIDGE_KIND
           value: pb
         - name: GC_INTERVAL_SEC
-          value: '0.1'
+          value: '0'
         - name: GOGC
-          value: 'off'
+          value: '100'
         - name: OTELCOL_PB_ESREV2_DIAL_ADDR
           value: otelcol-pb-esrev2-ctr:4317
         - name: OTLP_RETRY
           value: 'off'
         - name: TRACEPRESSURE_SERVICE_PB_ESREV2_HTTP_BIND_ADDR
           value: 0.0.0.0:2000
+        - name: GODEBUG
+          value: gctrace=1
         image: 10.10.1.1:30000/tracepressure-service-pb-esrev2-ctr:latest
         name: tracepressure-service-pb-esrev2-ctr
         ports:

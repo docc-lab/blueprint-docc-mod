@@ -29,7 +29,7 @@ receivers:
     configdiscovery:
         endpoint: ":8080"
         config_map:
-            cpd: 12
+            cpd: 2
     otlp:
         protocols:
             grpc:
@@ -44,7 +44,6 @@ service:
             exporters:
                 - otlp
             processors:
-                - priority
                 - batch
             receivers:
                 - otlp

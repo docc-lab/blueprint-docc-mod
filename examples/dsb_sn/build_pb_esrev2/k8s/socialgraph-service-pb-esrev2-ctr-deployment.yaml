@@ -25,9 +25,9 @@ spec:
         - name: BRIDGE_KIND
           value: pb
         - name: GC_INTERVAL_SEC
-          value: '0.1'
+          value: '0'
         - name: GOGC
-          value: 'off'
+          value: '100'
         - name: OTELCOL_PB_ESREV2_DIAL_ADDR
           value: otelcol-pb-esrev2-ctr:4317
         - name: OTLP_RETRY
@@ -40,6 +40,8 @@ spec:
           value: social-db-pb-esrev2-ctr:27017
         - name: USERID_SERVICE_PB_ESREV2_GRPC_DIAL_ADDR
           value: userid-service-pb-esrev2-ctr:12345
+        - name: GODEBUG
+          value: gctrace=1
         image: 10.10.1.1:30000/socialgraph-service-pb-esrev2-ctr:latest
         name: socialgraph-service-pb-esrev2-ctr
         ports:
@@ -49,6 +51,6 @@ spec:
           requests:
             cpu: 6000m
       hostname: socialgraph-service-pb-esrev2-ctr
-      restartPolicy: Always
       nodeSelector:
         kubernetes.io/hostname: node-2
+      restartPolicy: Always
