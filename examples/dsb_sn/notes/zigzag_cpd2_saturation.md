@@ -220,3 +220,23 @@ noise-band, not a real edge, and SB was its own block not interleaved w/ vanilla
 cpd=2 imposes measurable app-latency overhead vs vanilla.** The forced-100ms-GC zigzag was
 the only "cost," and it was a GC-cadence artifact. Plot: `runs/fourway_natural_all.png`.
 Dirs: `runs/sb6_NATGC_esrev2_cpd2_*_r1..6_*`. Analysis: `/tmp/fourway_analysis.py` (venv `/tmp/plotvenv`).
+
+## FOUR-WAY @ cpd=6 (2026-06-18) — interleaved, natural GC, n=5 (r2-6, r1 dropped)
+Repeated the four-way at cpd=6 (the LOW-allocation end: ~17% checkpoints vs 50% at cpd=2).
+otelcol cpd 2→6 (rebuild otelcol images only — cpd is in otelcol configdiscovery, app
+fetches at runtime; see [[dsb_sn_variant_build_pipeline]] GOTCHA 4), GOGC=100+interval=0,
+sb pipeline=[batch]. Interleaved v→pb→cgpb→sb ×6. (Hit a chain bug mid-setup: PREV_DIR
+missing `build_` prefix → delete no-op → `gone` hung 81min; fixed to `build_$1`.)
+```
+ rps    vanilla      pbridge      cgpb         sbridge
+ 2000   23±2 ms      23±2 ms      21±3 ms      21±4 ms    <- sub-knee: all 4 identical
+ 3000   53±9 ms      44±5 ms      45±5 ms      43±6 ms
+ 3400   78±18 ms     76±16 ms     76±23 ms     91±65 ms   <- knee: overlap within (large) sd
+ 4200   1.42±0.28s   0.81±0.15s   0.80±0.10s   0.92±0.39s
+ 5000   5.76±0.22s   5.57±0.18s   5.63±0.33s   5.83±0.39s
+```
+Same result as cpd=2: all four trace one curve, overlap within sd, ~3850 ceiling. As
+expected cpd=6 (less per-span breadcrumb work) is, if anything, even more clearly free.
+⇒ **COMPLETE: under natural GC, all 3 bridges at BOTH cpd=2 and cpd=6 have no measurable
+app-latency overhead vs vanilla.** Plot: `runs/fourway_cpd6_natural_all.png`. Dirs:
+`runs/cpd6il_{v,pb,cgpb,sb}NATGC_r1..6_*`. Analysis: `/tmp/fourway_cpd6_analysis.py`.
