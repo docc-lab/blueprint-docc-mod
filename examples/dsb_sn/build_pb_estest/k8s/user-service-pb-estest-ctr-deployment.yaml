@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_pb_estest/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: user-service-pb-estest-ctr
+  name: user-service-pb-estest-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: user-service-pb-estest-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_pb_estest/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: user-service-pb-estest-ctr
+    spec:
+      containers:
+      - env:
+        - name: BRIDGE_KIND
+          value: pb
+        - name: GC_INTERVAL_SEC
+          value: '0'
+        - name: GOGC
+          value: '100'
+        - name: OTELCOL_PB_ESTEST_DIAL_ADDR
+          value: otelcol-pb-estest-ctr:4317
+        - name: SOCIALGRAPH_SERVICE_PB_ESTEST_GRPC_DIAL_ADDR
+          value: socialgraph-service-pb-estest-ctr:12345
+        - name: USER_CACHE_PB_ESTEST_DIAL_ADDR
+          value: user-cache-pb-estest-ctr:6379
+        - name: USER_DB_PB_ESTEST_DIAL_ADDR
+          value: user-db-pb-estest-ctr:27017
+        - name: USER_SERVICE_PB_ESTEST_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        image: 10.10.1.1:30000/user-service-pb-estest-ctr:latest
+        name: user-service-pb-estest-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+      hostname: user-service-pb-estest-ctr
+      restartPolicy: Always

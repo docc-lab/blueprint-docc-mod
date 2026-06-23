@@ -1,4 +1,6 @@
 exporters:
+    file:
+        path: /dev/null
     otlp:
         endpoint: ${JAEGER_V_ESREV0_OTLP_DIAL_ADDR}
         retry_on_failure:
@@ -30,7 +32,7 @@ service:
     pipelines:
         traces:
             exporters:
-                - otlp
+                - file
             processors:
                 - batch
             receivers:
