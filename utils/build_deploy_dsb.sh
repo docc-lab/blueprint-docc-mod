@@ -9,7 +9,9 @@
 # d2k8s (otelcol DaemonSet+Local, wrk2api DaemonSet WITHOUT Local) -> inject
 # Jaeger/otelcol perf env -> node-pin -> (apply) -> (seed). The goimports, config-
 # normalize, perf-env, and pinning steps re-apply fixes that wiring/d2k8s/kompose
-# do NOT produce and that get wiped on every regeneration.
+# do NOT produce and that get wiped on every regeneration. --apply first EVICTS
+# whatever DSB-SN variant is currently live (auto-detected from running pods), so
+# only one variant ever occupies the shared-pressure cluster.
 #
 # Controller knobs (priorityprocessor): --soft/--hard/--cp-safety (defaults
 # 50/70/1 = rev2-proven); force_gc + gc intervals are script vars near the top.
@@ -161,20 +163,49 @@ echo "=== [5] inject Jaeger/otelcol perf env ${GC:+(+gc=$GC)} ==="
 python3 "$UTILS/inject_perf_env.py" "$K8S" "$VARIANT" ${GC:+--gc "$GC"} || die "perf-env injection failed"
 
 # 6. node pinning (d2k8s strips it -> must re-apply each regeneration) -----------
+#    If no pinning file exists for this build, generate the canonical rev2
+#    asymmetric-pressure placement (hot node-1 = composepost+hometimeline) stamped
+#    with this variant's suffix. An existing file is respected (hand edits kept).
 NODEPIN=$DSB/node-pinning-${NAME}.yaml
-if [ -f "$NODEPIN" ]; then
-  echo "=== [6] node pinning from $NODEPIN ==="
-  python3 "$UTILS/pin_nodes.py" "$NODEPIN" "$K8S" || die "pin_nodes failed"
-else
-  echo "   WARN: no $NODEPIN -> pods will deploy UNPINNED. Create one to pin per-node CPU/mem."
+if [ ! -f "$NODEPIN" ]; then
+  echo "=== [6] no $NODEPIN -> generating canonical placement for '$VARIANT' ==="
+  python3 "$UTILS/gen_node_pinning.py" "$VARIANT" "$NODEPIN" || die "pinning generation failed"
 fi
+echo "=== [6] node pinning from $NODEPIN ==="
+python3 "$UTILS/pin_nodes.py" "$NODEPIN" "$K8S" || die "pin_nodes failed"
 
 echo "=== BUILD COMPLETE -> $K8S ==="
 [ "$DO_APPLY" = 1 ] || { echo "(skip apply; run with --apply to deploy)"; exit 0; }
 
-# 7. teardown + apply + wait Running --------------------------------------------
-echo "=== [7] teardown + apply ==="
-kubectl delete -f "$K8S" --ignore-not-found=true --wait=true
+# 7. teardown ACTIVE variant(s) + apply + wait Running --------------------------
+#    --apply evicts whatever DSB-SN variant is currently live (detected from the
+#    running otelcol-<variant>-ctr pods — otelcol is unique, one per variant), not
+#    just this build: only one variant should occupy the shared-pressure cluster
+#    at a time. Each active variant is removed via its own build_*/k8s manifests
+#    when the dir is locatable, else by name match on the live objects.
+echo "=== [7] teardown active variant(s) + apply ==="
+ACTIVE=$(kubectl get pods -o name 2>/dev/null | sed -nE 's#^pod/otelcol-(.+)-ctr-.*$#\1#p' | sort -u)
+if [ -n "$ACTIVE" ]; then
+  for v in $ACTIVE; do
+    DIR=""
+    for d in "$DSB"/build_*/k8s; do
+      [ -d "$d" ] && ls "$d"/otelcol-"$v"-ctr-* >/dev/null 2>&1 && { DIR="$d"; break; }
+    done
+    if [ -n "$DIR" ]; then
+      echo "   teardown active variant '$v' via $DIR"
+      kubectl delete -f "$DIR" --ignore-not-found=true --wait=true
+    else
+      echo "   teardown active variant '$v' by name (build dir not found)"
+      for kind in deployment daemonset statefulset service configmap; do
+        kubectl get "$kind" -o name 2>/dev/null | grep -E -- "-${v}-ctr$" \
+          | xargs -r kubectl delete --ignore-not-found=true --wait=true
+      done
+    fi
+  done
+else
+  echo "   no active DSB-SN variant detected (clean apply)"
+fi
+kubectl delete -f "$K8S" --ignore-not-found=true --wait=true >/dev/null 2>&1  # same-variant safety
 kubectl apply  -f "$K8S" || die "kubectl apply failed"
 echo "=== wait for $VARIANT pods Running ==="
 for i in $(seq 1 120); do

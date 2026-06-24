@@ -1,0 +1,71 @@
+# Auto-generated node-pinning for variant 'pb-estest2' (canonical rev2 placement).
+# Hot node = node-1: composepost+hometimeline+hometimeline-cache co-located
+# for the asymmetric-pressure design. DaemonSets (otelcol, wrk2api) NOT pinned.
+# 24 services across 9 nodes. Service names = <base>-pb-estest2-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-pb-estest2-ctr:
+      requests_cpu: 12000
+  - hometimeline-cache-pb-estest2-ctr:
+      requests_cpu: 2000
+  - hometimeline-service-pb-estest2-ctr:
+      requests_cpu: 5000
+
+node-2:
+  - social-cache-pb-estest2-ctr:
+      requests_cpu: 4000
+  - social-db-pb-estest2-ctr:
+      requests_cpu: 25000
+  - socialgraph-service-pb-estest2-ctr:
+      requests_cpu: 6000
+
+node-3:
+  - uniqueid-service-pb-estest2-ctr:
+      requests_cpu: 3000
+  - usermention-service-pb-estest2-ctr:
+      requests_cpu: 4000
+
+node-4:
+  - usertimeline-cache-pb-estest2-ctr:
+      requests_cpu: 2000
+  - usertimeline-db-pb-estest2-ctr:
+      requests_cpu: 11000
+  - usertimeline-service-pb-estest2-ctr:
+      requests_cpu: 8000
+
+node-5:
+  - media-service-pb-estest2-ctr:
+      requests_cpu: 2000
+  - text-service-pb-estest2-ctr:
+      requests_cpu: 8000
+  - userid-service-pb-estest2-ctr:
+      requests_cpu: 6000
+
+node-6:
+  - post-cache-pb-estest2-ctr:
+      requests_cpu: 2000
+  - post-db-pb-estest2-ctr:
+      requests_cpu: 3000
+  - post-storage-service-pb-estest2-ctr:
+      requests_cpu: 5000
+
+node-7:
+  - urlshorten-db-pb-estest2-ctr:
+      requests_cpu: 2000
+  - urlshorten-service-pb-estest2-ctr:
+      requests_cpu: 5000
+
+node-8:
+  - user-service-pb-estest2-ctr:
+      requests_cpu: 3000
+  - user-cache-pb-estest2-ctr:
+      requests_cpu: 2000
+  - user-db-pb-estest2-ctr:
+      requests_cpu: 2000
+
+node-9:
+  - jaeger-pb-estest2-ctr:
+      requests_cpu: 20000
+  - elasticsearch-pb-estest2-ctr:
+      requests_cpu: 4000

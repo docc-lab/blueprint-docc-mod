@@ -40,6 +40,6 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 )
 
-replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
-
 replace github.com/blueprint-uservices/blueprint/runtime => ../runtime
+
+replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
