@@ -11,6 +11,70 @@ crash-looping or silently producing an invalid run.
 
 ---
 
+## First-time setup (fresh node)
+
+On a brand-new CloudLab node, run the one-shot bootstrap first — it installs every
+dependency the build/deploy pipeline needs:
+
+```bash
+cd /users/tomislav/blueprint-docc-mod
+utils/setup_environment.sh
+```
+
+It runs 8 idempotent stages (safe to re-run):
+
+1. **Base apt** — git, curl, ca-certificates, python3-venv, python3-pip
+2. **Clone sibling repos** (next to `blueprint-docc-mod`) — docc-lab's
+   `opentelemetry-collector-contrib` and `DeathStarBench` (`--recurse-submodules`)
+3. **Build wrk2** — DeathStarBench's load generator: apt `build-essential libssl-dev
+   libz-dev luarocks`, `luarocks install luasocket`, `make` in `DeathStarBench/wrk2`,
+   install the `wrk` binary to `/usr/local/bin`
+4. **Toolchain** (delegates to `install_blueprint_deps.sh`) — Go (latest, from
+   go.dev, **not** apt; PATH wired into `~/.bashrc` + `~/.profile`), protobuf
+   compiler + lib (`protobuf-compiler libprotobuf-dev`), the two Go protoc plugins
+   (`protoc-gen-go`, `protoc-gen-go-grpc`), and kompose (latest release)
+5. **Python venv** at `blueprint-docc-mod/.venv` — `pyyaml` (d2k8s + helpers) + `aiohttp` (seeder)
+6. **Docker group** — adds you to `docker` (re-login to take effect)
+7. **In-cluster registry** — creates the `registry` namespace + applies pvc/deployment/service (NodePort 30000)
+8. **CPU pin** — pins **all** nodes' CPUs to a fixed clock (default 2.2 GHz) for deterministic runs
+
+**Overrides (env vars):**
+```bash
+CPU_GHZ=2.0 utils/setup_environment.sh            # pin nodes to 2.0 GHz instead of 2.2
+DSB_REPO=https://github.com/docc-lab/DeathStarBench.git utils/setup_environment.sh
+COLLECTOR_REPO=<url> utils/setup_environment.sh   # use a different collector fork
+```
+
+**After it finishes:**
+1. Open a new shell (or `source ~/.bashrc`) to pick up the Go PATH.
+2. `newgrp docker` (or log out/in) for docker-without-sudo.
+3. **Activate the venv** before any build — `build_deploy_dsb.sh` and the seeder
+   call `python3` directly, so they need the venv's `pyyaml` + `aiohttp`:
+   ```bash
+   source .venv/bin/activate
+   ```
+
+> The **Prerequisites** table (§2) is the per-item breakdown of what this installs —
+> consult it only if you're setting up by hand instead of via the script.
+
+### Setting the CPU clock independently
+
+CPU-frequency pinning lives in `utils/pin-cpu-22ghz.sh`, and the target clock is
+**configurable** (default 2.2 GHz, the c220g5 base clock):
+
+```bash
+utils/pin-cpu-22ghz.sh pin              # 2.2 GHz on this host
+utils/pin-cpu-22ghz.sh pin 2.0 --all    # 2.0 GHz on every k8s node
+utils/pin-cpu-22ghz.sh pin --ghz 1.8    # 1.8 GHz (flag form)
+utils/pin-cpu-22ghz.sh check --all      # read-only: show each node's clock
+utils/pin-cpu-22ghz.sh unpin --all      # revert to powersave
+```
+
+The `--all` pin is **not** reboot-persistent — re-run `pin <ghz> --all` after node
+reboots, or use `persist <ghz>` per node to install a systemd unit that survives.
+
+---
+
 ## 1. Quick start
 
 ```bash

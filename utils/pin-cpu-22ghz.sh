@@ -1,140 +1,133 @@
 #!/usr/bin/env bash
-# pin-cpu-22ghz.sh — pin every logical CPU at the c220g5 base clock
-# (2.20 GHz) to control runtime variability across experimental runs.
-# Matches bridges.pdf §5.1: "we fix the CPU speed on all nodes at 2.2 GHz".
+# pin-cpu-22ghz.sh — pin every logical CPU to a TARGET clock to control runtime
+# variability across experimental runs. Default 2.20 GHz (the c220g5 base clock),
+# matching bridges.pdf §5.1 ("we fix the CPU speed on all nodes at 2.2 GHz"), but
+# the target is configurable.
 #
-# Mechanism (intel_pstate driver, active mode):
-#   1. intel_pstate/no_turbo            = 1          → caps max at base clock
-#   2. intel_pstate/max_perf_pct        = 100        → allow up to the cap
-#   3. intel_pstate/min_perf_pct        = 100        → forbid throttle below cap
-#   4. intel_pstate/hwp_dynamic_boost   = 0          → defeat HWP boost
-#   5. cpu*/cpufreq/scaling_governor    = performance → never select a lower P-state
+# Specify the frequency (GHz) as a bare number or via --ghz:
+#   pin-cpu-22ghz.sh pin            # 2.2 GHz (default)
+#   pin-cpu-22ghz.sh pin 2.0        # 2.0 GHz
+#   pin-cpu-22ghz.sh pin --ghz 1.8  # 1.8 GHz
+#   pin-cpu-22ghz.sh pin 2.4 --all  # 2.4 GHz on every k8s node
 #
-# Fallback (intel_cpufreq driver, i.e. intel_pstate in passive mode, or
-# acpi-cpufreq): pin via the generic cpufreq sysfs interface instead —
-#   1. cpu*/cpufreq/scaling_min_freq    = 2200000 kHz
-#   2. cpu*/cpufreq/scaling_max_freq    = 2200000 kHz  (also caps turbo)
-#   3. cpu*/cpufreq/scaling_governor    = performance
-# Same end state (every CPU clamped at 2.2 GHz), different sysfs surface.
+# Mechanism (driver-agnostic): scaling_governor=performance and
+# scaling_min_freq = scaling_max_freq = <target> on every CPU. This works for
+# intel_pstate (active mode), intel_cpufreq, and acpi-cpufreq alike. For
+# intel_pstate, no_turbo is set to 1 when target <= base clock (defeat turbo) or
+# 0 when target > base (so turbo can reach the target), and hwp_dynamic_boost is
+# disabled. Asking for a frequency above the turbo max simply clamps at the max.
 #
 # Usage:
-#   pin-cpu-22ghz.sh pin              # apply on this host (auto sudo)
-#   pin-cpu-22ghz.sh check            # print current state (read-only)
-#   pin-cpu-22ghz.sh persist          # apply + install systemd unit (survives reboot)
-#   pin-cpu-22ghz.sh unpin            # revert (powersave + no_turbo=0 + disable unit)
-#   pin-cpu-22ghz.sh <cmd> --all      # run <cmd> on every k8s node via a one-shot privileged pod
+#   pin-cpu-22ghz.sh pin [GHZ|--ghz GHZ]      # apply on this host (auto sudo)
+#   pin-cpu-22ghz.sh check                     # print current state (read-only)
+#   pin-cpu-22ghz.sh persist [GHZ|--ghz GHZ]   # apply + systemd unit (survives reboot)
+#   pin-cpu-22ghz.sh unpin                      # revert (powersave + reset min/max + disable unit)
+#   pin-cpu-22ghz.sh <cmd> [GHZ] --all          # run <cmd> on every k8s node via a privileged pod
 #
-# Multi-node mode uses kubectl (no SSH bootstrap needed) — schedules a
-# busybox pod with privileged hostPath access to /sys and /proc on each
-# node, runs the body, captures logs, deletes the pod. `persist --all`
-# is not supported (would need systemd nsenter); install via per-node
-# local invocation instead.
+# Multi-node mode uses kubectl (no SSH): a busybox pod with privileged hostPath
+# access to /sys + /proc runs the body on each node, logs, and is deleted.
+# `persist --all` is not supported (needs systemd nsenter) — persist per node.
 
 set -euo pipefail
 
 THIS=$(readlink -f "$0")
 UNIT=/etc/systemd/system/cpu-pin-22ghz.service
+HELPER=/usr/local/sbin/cpu-pin-apply.sh
 POD_LABEL=pin-cpu-22ghz
 POD_IMAGE=busybox:1.36
+DEFAULT_GHZ=2.2
 
-usage() {
-    sed -n '2,/^$/p' "$THIS" | sed 's/^# \{0,1\}//'
-    exit "${1:-0}"
+usage() { sed -n '2,/^$/p' "$THIS" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+ghz_to_khz() {  # <ghz> -> integer kHz ; exit 1 if not a positive number
+  awk -v g="$1" 'BEGIN{ if (g+0<=0) exit 1; printf "%d", g*1000000 }'
 }
 
-# ------------- local execution (paths under /sys directly) -------------
+# ===================== local execution (paths under /sys) =====================
 
 cmd_check() {
-    local mean_mhz drv
-    mean_mhz=$(awk '/^cpu MHz/ {s+=$4; n++} END {if (n) printf "%.0f", s/n}' /proc/cpuinfo)
-    drv=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
-    case "$drv" in
-        intel_pstate)
-            printf 'host=%-12s drv=%-14s gov=%-12s no_turbo=%s perf_pct=%s/%s hwp_boost=%s mean_freq=%s MHz\n' \
-                "$(hostname)" "$drv" \
-                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
-                "$(cat /sys/devices/system/cpu/intel_pstate/no_turbo)" \
-                "$(cat /sys/devices/system/cpu/intel_pstate/min_perf_pct)" \
-                "$(cat /sys/devices/system/cpu/intel_pstate/max_perf_pct)" \
-                "$(cat /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null || echo n/a)" \
-                "$mean_mhz"
-            ;;
-        *)
-            printf 'host=%-12s drv=%-14s gov=%-12s min=%s max=%s mean_freq=%s MHz\n' \
-                "$(hostname)" "$drv" \
-                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
-                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq)" \
-                "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq)" \
-                "$mean_mhz"
-            ;;
-    esac
+    local mean_mhz drv c0=/sys/devices/system/cpu/cpu0/cpufreq nt=""
+    mean_mhz=$(awk '/^cpu MHz/{s+=$4;n++} END{if(n)printf "%.0f",s/n}' /proc/cpuinfo)
+    drv=$(cat "$c0/scaling_driver")
+    [ "$drv" = intel_pstate ] && nt="no_turbo=$(cat /sys/devices/system/cpu/intel_pstate/no_turbo) "
+    printf 'host=%-12s drv=%-13s gov=%-11s %smin=%s max=%s mean=%s MHz\n' \
+        "$(hostname)" "$drv" "$(cat "$c0/scaling_governor")" "$nt" \
+        "$(cat "$c0/scaling_min_freq")" "$(cat "$c0/scaling_max_freq")" "$mean_mhz"
 }
 
-apply_pin() {
-    local drv
+apply_pin() {  # <target_khz>
+    local target_khz=$1 drv base_khz
     drv=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
-    case "$drv" in
-        intel_pstate)
-            echo 1   > /sys/devices/system/cpu/intel_pstate/no_turbo
-            echo 100 > /sys/devices/system/cpu/intel_pstate/max_perf_pct
-            echo 100 > /sys/devices/system/cpu/intel_pstate/min_perf_pct
-            if [[ -w /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ]]; then
-                echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
-            fi
-            for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-                echo performance > "$g"
-            done
-            ;;
-        intel_cpufreq|acpi-cpufreq)
-            for c in /sys/devices/system/cpu/cpu*/cpufreq; do
-                echo performance > "$c/scaling_governor"
-                # Lower min before raising max (or vice versa) to avoid
-                # the kernel's transient "min > max" rejection.
-                echo 2200000 > "$c/scaling_max_freq"
-                echo 2200000 > "$c/scaling_min_freq"
-            done
-            ;;
-        *)
-            echo "ERROR: scaling_driver='$drv' (no pin path for this driver)" >&2
-            exit 2
-            ;;
-    esac
+    for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        echo performance > "$g"
+    done
+    if [ "$drv" = intel_pstate ]; then
+        base_khz=$(cat /sys/devices/system/cpu/cpu0/cpufreq/base_frequency 2>/dev/null || echo 0)
+        if [ "$target_khz" -gt "$base_khz" ]; then
+            echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo   # allow turbo up to target
+        else
+            echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo   # cap at base / defeat turbo
+        fi
+        [ -w /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && \
+            echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
+    fi
+    # clamp every CPU to the target; drop min to floor first to avoid a
+    # transient min>max rejection when lowering the ceiling.
+    for c in /sys/devices/system/cpu/cpu*/cpufreq; do
+        echo "$(cat "$c/cpuinfo_min_freq")" > "$c/scaling_min_freq"
+        echo "$target_khz" > "$c/scaling_max_freq"
+        echo "$target_khz" > "$c/scaling_min_freq"
+    done
     sleep 0.4
 }
 
-cmd_pin()   { apply_pin; cmd_check; }
+cmd_pin() { apply_pin "$1"; cmd_check; }   # <target_khz>
 
 cmd_unpin() {
-    echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo
-    for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-        echo powersave > "$g"
+    local drv
+    drv=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
+    [ "$drv" = intel_pstate ] && echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true
+    for c in /sys/devices/system/cpu/cpu*/cpufreq; do
+        echo "$(cat "$c/cpuinfo_min_freq")" > "$c/scaling_min_freq" 2>/dev/null || true
+        echo "$(cat "$c/cpuinfo_max_freq")" > "$c/scaling_max_freq" 2>/dev/null || true
+        echo powersave > "$c/scaling_governor" 2>/dev/null || true
     done
-    if systemctl list-unit-files cpu-pin-22ghz.service >/dev/null 2>&1; then
+    systemctl list-unit-files cpu-pin-22ghz.service >/dev/null 2>&1 && \
         systemctl disable --now cpu-pin-22ghz.service 2>/dev/null || true
-    fi
     sleep 0.4
     cmd_check
 }
 
-cmd_persist() {
-    apply_pin
-    cat >"$UNIT" <<'EOF'
+cmd_persist() {  # <target_khz>
+    local target_khz=$1
+    apply_pin "$target_khz"
+    # Generate a self-contained helper (independent of this repo's path) + unit.
+    printf '#!/bin/bash\n# Auto-generated by pin-cpu-22ghz.sh persist.\nTARGET_KHZ=%s\n' "$target_khz" > "$HELPER"
+    cat >>"$HELPER" <<'EOF'
+drv=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
+for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$g"; done
+if [ "$drv" = intel_pstate ]; then
+  b=$(cat /sys/devices/system/cpu/cpu0/cpufreq/base_frequency 2>/dev/null || echo 0)
+  if [ "$TARGET_KHZ" -gt "$b" ]; then echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo
+  else echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo; fi
+  [ -w /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
+fi
+for c in /sys/devices/system/cpu/cpu*/cpufreq; do
+  echo "$(cat "$c/cpuinfo_min_freq")" > "$c/scaling_min_freq"
+  echo "$TARGET_KHZ" > "$c/scaling_max_freq"
+  echo "$TARGET_KHZ" > "$c/scaling_min_freq"
+done
+EOF
+    chmod +x "$HELPER"
+    cat >"$UNIT" <<EOF
 [Unit]
-Description=Pin CPUs at base clock (2.2 GHz) for bridges experiments
+Description=Pin CPUs to ${target_khz} kHz for bridges experiments
 After=multi-user.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c '\
-echo 1   > /sys/devices/system/cpu/intel_pstate/no_turbo; \
-echo 100 > /sys/devices/system/cpu/intel_pstate/max_perf_pct; \
-echo 100 > /sys/devices/system/cpu/intel_pstate/min_perf_pct; \
-[ -w /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && \
-    echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost; \
-for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do \
-    echo performance > "$g"; \
-done'
+ExecStart=$HELPER
 
 [Install]
 WantedBy=multi-user.target
@@ -144,99 +137,74 @@ EOF
     cmd_check
 }
 
-# ------------- remote execution bodies (paths under /host/sys, /host/proc) -------------
+# ============ remote execution bodies (paths under /host/sys, /host/proc) ============
+# TARGET_KHZ is prepended to the body at dispatch time (see multi_node_run).
 
 REMOTE_CHECK_SH='
 host=/host
+c0="$host"/sys/devices/system/cpu/cpu0/cpufreq
 mean=$(awk "/^cpu MHz/{s+=\$4;n++}END{if(n)printf \"%.0f\",s/n}" "$host/proc/cpuinfo")
-drv=$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
-case "$drv" in
-    intel_pstate)
-        printf "drv=%-14s gov=%-12s no_turbo=%s perf_pct=%s/%s hwp_boost=%s mean_freq=%s MHz\n" \
-            "$drv" \
-            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
-            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/no_turbo)" \
-            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/min_perf_pct)" \
-            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/max_perf_pct)" \
-            "$(cat "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null || echo n/a)" \
-            "$mean"
-        ;;
-    *)
-        printf "drv=%-14s gov=%-12s min=%s max=%s mean_freq=%s MHz\n" \
-            "$drv" \
-            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" \
-            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq)" \
-            "$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq)" \
-            "$mean"
-        ;;
-esac
+drv=$(cat "$c0/scaling_driver")
+nt=""; [ "$drv" = intel_pstate ] && nt="no_turbo=$(cat "$host"/sys/devices/system/cpu/intel_pstate/no_turbo) "
+printf "drv=%-13s gov=%-11s %smin=%s max=%s mean=%s MHz\n" \
+    "$drv" "$(cat "$c0/scaling_governor")" "$nt" \
+    "$(cat "$c0/scaling_min_freq")" "$(cat "$c0/scaling_max_freq")" "$mean"
 '
 
 REMOTE_PIN_SH='
 host=/host
 drv=$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
-case "$drv" in
-    intel_pstate)
-        echo 1   > "$host"/sys/devices/system/cpu/intel_pstate/no_turbo
-        echo 100 > "$host"/sys/devices/system/cpu/intel_pstate/max_perf_pct
-        echo 100 > "$host"/sys/devices/system/cpu/intel_pstate/min_perf_pct
-        [ -w "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && \
-            echo 0 > "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
-        for g in "$host"/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-            echo performance > "$g"
-        done
-        ;;
-    intel_cpufreq|acpi-cpufreq)
-        for c in "$host"/sys/devices/system/cpu/cpu*/cpufreq; do
-            echo performance > "$c/scaling_governor"
-            echo 2200000 > "$c/scaling_max_freq"
-            echo 2200000 > "$c/scaling_min_freq"
-        done
-        ;;
-    *)
-        echo "ERROR: scaling_driver=$drv (no pin path)" >&2
-        exit 2
-        ;;
-esac
+for g in "$host"/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$g"; done
+if [ "$drv" = intel_pstate ]; then
+  b=$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/base_frequency 2>/dev/null || echo 0)
+  if [ "$TARGET_KHZ" -gt "$b" ]; then echo 0 > "$host"/sys/devices/system/cpu/intel_pstate/no_turbo
+  else echo 1 > "$host"/sys/devices/system/cpu/intel_pstate/no_turbo; fi
+  [ -w "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && echo 0 > "$host"/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
+fi
+for c in "$host"/sys/devices/system/cpu/cpu*/cpufreq; do
+  echo "$(cat "$c/cpuinfo_min_freq")" > "$c/scaling_min_freq"
+  echo "$TARGET_KHZ" > "$c/scaling_max_freq"
+  echo "$TARGET_KHZ" > "$c/scaling_min_freq"
+done
 sleep 0.4
 '"$REMOTE_CHECK_SH"
 
 REMOTE_UNPIN_SH='
 host=/host
-echo 0 > "$host"/sys/devices/system/cpu/intel_pstate/no_turbo
-for g in "$host"/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-    echo powersave > "$g"
+drv=$(cat "$host"/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
+[ "$drv" = intel_pstate ] && echo 0 > "$host"/sys/devices/system/cpu/intel_pstate/no_turbo
+for c in "$host"/sys/devices/system/cpu/cpu*/cpufreq; do
+  echo "$(cat "$c/cpuinfo_min_freq")" > "$c/scaling_min_freq"
+  echo "$(cat "$c/cpuinfo_max_freq")" > "$c/scaling_max_freq"
+  echo powersave > "$c/scaling_governor"
 done
 sleep 0.4
 '"$REMOTE_CHECK_SH"
 
-# ------------- multi-node via kubectl -------------
+# ============ multi-node via kubectl ============
 
-multi_node_run() {
-    local sub="$1"
-    local body=""
+multi_node_run() {   # <sub> ; uses global TARGET_KHZ
+    local sub="$1" body=""
     case "$sub" in
         check)   body="$REMOTE_CHECK_SH" ;;
         pin)     body="$REMOTE_PIN_SH" ;;
         unpin)   body="$REMOTE_UNPIN_SH" ;;
         persist)
             echo "ERROR: 'persist --all' not supported (needs systemd nsenter)." >&2
-            echo "       Bootstrap SSH then run 'pin-cpu-22ghz.sh persist' per node, or" >&2
-            echo "       just re-run 'pin-cpu-22ghz.sh pin --all' after reboots." >&2
+            echo "       Run 'pin-cpu-22ghz.sh persist <ghz>' per node, or re-run" >&2
+            echo "       'pin-cpu-22ghz.sh pin <ghz> --all' after reboots." >&2
             exit 1 ;;
         *) echo "internal: unknown sub: $sub" >&2; exit 1 ;;
     esac
+    # make the target available to the remote body
+    body="TARGET_KHZ=$TARGET_KHZ
+$body"
 
     local nodes
     nodes=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
-    if [[ -z "$nodes" ]]; then
-        echo "ERROR: kubectl returned no nodes" >&2
-        exit 3
-    fi
+    [ -n "$nodes" ] || { echo "ERROR: kubectl returned no nodes" >&2; exit 3; }
 
     local b64; b64=$(printf '%s' "$body" | base64 -w0)
-
-    # Pre-clean any stale pods from a prior crashed run.
     kubectl delete pod -l "app=$POD_LABEL" --grace-period=0 --wait=false >/dev/null 2>&1 || true
 
     local pods=()
@@ -279,8 +247,7 @@ EOF
         printf '=== %s ===\n' "$node"
         if ! kubectl wait "pod/$podname" --for=jsonpath='{.status.phase}'=Succeeded --timeout=90s >/dev/null 2>&1; then
             local phase; phase=$(kubectl get "pod/$podname" -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)
-            echo "[pod ended phase=$phase]" >&2
-            rc=1
+            echo "[pod ended phase=$phase]" >&2; rc=1
         fi
         kubectl logs "$podname" 2>&1 || true
         kubectl delete "pod/$podname" --grace-period=0 --wait=false >/dev/null 2>&1 || true
@@ -288,30 +255,39 @@ EOF
     return "$rc"
 }
 
-# ------------- arg parsing -------------
+# ============ arg parsing ============
 
-sub=""
-do_all=0
-for a in "$@"; do
-    case "$a" in
-        pin|check|persist|unpin) sub="$a" ;;
-        --all)                   do_all=1 ;;
-        -h|--help)               usage 0 ;;
-        *) echo "unknown arg: $a" >&2; usage 1 ;;
+sub=""; do_all=0; GHZ="$DEFAULT_GHZ"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        pin|check|persist|unpin) sub="$1"; shift ;;
+        --all)        do_all=1; shift ;;
+        --ghz)        GHZ="${2:-}"; shift 2 ;;
+        --ghz=*)      GHZ="${1#--ghz=}"; shift ;;
+        -h|--help)    usage 0 ;;
+        [0-9]*)       GHZ="$1"; shift ;;          # bare numeric GHz
+        *) echo "unknown arg: $1" >&2; usage 1 ;;
     esac
 done
-[[ -z "$sub" ]] && usage 1
+[ -n "$sub" ] || usage 1
 
-# ------------- dispatch -------------
+TARGET_KHZ=$(ghz_to_khz "$GHZ") || { echo "ERROR: invalid frequency '$GHZ' (expected positive GHz, e.g. 2.2)" >&2; exit 1; }
 
-if [[ "$do_all" -eq 1 ]]; then
+# ============ dispatch ============
+
+if [ "$do_all" -eq 1 ]; then
     multi_node_run "$sub"
     exit $?
 fi
 
-# Local; elevate to root for everything except `check`.
-if [[ "$sub" != "check" && "$EUID" -ne 0 ]]; then
-    exec sudo -E "$THIS" "$sub"
+# Local; elevate to root for everything except `check`, carrying the target GHz.
+if [ "$sub" != "check" ] && [ "$EUID" -ne 0 ]; then
+    exec sudo -E "$THIS" "$sub" "$GHZ"
 fi
 
-"cmd_$sub"
+case "$sub" in
+    pin)     cmd_pin "$TARGET_KHZ" ;;
+    persist) cmd_persist "$TARGET_KHZ" ;;
+    check)   cmd_check ;;
+    unpin)   cmd_unpin ;;
+esac

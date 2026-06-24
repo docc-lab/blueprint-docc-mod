@@ -8,15 +8,17 @@
 #   2. Clone the sibling repos next to blueprint-docc-mod:
 #        - docc-lab's opentelemetry-collector-contrib
 #        - DeathStarBench (--recurse-submodules)
-#   3. Toolchain via install_blueprint_deps.sh:
+#   3. Build DeathStarBench's wrk2 load generator (apt: build-essential libssl-dev
+#        libz-dev luarocks; luarocks install luasocket; make; install to /usr/local/bin/wrk)
+#   4. Toolchain via install_blueprint_deps.sh:
 #        - Go (latest, from go.dev tarball, NOT apt; PATH into ~/.bashrc + ~/.profile)
 #        - protobuf compiler + lib (apt: protobuf-compiler libprotobuf-dev)
 #        - Go protoc plugins: protoc-gen-go + protoc-gen-go-grpc
 #        - kompose (latest GitHub release binary)
-#   4. Python venv with d2k8s requirements (pyyaml) + the seeder dep (aiohttp)
-#   5. Add the current user to the 'docker' group
-#   6. Apply the in-cluster docker registry (namespace + pvc + deployment + service)
-#   7. Pin all k8s nodes' CPUs to 2.2 GHz for deterministic clocks across runs
+#   5. Python venv with d2k8s requirements (pyyaml) + the seeder dep (aiohttp)
+#   6. Add the current user to the 'docker' group
+#   7. Apply the in-cluster docker registry (namespace + pvc + deployment + service)
+#   8. Pin all k8s nodes' CPUs to 2.2 GHz for deterministic clocks across runs
 #        (pin-cpu-22ghz.sh pin --all)
 #
 # Idempotent: safe to re-run. Assumes passwordless sudo. The registry + CPU-pin
@@ -41,15 +43,17 @@ VENV="$BP_ROOT/.venv"
 # Repo URLs (override via env to use forks).
 COLLECTOR_REPO=${COLLECTOR_REPO:-https://github.com/docc-lab/opentelemetry-collector-contrib.git}
 DSB_REPO=${DSB_REPO:-https://github.com/delimitrou/DeathStarBench.git}
+# Target CPU clock for the 2.2 GHz pin stage (override, e.g. CPU_GHZ=2.0 ./setup_environment.sh).
+CPU_GHZ=${CPU_GHZ:-2.2}
 
 # =========================================================================
-log "1/7  base apt packages"
+log "1/8  base apt packages"
 # =========================================================================
 sudo apt-get update -qq
 sudo apt-get install -y git curl ca-certificates python3-venv python3-pip
 
 # =========================================================================
-log "2/7  clone sibling repos into $BASE"
+log "2/8  clone sibling repos into $BASE"
 # =========================================================================
 clone_if_absent(){   # <url> <dest> [extra git clone args...]
   local url=$1 dest=$2; shift 2
@@ -68,14 +72,28 @@ clone_if_absent "$DSB_REPO"       "$BASE/DeathStarBench" --recurse-submodules
   warn "DeathStarBench submodule update skipped/failed"
 
 # =========================================================================
-log "3/7  toolchain (Go + protobuf + kompose) via install_blueprint_deps.sh"
+log "3/8  build DeathStarBench wrk2 load generator -> /usr/local/bin/wrk"
+# =========================================================================
+sudo apt-get install -y build-essential libssl-dev libz-dev luarocks
+sudo luarocks install luasocket
+WRK2_DIR="$BASE/DeathStarBench/wrk2"
+if [ -d "$WRK2_DIR" ]; then
+  make -C "$WRK2_DIR"
+  sudo cp "$WRK2_DIR/wrk" /usr/local/bin/wrk && sudo chmod +x /usr/local/bin/wrk
+  echo "wrk installed: $(command -v wrk)"
+else
+  warn "no $WRK2_DIR — DeathStarBench clone is missing wrk2; skipping wrk build"
+fi
+
+# =========================================================================
+log "4/8  toolchain (Go + protobuf + kompose) via install_blueprint_deps.sh"
 # =========================================================================
 bash "$SCRIPT_DIR/install_blueprint_deps.sh"
 # make the freshly-installed Go usable for the remainder of THIS script
 export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
 
 # =========================================================================
-log "4/7  python venv + deps -> $VENV"
+log "5/8  python venv + deps -> $VENV"
 # =========================================================================
 [ -d "$VENV" ] || python3 -m venv "$VENV"
 "$VENV/bin/pip" install --upgrade pip -q
@@ -84,7 +102,7 @@ log "4/7  python venv + deps -> $VENV"
 echo "venv ready: $VENV"
 
 # =========================================================================
-log "5/7  add $USER to the 'docker' group"
+log "6/8  add $USER to the 'docker' group"
 # =========================================================================
 if id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
   echo "$USER already in docker group"
@@ -94,7 +112,7 @@ else
 fi
 
 # =========================================================================
-log "6/7  apply in-cluster docker registry (namespace 'registry', NodePort 30000)"
+log "7/8  apply in-cluster docker registry (namespace 'registry', NodePort 30000)"
 # =========================================================================
 if kubectl cluster-info >/dev/null 2>&1; then
   kubectl create namespace registry --dry-run=client -o yaml | kubectl apply -f -
@@ -109,14 +127,14 @@ else
 fi
 
 # =========================================================================
-log "7/7  pin all node CPUs to 2.2 GHz (deterministic clocks across runs)"
+log "8/8  pin all node CPUs to ${CPU_GHZ} GHz (deterministic clocks across runs)"
 # =========================================================================
 if kubectl cluster-info >/dev/null 2>&1; then
-  bash "$SCRIPT_DIR/pin-cpu-22ghz.sh" pin --all \
+  bash "$SCRIPT_DIR/pin-cpu-22ghz.sh" pin "$CPU_GHZ" --all \
     || warn "CPU pin reported errors on one or more nodes (see output above)"
-  warn "CPU pin is NOT persistent across reboots — re-run 'utils/pin-cpu-22ghz.sh pin --all' after any node reboot."
+  warn "CPU pin is NOT persistent across reboots — re-run 'utils/pin-cpu-22ghz.sh pin $CPU_GHZ --all' after any node reboot."
 else
-  warn "kubectl cluster not reachable — skipping CPU pin. Run later: utils/pin-cpu-22ghz.sh pin --all"
+  warn "kubectl cluster not reachable — skipping CPU pin. Run later: utils/pin-cpu-22ghz.sh pin $CPU_GHZ --all"
 fi
 
 # =========================================================================
