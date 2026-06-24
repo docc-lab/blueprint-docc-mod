@@ -3,7 +3,7 @@
 # install_blueprint_deps.sh — install & configure all toolchain deps for Blueprint/DSB-SN.
 #
 #   1. Latest Go (from go.dev tarball, NOT apt) → /usr/local/go, PATH in ~/.bashrc + ~/.profile
-#   2. System protobuf compiler (apt: protobuf-compiler)
+#   2. System protobuf compiler + lib (apt: protobuf-compiler libprotobuf-dev)
 #   3. Go protobuf plugins: protoc-gen-go + protoc-gen-go-grpc
 #   4. kompose (latest GitHub release binary → /usr/local/bin)
 #
@@ -72,7 +72,7 @@ go version
 log "2/4  system protobuf compiler (apt)"
 # =========================================================================
 sudo apt-get update -qq
-sudo apt-get install -y protobuf-compiler
+sudo apt-get install -y protobuf-compiler libprotobuf-dev
 protoc --version
 
 # =========================================================================
