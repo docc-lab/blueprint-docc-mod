@@ -147,6 +147,7 @@ The script assumes a working CloudLab kubespray cluster and these already in pla
 | `--soft <pct>` | Collector controller soft (refuse-all) threshold %. | 50 |
 | `--hard <pct>` | Collector controller hard (force-GC) threshold %. | 70 |
 | `--cp-safety <f>` | CP-vs-LP shedding dial (higher = protect CP harder). | 1 |
+| `--no-pin-requests` | Node-pin places services on nodes (nodeSelector) but sets **no** CPU requests — avoids over-reserving cores. | off |
 | `--build-collector` | Rebuild + push the `otelcontribcol` base image first. | off |
 | `--skip-build` | Skip d2k8s image builds (reuse existing images). | off |
 | `--apply` | Deploy: evict the live variant, apply, wait for Running. | off |
@@ -189,9 +190,18 @@ node so that node's otelcol absorbs the pressure; everything else is spread.
   `node-1`).
 - **Custom pinning**: an existing `node-pinning-<name>.yaml` is **respected** —
   hand-edit it (or generate then tweak) and it won't be overwritten.
-- **Generate manually** to inspect/edit before deploying:
+- **Placement-only (`--no-pin-requests`)**: places services on their nodes
+  (nodeSelector) but emits/applies **no CPU requests**, so the scheduler co-locates
+  without reserving cores (the canonical requests reserve up to 25 cores for
+  social-db). Applies to both the generated file *and* the apply step, so even an
+  existing file's `requests_cpu` values are ignored:
   ```bash
-  utils/gen_node_pinning.py pb-estest2 examples/dsb_sn/node-pinning-pb_estest2.yaml
+  build_deploy_dsb.sh -s docker_pb_es -n pb_run --cpd 2 --no-pin-requests --apply
+  ```
+- **Generate manually** to inspect/edit before deploying (add `--no-requests` for
+  placement-only):
+  ```bash
+  utils/gen_node_pinning.py pb-estest2 examples/dsb_sn/node-pinning-pb_estest2.yaml [--no-requests]
   ```
 
 ### ⚠ Cluster topology caveat
