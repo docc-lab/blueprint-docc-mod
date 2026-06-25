@@ -8,10 +8,12 @@ identical across pb/cgpb/rc rev2), so this just stamps <base>-<variant>-ctr name
 onto the canonical layout. Output is consumed by pin_nodes.py.
 
 Usage:
-  gen_node_pinning.py <variant> [outfile]
-    variant : kompose suffix in DASH form, e.g. pb-estest  (deployment names are
-              <base>-<variant>-ctr)
-    outfile : path to write (default: stdout)
+  gen_node_pinning.py <variant> [outfile] [--no-requests]
+    variant      : kompose suffix in DASH form, e.g. pb-estest  (deployment names
+                   are <base>-<variant>-ctr)
+    outfile      : path to write (default: stdout)
+    --no-requests: placement-only — emit nodeSelector placement with NO requests_cpu
+                   (avoids over-reserving cores; the scheduler just co-locates)
 
 CLUSTER NOTE: the hot node is node-1, which on the bridges-tb cluster is an
 UNTAINTED control-plane node (node-0 is the tainted/off-limits one). That matches
@@ -36,10 +38,11 @@ PLACEMENT = [
 ]
 
 
-def render(variant):
+def render(variant, no_requests=False):
     n_svc = sum(len(s) for _, s in PLACEMENT)
+    mode = "PLACEMENT-ONLY (no requests)" if no_requests else "with CPU requests"
     lines = [
-        f"# Auto-generated node-pinning for variant '{variant}' (canonical rev2 placement).",
+        f"# Auto-generated node-pinning for variant '{variant}' (canonical rev2 placement, {mode}).",
         "# Hot node = node-1: composepost+hometimeline+hometimeline-cache co-located",
         "# for the asymmetric-pressure design. DaemonSets (otelcol, wrk2api) NOT pinned.",
         f"# {n_svc} services across {len(PLACEMENT)} nodes. Service names = <base>-{variant}-ctr.",
@@ -50,21 +53,26 @@ def render(variant):
         lines.append(f"{node}:")
         for base, cpu in svcs:
             lines.append(f"  - {base}-{variant}-ctr:")
-            lines.append(f"      requests_cpu: {cpu}")
+            if not no_requests:          # placement-only mode: nodeSelector only, no resource requests
+                lines.append(f"      requests_cpu: {cpu}")
         lines.append("")
     return "\n".join(lines)
 
 
 def main():
-    if len(sys.argv) < 2:
-        sys.exit("usage: gen_node_pinning.py <variant-dash-form> [outfile]")
-    variant = sys.argv[1]
-    out = render(variant)
-    if len(sys.argv) >= 3:
-        with open(sys.argv[2], "w") as f:
+    argv = sys.argv[1:]
+    no_requests = "--no-requests" in argv          # placement-only: nodeSelector, no CPU requests
+    pos = [a for a in argv if a != "--no-requests"]
+    if not pos:
+        sys.exit("usage: gen_node_pinning.py <variant-dash-form> [outfile] [--no-requests]")
+    variant = pos[0]
+    out = render(variant, no_requests)
+    if len(pos) >= 2:
+        with open(pos[1], "w") as f:
             f.write(out)
         n_svc = sum(len(s) for _, s in PLACEMENT)
-        print(f"wrote {sys.argv[2]} ({n_svc} services across {len(PLACEMENT)} nodes)")
+        tag = " (placement-only, no requests)" if no_requests else ""
+        print(f"wrote {pos[1]} ({n_svc} services across {len(PLACEMENT)} nodes){tag}")
     else:
         sys.stdout.write(out)
 

@@ -15,6 +15,9 @@
 #
 # Controller knobs (priorityprocessor): --soft/--hard/--cp-safety (defaults
 # 50/70/1 = rev2-proven); force_gc + gc intervals are script vars near the top.
+# --no-pin-requests: node-pin places services on nodes but sets NO CPU requests
+#   (just nodeSelector co-location) — avoids over-reserving cores. Applies to both
+#   the generated pinning file and the apply step (existing files' requests ignored).
 #
 # Examples:
 #   build_deploy_dsb.sh -s docker_pb_es -n pb_esrev2 --cpd 2 --gc natural --apply --seed
@@ -31,13 +34,28 @@ SEED_DIR=/users/tomislav/DeathStarBench/socialNetwork
 SEED_PY=$DSB/scripts/init_social_graph.py
 
 SPEC=""; NAME=""; CPD=""; GC=""; EXTRA=""
-BUILD_COLLECTOR=0; DO_APPLY=0; DO_SEED=0; SKIP_BUILD=0
+BUILD_COLLECTOR=0; DO_APPLY=0; DO_SEED=0; SKIP_BUILD=0; NOPIN_REQ=0
 # priorityprocessor controller config (rev2-proven defaults; the wiring emits a
 # STALE legacy schema -> step [2] rewrites the block to these current-schema keys).
 SOFT_PCT=50; HARD_PCT=70; CP_SAFETY=1; FORCE_GC=true; GC_SOFT=1s; GC_ULTRA=0s
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
 usage(){ sed -n '2,20p' "$0"; exit 1; }
+
+# Docker access guard: d2k8s + image builds need the docker socket (root:docker).
+# On CloudLab a session can predate `usermod -aG docker` (group not active yet),
+# so plain `docker` is denied. If the user IS a docker group member, re-exec the
+# whole script under `sg docker` (activates the group without re-login). Idempotent:
+# after re-exec `docker info` succeeds, so it runs once.
+if ! docker info >/dev/null 2>&1; then
+  ME=$(id -un)
+  if getent group docker | grep -qw "$ME"; then
+    echo "=== [docker] not active in this shell -> re-exec under 'sg docker' ==="
+    exec sg docker -c "$(printf '%q ' "$0" "$@")"
+  else
+    die "docker not accessible and '$ME' is not in the 'docker' group. Fix: sudo usermod -aG docker $ME (then re-login), or run utils/setup_environment.sh"
+  fi
+fi
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -50,6 +68,7 @@ while [ $# -gt 0 ]; do
     --soft) SOFT_PCT=$2; shift 2;;
     --hard) HARD_PCT=$2; shift 2;;
     --cp-safety) CP_SAFETY=$2; shift 2;;
+    --no-pin-requests) NOPIN_REQ=1; shift;;
     --skip-build) SKIP_BUILD=1; shift;;
     --apply) DO_APPLY=1; shift;;
     --seed) DO_SEED=1; shift;;
@@ -138,7 +157,8 @@ if cpd:
     if isinstance(cm, dict) and 'cpd' in cm:
         cm['cpd'] = int(cpd); print("  cpd ->", cm['cpd'])
     else:
-        sys.exit("ERROR: --cpd given but receivers.configdiscovery.config_map.cpd not found")
+        print("  note: --cpd given but no receivers.configdiscovery.config_map.cpd "
+              "in this config (e.g. vanilla / no-bridge variant) — skipping cpd set")
 with open(path, 'w') as f: yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=False)
 PY
 
@@ -167,12 +187,13 @@ python3 "$UTILS/inject_perf_env.py" "$K8S" "$VARIANT" ${GC:+--gc "$GC"} || die "
 #    asymmetric-pressure placement (hot node-1 = composepost+hometimeline) stamped
 #    with this variant's suffix. An existing file is respected (hand edits kept).
 NODEPIN=$DSB/node-pinning-${NAME}.yaml
+NOREQ=""; [ "$NOPIN_REQ" = 1 ] && NOREQ="--no-requests"   # placement-only (no CPU requests)
 if [ ! -f "$NODEPIN" ]; then
-  echo "=== [6] no $NODEPIN -> generating canonical placement for '$VARIANT' ==="
-  python3 "$UTILS/gen_node_pinning.py" "$VARIANT" "$NODEPIN" || die "pinning generation failed"
+  echo "=== [6] no $NODEPIN -> generating canonical placement for '$VARIANT'${NOREQ:+ (placement-only)} ==="
+  python3 "$UTILS/gen_node_pinning.py" "$VARIANT" "$NODEPIN" $NOREQ || die "pinning generation failed"
 fi
-echo "=== [6] node pinning from $NODEPIN ==="
-python3 "$UTILS/pin_nodes.py" "$NODEPIN" "$K8S" || die "pin_nodes failed"
+echo "=== [6] node pinning from $NODEPIN${NOREQ:+ (placement-only: strip requests)} ==="
+python3 "$UTILS/pin_nodes.py" "$NODEPIN" "$K8S" $NOREQ || die "pin_nodes failed"
 
 echo "=== BUILD COMPLETE -> $K8S ==="
 [ "$DO_APPLY" = 1 ] || { echo "(skip apply; run with --apply to deploy)"; exit 0; }

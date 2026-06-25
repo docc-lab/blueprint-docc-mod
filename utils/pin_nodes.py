@@ -157,6 +157,12 @@ def main():
         action="store_true",
         help="Print what would be changed without writing files",
     )
+    parser.add_argument(
+        "--no-requests",
+        action="store_true",
+        help="Placement-only: set nodeSelector but strip ALL resource requests/limits "
+             "(ignore any requests_cpu in the pinning file) so pods don't over-reserve cores.",
+    )
     args = parser.parse_args()
 
     pin_path = Path(args.pinning_yaml)
@@ -171,6 +177,11 @@ def main():
     pin_map = parse_pinning_yaml(pin_path)
     if not pin_map:
         print("Warning: No service entries found in pinning YAML.", file=sys.stderr)
+    if args.no_requests:
+        for pin in pin_map.values():   # placement-only: drop all requests/limits, keep nodeSelector
+            pin["requests_cpu"] = pin["limits_cpu"] = None
+            pin["requests_memory"] = pin["limits_memory"] = None
+        print("--no-requests: stripping all resource requests/limits (nodeSelector placement only)")
 
     deployment_files = sorted(k8s_path.glob("*-deployment.yaml"))
     if not deployment_files:
