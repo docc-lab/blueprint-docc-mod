@@ -2,13 +2,13 @@
 package ot
 
 import (
+	"strings"
+	"sync/atomic"
 	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
-	"sync/atomic"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -48,9 +48,6 @@ func (handler *SocialGraphService_OTClientWrapper) Follow(ctx context.Context, r
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_Follow", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -101,9 +98,6 @@ func (handler *SocialGraphService_OTClientWrapper) FollowWithUsername(ctx contex
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_FollowWithUsername", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -154,9 +148,6 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowees(ctx context.Cont
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_GetFollowees", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -207,9 +198,6 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowers(ctx context.Cont
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_GetFollowers", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -260,9 +248,6 @@ func (handler *SocialGraphService_OTClientWrapper) InsertUser(ctx context.Contex
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_InsertUser", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -313,9 +298,6 @@ func (handler *SocialGraphService_OTClientWrapper) Unfollow(ctx context.Context,
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_Unfollow", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -366,9 +348,6 @@ func (handler *SocialGraphService_OTClientWrapper) UnfollowWithUsername(ctx cont
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_UnfollowWithUsername", trace.WithSpanKind(trace.SpanKindClient))
 

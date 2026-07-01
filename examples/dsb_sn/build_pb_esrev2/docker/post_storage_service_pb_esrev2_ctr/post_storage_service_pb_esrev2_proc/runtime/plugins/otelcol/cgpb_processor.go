@@ -483,7 +483,10 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 		propHA = nil
 	} else {
 		propCkpt4 = inheritedCkpt4
-		bf.Add([]byte(spanID))
+		// Span IDs are already uniformly random -> use them directly as bloom hash
+		// material (no MurmurHash). Same FPR, ~31% cheaper Add. RAW 8 bytes, not the
+		// hex string. See notes/bloom_prehashed_spanid.md.
+		bf.AddPrehashed(sid8[:])
 		propBloomBytes = bf.Bytes()
 	}
 	propagationPacked := packCGPRBBR(depth, propCkpt4, propBloomBytes, propHA)

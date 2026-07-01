@@ -2,13 +2,13 @@
 package ot
 
 import (
-	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
 	"sync/atomic"
+	"strconv"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -43,9 +43,6 @@ func (handler *HomeTimelineService_OTClientWrapper) ReadHomeTimeline(ctx context
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("HomeTimelineService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "HomeTimelineServiceClient_ReadHomeTimeline", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -96,9 +93,6 @@ func (handler *HomeTimelineService_OTClientWrapper) WriteHomeTimeline(ctx contex
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("HomeTimelineService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "HomeTimelineServiceClient_WriteHomeTimeline", trace.WithSpanKind(trace.SpanKindClient))
 

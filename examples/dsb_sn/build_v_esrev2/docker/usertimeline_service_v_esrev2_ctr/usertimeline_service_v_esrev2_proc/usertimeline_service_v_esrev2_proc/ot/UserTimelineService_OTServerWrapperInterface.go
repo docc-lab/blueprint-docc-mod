@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -79,15 +78,10 @@ func (handler *UserTimelineService_OTServerWrapper) ReadUserTimeline(ctx context
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.ReadUserTimeline(ctx, reqID, userID, start, stop)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -140,15 +134,10 @@ func (handler *UserTimelineService_OTServerWrapper) WriteUserTimeline(ctx contex
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.WriteUserTimeline(ctx, reqID, postID, userID, timestamp)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }

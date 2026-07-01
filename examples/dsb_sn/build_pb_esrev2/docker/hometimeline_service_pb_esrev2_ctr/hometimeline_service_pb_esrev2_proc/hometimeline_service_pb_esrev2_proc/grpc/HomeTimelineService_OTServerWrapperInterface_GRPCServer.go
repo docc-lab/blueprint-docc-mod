@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/hometimeline_service_pb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/hometimeline_service_pb_esrev2_proc/ot"
 )
 
 type HomeTimelineService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *HomeTimelineService_GRPCServerHandler) Run(ctx context.Context) e
 	return s.Serve(lis)
 }
 
-
 func (handler *HomeTimelineService_GRPCServerHandler) ReadHomeTimeline(ctx context.Context, req *HomeTimelineService_OTServerWrapperInterface_ReadHomeTimeline_Request) (*HomeTimelineService_OTServerWrapperInterface_ReadHomeTimeline_Response, error) {
 	reqID, userID, start, stop, traceCtx := req.unmarshall()
 	ret0, err := handler.Service.ReadHomeTimeline(ctx, reqID, userID, start, stop, traceCtx)
@@ -65,4 +65,3 @@ func (handler *HomeTimelineService_GRPCServerHandler) WriteHomeTimeline(ctx cont
 	rsp.marshall()
 	return rsp, nil
 }
-

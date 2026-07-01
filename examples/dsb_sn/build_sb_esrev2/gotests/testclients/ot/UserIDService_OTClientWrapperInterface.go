@@ -2,13 +2,13 @@
 package ot
 
 import (
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"strings"
+	"sync/atomic"
 	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
-	"sync/atomic"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -39,14 +39,24 @@ func (handler *UserIDService_OTClientWrapper) GetUserId(ctx context.Context, req
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserIDService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "UserIDServiceClient_GetUserId", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -79,7 +89,16 @@ func (handler *UserIDService_OTClientWrapper) GetUserId(ctx context.Context, req
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 

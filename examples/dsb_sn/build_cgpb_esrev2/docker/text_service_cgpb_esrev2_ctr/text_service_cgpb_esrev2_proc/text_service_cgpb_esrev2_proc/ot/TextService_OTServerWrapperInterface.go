@@ -2,24 +2,24 @@
 package ot
 
 import (
-	"go.opentelemetry.io/otel/attribute"
-	"sync/atomic"
-	"strconv"
-	"go.opentelemetry.io/otel/trace"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
+	"strconv"
+	"strings"
+	"sync/atomic"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type TextService_OTServerWrapperInterface interface {
 	ComposeText(ctx context.Context, reqID int64, text string, traceCtx string) (string, []socialnetwork.UserMention, []socialnetwork.URL, error)
-	
 }
 
 type TextService_OTServerWrapper struct {
-	Service socialnetwork.TextService
+	Service    socialnetwork.TextService
 	CollClient backend.Tracer
 }
 
@@ -30,14 +30,13 @@ func New_TextService_OTServerWrapper(ctx context.Context, service socialnetwork.
 	return handler, nil
 }
 
-
 func (handler *TextService_OTServerWrapper) ComposeText(ctx context.Context, reqID int64, text string, traceCtx string) (ret0 string, ret1 []socialnetwork.UserMention, ret2 []socialnetwork.URL, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -81,14 +80,13 @@ func (handler *TextService_OTServerWrapper) ComposeText(ctx context.Context, req
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, ret1, ret2, err = handler.Service.ComposeText(ctx, reqID, text)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

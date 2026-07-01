@@ -1,95 +1,47 @@
-# Example configuration for pinning services to nodes
-# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
-# Service names should match the deployment names (without -deployment.yaml suffix)
+# Auto-generated node-pinning for variant 'cgpb-esrev2' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-cgpb-esrev2-ctr.
+# Consumed by pin_nodes.py. Edit freely.
 
 node-1:
   - composepost-service-cgpb-esrev2-ctr:
-      requests_cpu: 12000
-      # limits_cpu: 2000
-  - hometimeline-cache-cgpb-esrev2-ctr:
-      requests_cpu: 2000
-      # limits_cpu: 2000
-  - hometimeline-service-cgpb-esrev2-ctr:
-      requests_cpu: 5000
-    #   limits_cpu: 2000
+  - userid-service-cgpb-esrev2-ctr:
 
 node-2:
-  - social-cache-cgpb-esrev2-ctr:
-      requests_cpu: 4000
-    #   limits_cpu: 2000
-  - social-db-cgpb-esrev2-ctr:
-      requests_cpu: 25000
-    #   limits_cpu: 2000
-  - socialgraph-service-cgpb-esrev2-ctr:
-      requests_cpu: 6000
-    #   limits_cpu: 2000
+  - hometimeline-service-cgpb-esrev2-ctr:
+  - hometimeline-cache-cgpb-esrev2-ctr:
+  - urlshorten-service-cgpb-esrev2-ctr:
+  - urlshorten-db-cgpb-esrev2-ctr:
 
 node-3:
-  - uniqueid-service-cgpb-esrev2-ctr:
-      requests_cpu: 3000
-    #   limits_cpu: 2000
+  - usertimeline-service-cgpb-esrev2-ctr:
+  - usertimeline-cache-cgpb-esrev2-ctr:
+  - usertimeline-db-cgpb-esrev2-ctr:
   - usermention-service-cgpb-esrev2-ctr:
-      requests_cpu: 4000
-    #   limits_cpu: 2000
-  # - wrk2api-service-cgpb-esrev2-ctr:
-  #     # requests_cpu: 2000
-  #   #   limits_cpu: 2000
 
 node-4:
-  - usertimeline-cache-cgpb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - usertimeline-db-cgpb-esrev2-ctr:
-      requests_cpu: 11000
-    #   limits_cpu: 2000
-  - usertimeline-service-cgpb-esrev2-ctr:
-      requests_cpu: 8000
-    #   limits_cpu: 2000
+  - socialgraph-service-cgpb-esrev2-ctr:
+  - social-cache-cgpb-esrev2-ctr:
+  - social-db-cgpb-esrev2-ctr:
+  - text-service-cgpb-esrev2-ctr:
 
 node-5:
-  - media-service-cgpb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - text-service-cgpb-esrev2-ctr:
-      requests_cpu: 8000
-    #   limits_cpu: 2000
-  - userid-service-cgpb-esrev2-ctr:
-      requests_cpu: 6000
-    #   limits_cpu: 2000
+  - post-storage-service-cgpb-esrev2-ctr:
+  - post-cache-cgpb-esrev2-ctr:
+  - post-db-cgpb-esrev2-ctr:
 
 node-6:
-  - post-cache-cgpb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - post-db-cgpb-esrev2-ctr:
-      requests_cpu: 3000
-    #   limits_cpu: 2000
-  - post-storage-service-cgpb-esrev2-ctr:
-      requests_cpu: 5000
-    #   limits_cpu: 2000
+  - uniqueid-service-cgpb-esrev2-ctr:
+  - media-service-cgpb-esrev2-ctr:
 
 node-7:
-  - urlshorten-db-cgpb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - urlshorten-service-cgpb-esrev2-ctr:
-      requests_cpu: 5000
-    #   limits_cpu: 2000
+  - wrk2api-service-cgpb-esrev2-ctr:
 
 node-8:
   - user-service-cgpb-esrev2-ctr:
-      requests_cpu: 3000
-    #   limits_cpu: 2000
   - user-cache-cgpb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
   - user-db-cgpb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  
+
 node-9:
   - jaeger-cgpb-esrev2-ctr:
-      requests_cpu: 20000
-
   - elasticsearch-cgpb-esrev2-ctr:
-      requests_cpu: 4000

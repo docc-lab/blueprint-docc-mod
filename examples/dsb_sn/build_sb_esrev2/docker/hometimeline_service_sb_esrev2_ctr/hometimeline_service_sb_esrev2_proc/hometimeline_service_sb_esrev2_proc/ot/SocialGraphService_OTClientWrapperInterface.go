@@ -2,29 +2,30 @@
 package ot
 
 import (
-	"sync/atomic"
-	"strconv"
 	"context"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type SocialGraphService_OTClientWrapperInterface interface {
-	Follow(ctx context.Context, reqID int64, userID int64, followeeID int64) (error)
-	FollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string) (error)
+	Follow(ctx context.Context, reqID int64, userID int64, followeeID int64) error
+	FollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string) error
 	GetFollowees(ctx context.Context, reqID int64, userID int64) ([]int64, error)
 	GetFollowers(ctx context.Context, reqID int64, userID int64) ([]int64, error)
-	InsertUser(ctx context.Context, reqID int64, userID int64) (error)
-	Unfollow(ctx context.Context, reqID int64, userID int64, followeeID int64) (error)
-	UnfollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string) (error)
-	
+	InsertUser(ctx context.Context, reqID int64, userID int64) error
+	Unfollow(ctx context.Context, reqID int64, userID int64, followeeID int64) error
+	UnfollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string) error
 }
 
 type SocialGraphService_OTClientWrapper struct {
-	Client SocialGraphService_OTServerWrapperInterface
+	Client     SocialGraphService_OTServerWrapperInterface
 	CollClient backend.Tracer
 }
 
@@ -35,7 +36,6 @@ func New_SocialGraphService_OTClientWrapper(ctx context.Context, client SocialGr
 	return handler, nil
 }
 
-
 func (handler *SocialGraphService_OTClientWrapper) Follow(ctx context.Context, reqID int64, userID int64, followeeID int64) (err error) {
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
@@ -45,17 +45,27 @@ func (handler *SocialGraphService_OTClientWrapper) Follow(ctx context.Context, r
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_Follow", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -76,16 +86,25 @@ func (handler *SocialGraphService_OTClientWrapper) Follow(ctx context.Context, r
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	err = handler.Client.Follow(ctx, reqID, userID, followeeID, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -98,17 +117,27 @@ func (handler *SocialGraphService_OTClientWrapper) FollowWithUsername(ctx contex
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_FollowWithUsername", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -129,16 +158,25 @@ func (handler *SocialGraphService_OTClientWrapper) FollowWithUsername(ctx contex
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	err = handler.Client.FollowWithUsername(ctx, reqID, userUsername, followeeUsername, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -151,17 +189,27 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowees(ctx context.Cont
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_GetFollowees", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -182,16 +230,25 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowees(ctx context.Cont
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	ret0, err = handler.Client.GetFollowees(ctx, reqID, userID, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -204,17 +261,27 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowers(ctx context.Cont
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_GetFollowers", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -235,16 +302,25 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowers(ctx context.Cont
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	ret0, err = handler.Client.GetFollowers(ctx, reqID, userID, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -257,17 +333,27 @@ func (handler *SocialGraphService_OTClientWrapper) InsertUser(ctx context.Contex
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_InsertUser", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -288,16 +374,25 @@ func (handler *SocialGraphService_OTClientWrapper) InsertUser(ctx context.Contex
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	err = handler.Client.InsertUser(ctx, reqID, userID, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -310,17 +405,27 @@ func (handler *SocialGraphService_OTClientWrapper) Unfollow(ctx context.Context,
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_Unfollow", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -341,16 +446,25 @@ func (handler *SocialGraphService_OTClientWrapper) Unfollow(ctx context.Context,
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	err = handler.Client.Unfollow(ctx, reqID, userID, followeeID, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -363,17 +477,27 @@ func (handler *SocialGraphService_OTClientWrapper) UnfollowWithUsername(ctx cont
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_UnfollowWithUsername", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -394,16 +518,24 @@ func (handler *SocialGraphService_OTClientWrapper) UnfollowWithUsername(ctx cont
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	err = handler.Client.UnfollowWithUsername(ctx, reqID, userUsername, followeeUsername, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
-

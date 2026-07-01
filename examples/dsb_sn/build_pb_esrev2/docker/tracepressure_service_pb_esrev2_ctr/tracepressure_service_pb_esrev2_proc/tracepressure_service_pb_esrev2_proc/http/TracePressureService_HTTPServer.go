@@ -2,11 +2,12 @@
 package http
 
 import (
-	"net/http"
-	"github.com/gorilla/mux"
 	"blueprint/goproc/tracepressure_service_pb_esrev2_proc/ot"
 	"context"
 	"encoding/json"
+	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 type TracePressureService_HTTPServerHandler struct {
@@ -25,11 +26,11 @@ func New_TracePressureService_HTTPServerHandler(ctx context.Context, service ot.
 func (handler *TracePressureService_HTTPServerHandler) Run(ctx context.Context) error {
 	router := mux.NewRouter()
 	// Add paths for the mux router
-	
+
 	router.Path("/Spam").HandlerFunc(handler.Spam)
-	
-	srv := &http.Server {
-		Addr: handler.Address,
+
+	srv := &http.Server{
+		Addr:    handler.Address,
 		Handler: router,
 	}
 
@@ -43,11 +44,10 @@ func (handler *TracePressureService_HTTPServerHandler) Run(ctx context.Context) 
 	return srv.ListenAndServe()
 }
 
-
 func (handler *TracePressureService_HTTPServerHandler) Spam(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer r.Body.Close()
-	
+
 	request_n := r.URL.Query().Get("n")
 	var n int64
 	if request_n != "" {
@@ -57,9 +57,9 @@ func (handler *TracePressureService_HTTPServerHandler) Spam(w http.ResponseWrite
 			return
 		}
 	}
-	
+
 	traceCtx := r.URL.Query().Get("traceCtx")
-	
+
 	ctx := context.Background()
 	ret0, err := handler.Service.Spam(ctx, n, traceCtx)
 	if err != nil {
@@ -67,13 +67,10 @@ func (handler *TracePressureService_HTTPServerHandler) Spam(w http.ResponseWrite
 		return
 	}
 	response := struct {
-		
 		Ret0 int64
-		
 	}{}
-	
+
 	response.Ret0 = ret0
-	
+
 	json.NewEncoder(w).Encode(response)
 }
-

@@ -7,6 +7,5 @@ import (
 
 type HomeTimelineService_OTServerWrapperInterface interface {
 	ReadHomeTimeline(ctx context.Context, reqID int64, userID int64, start int64, stop int64, traceCtx string) ([]int64, error)
-	WriteHomeTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64, userMentionIDs []int64, traceCtx string) (error)
-	
+	WriteHomeTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64, userMentionIDs []int64, traceCtx string) error
 }

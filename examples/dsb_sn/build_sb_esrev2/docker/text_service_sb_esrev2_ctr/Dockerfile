@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process text_service_sb_esrev2_proc
 #
 
-FROM golang:1.26.3-bookworm AS text_service_sb_esrev2_proc
+FROM golang:1.26.4-bookworm AS text_service_sb_esrev2_proc
 
 COPY ./text_service_sb_esrev2_proc /src
 

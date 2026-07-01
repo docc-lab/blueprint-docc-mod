@@ -25,30 +25,23 @@ spec:
         - name: BRIDGE_KIND
           value: pb
         - name: GC_INTERVAL_SEC
-          value: '0'
+          value: '0.1'
         - name: GOGC
-          value: '100'
+          value: 'off'
         - name: OTELCOL_PB_ESREV2_DIAL_ADDR
           value: otelcol-pb-esrev2-ctr:4317
-        - name: OTLP_RETRY
-          value: 'off'
         - name: USERID_SERVICE_PB_ESREV2_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
         - name: USER_CACHE_PB_ESREV2_DIAL_ADDR
           value: user-cache-pb-esrev2-ctr:6379
         - name: USER_DB_PB_ESREV2_DIAL_ADDR
           value: user-db-pb-esrev2-ctr:27017
-        - name: GODEBUG
-          value: gctrace=1
         image: 10.10.1.1:30000/userid-service-pb-esrev2-ctr:latest
         name: userid-service-pb-esrev2-ctr
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 6000m
       hostname: userid-service-pb-esrev2-ctr
-      nodeSelector:
-        kubernetes.io/hostname: node-5
       restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-1

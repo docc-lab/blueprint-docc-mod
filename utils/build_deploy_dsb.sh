@@ -18,6 +18,12 @@
 # --no-pin-requests: node-pin places services on nodes but sets NO CPU requests
 #   (just nodeSelector co-location) — avoids over-reserving cores. Applies to both
 #   the generated pinning file and the apply step (existing files' requests ignored).
+# --collector <mode>: otelcol pipeline mode. Currently only `passthrough` = strip
+#   the priority processor AND memory_limiter, leaving receivers -> batch -> exporters.
+#   USE FOR OVERHEAD EXPERIMENTS so the collector adds no shedding/limiting of its own
+#   (otherwise bridge=priority vs vanilla=memory_limiter confounds the comparison, and
+#   priority-refused batches + SDK retry can cause a backpressure runaway). Default
+#   (unset) keeps the wiring's processor (priority for bridges) for shedding studies.
 #
 # Examples:
 #   build_deploy_dsb.sh -s docker_pb_es -n pb_esrev2 --cpd 2 --gc natural --apply --seed
@@ -33,8 +39,8 @@ COLLECTOR_SRC=/users/tomislav/opentelemetry-collector-contrib
 SEED_DIR=/users/tomislav/DeathStarBench/socialNetwork
 SEED_PY=$DSB/scripts/init_social_graph.py
 
-SPEC=""; NAME=""; CPD=""; GC=""; EXTRA=""
-BUILD_COLLECTOR=0; DO_APPLY=0; DO_SEED=0; SKIP_BUILD=0; NOPIN_REQ=0
+SPEC=""; NAME=""; CPD=""; GC=""; EXTRA=""; COLLECTOR=""
+BUILD_COLLECTOR=0; DO_APPLY=0; DO_SEED=0; SKIP_BUILD=0; NOPIN_REQ=0; WRK_DAEMON=1; ANTI=0
 # priorityprocessor controller config (rev2-proven defaults; the wiring emits a
 # STALE legacy schema -> step [2] rewrites the block to these current-schema keys).
 SOFT_PCT=50; HARD_PCT=70; CP_SAFETY=1; FORCE_GC=true; GC_SOFT=1s; GC_ULTRA=0s
@@ -64,11 +70,14 @@ while [ $# -gt 0 ]; do
     --cpd) CPD=$2; shift 2;;
     --gc) GC=$2; shift 2;;
     --extra) EXTRA=$2; shift 2;;
+    --collector) COLLECTOR=$2; shift 2;;
     --build-collector) BUILD_COLLECTOR=1; shift;;
     --soft) SOFT_PCT=$2; shift 2;;
     --hard) HARD_PCT=$2; shift 2;;
     --cp-safety) CP_SAFETY=$2; shift 2;;
     --no-pin-requests) NOPIN_REQ=1; shift;;
+    --wrk2api-deploy) WRK_DAEMON=0; shift;;       # wrk2api as a Deployment (pinnable), NOT a per-node DaemonSet
+    --anti-affinity) ANTI=1; shift;;              # placement: no co-located traced call edges (implies pin wrk2api)
     --skip-build) SKIP_BUILD=1; shift;;
     --apply) DO_APPLY=1; shift;;
     --seed) DO_SEED=1; shift;;
@@ -78,6 +87,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$SPEC" ] && [ -n "$NAME" ] || usage
 [ -n "$GC" ] && [ "$GC" != natural ] && [ "$GC" != forced ] && die "--gc must be natural|forced"
+[ -n "$COLLECTOR" ] && [ "$COLLECTOR" != passthrough ] && die "--collector must be: passthrough (more modes TBD)"
 
 VARIANT=${NAME//_/-}                       # provisional; re-derived from generated compose below
 BUILD=$DSB/build_$NAME
@@ -95,6 +105,11 @@ echo "=== [1] wiring: go run wiring/main.go -w $SPEC -o build_$NAME ==="
 cd "$DSB" || die "no $DSB"
 rm -rf "$BUILD"
 EXTRA_ARG=""; [ -n "$EXTRA" ] && EXTRA_ARG="-extra $EXTRA"
+# Select the OT client/server wrapper template per bridge kind (read by the
+# opentelemetry plugin's codegen). Derived from the spec: docker_<kind>_es -> <kind>.
+# vanilla => plain spans, no bridge data; pb/cgpb/sb => their bridge wrappers.
+OT_BRIDGE=$(echo "$SPEC" | sed -E 's/^docker_//; s/_es$//'); export OT_BRIDGE
+echo "   OT_BRIDGE=$OT_BRIDGE (per-variant OT wrapper template)"
 go run wiring/main.go -w "$SPEC" $EXTRA_ARG -o "build_$NAME" || die "wiring failed (watch for dead-import codegen errors in generated golang/)"
 [ -d "$BUILD/docker" ] || die "wiring produced no build_$NAME/docker"
 echo "   NOTE: confirm runtime/plugins/otelcol/trace.go / BRIDGE_KIND matches the intended bridge variant (compile-time selection site)."
@@ -125,33 +140,45 @@ GOIMPORTS="$(go env GOPATH)/bin/goimports"
 [ -x "$GOIMPORTS" ] || { echo "   installing goimports..."; go install golang.org/x/tools/cmd/goimports@latest || die "goimports install failed"; }
 "$GOIMPORTS" -w "$BUILD/docker" || die "goimports failed"
 
-# 2. otelcol config.yaml: normalize the priority processor block + set cpd -------
-#    The wiring config-gen is pinned to an OLDER priorityprocessor and emits the
-#    legacy {high,mid,low}_percentage schema, which the freshly-built collector
-#    image rejects ("invalid keys") -> CrashLoopBackOff. Rewrite the block to the
-#    current schema (soft/hard/cp_safety_factor/force_gc/gc intervals). cpd lives
-#    under receivers.configdiscovery.config_map, NOT the priority processor.
+# 2. otelcol config.yaml: configure the collector pipeline + set cpd -------------
+#    DEFAULT: normalize the priority processor to the CURRENT schema (the wiring
+#    emits a stale legacy schema the freshly-built image rejects -> CrashLoopBackOff).
+#    `--collector passthrough`: strip BOTH priority and memory_limiter, leaving a
+#    clean passthrough pipeline (receivers -> batch -> exporters). Use this for
+#    OVERHEAD experiments where the collector must impose NO shedding/limiting of its
+#    own (otherwise bridge=priority vs vanilla=memory_limiter confounds the result
+#    AND priority-refused batches + SDK retry can cause a backpressure runaway).
+#    cpd lives under receivers.configdiscovery.config_map (set in both modes).
 OTELCFG=$BUILD/docker/otelcol_${SUF}_ctr/config.yaml
 [ -f "$OTELCFG" ] || die "otelcol config.yaml not found at $OTELCFG"
-echo "=== [2] normalize priority config (soft=$SOFT_PCT hard=$HARD_PCT cp_safety=$CP_SAFETY) + cpd=${CPD:-unchanged} ==="
-python3 - "$OTELCFG" "${CPD:-}" "$SOFT_PCT" "$HARD_PCT" "$CP_SAFETY" "$FORCE_GC" "$GC_SOFT" "$GC_ULTRA" <<'PY' || die "priority-config normalize failed"
+echo "=== [2] collector=${COLLECTOR:-default} (priority-normalize) + cpd=${CPD:-unchanged} ==="
+python3 - "$OTELCFG" "${CPD:-}" "$SOFT_PCT" "$HARD_PCT" "$CP_SAFETY" "$FORCE_GC" "$GC_SOFT" "$GC_ULTRA" "${COLLECTOR:-}" <<'PY' || die "collector config failed"
 import sys, yaml
-path, cpd, soft, hard, safety, force_gc, gc_soft, gc_ultra = sys.argv[1:9]
+path, cpd, soft, hard, safety, force_gc, gc_soft, gc_ultra, collector = sys.argv[1:10]
 with open(path) as f: cfg = yaml.safe_load(f)
-pr = (cfg.get('processors') or {}).get('priority')
-if isinstance(pr, dict):
-    cfg['processors']['priority'] = {
-        'check_interval': pr.get('check_interval', '100ms'),
-        'soft_percentage': int(soft),
-        'hard_percentage': int(hard),
-        'cp_safety_factor': float(safety) if '.' in safety else int(safety),
-        'force_gc': force_gc.lower() == 'true',
-        'gc_soft_interval': gc_soft,
-        'gc_ultrasoft_interval': gc_ultra,
-    }
-    print("  priority ->", cfg['processors']['priority'])
+procs = cfg.setdefault('processors', {})
+if collector == 'passthrough':
+    procs.pop('priority', None)
+    procs.pop('memory_limiter', None)
+    if not isinstance(procs.get('batch'), dict): procs['batch'] = {}
+    tr = ((cfg.get('service') or {}).get('pipelines') or {}).get('traces')
+    if isinstance(tr, dict): tr['processors'] = ['batch']
+    print("  collector=passthrough -> traces processors:[batch]; priority + memory_limiter removed")
 else:
-    print("  WARN: no 'priority' processor in config; left untouched")
+    pr = procs.get('priority')
+    if isinstance(pr, dict):
+        procs['priority'] = {
+            'check_interval': pr.get('check_interval', '100ms'),
+            'soft_percentage': int(soft),
+            'hard_percentage': int(hard),
+            'cp_safety_factor': float(safety) if '.' in safety else int(safety),
+            'force_gc': force_gc.lower() == 'true',
+            'gc_soft_interval': gc_soft,
+            'gc_ultrasoft_interval': gc_ultra,
+        }
+        print("  priority ->", procs['priority'])
+    else:
+        print("  WARN: no 'priority' processor in config; left untouched")
 if cpd:
     cm = ((cfg.get('receivers') or {}).get('configdiscovery') or {}).get('config_map')
     if isinstance(cm, dict) and 'cpd' in cm:
@@ -170,10 +197,18 @@ set -a; . "$BUILD/docker/.env"; set +a      # export the address map for compose
 # 4. d2k8s: build/push images + emit k8s; otelcol=DaemonSet+Local, wrk2api=DaemonSet (no Local)
 SKIPF=""; [ "$SKIP_BUILD" = 1 ] && SKIPF="--skip-build"
 echo "=== [4] d2k8s (otelcol+wrk2api daemonsets; wrk2api no-local-policy)${SKIPF:+ [skip-build]} ==="
+# wrk2api: DaemonSet (default) OR a single Deployment (--wrk2api-deploy) so it can
+# be node-pinned and anti-affined from its backends (un-masks the gateway->svc hop).
+if [ "$WRK_DAEMON" = 1 ]; then
+  DAEMON_SVCS="${OTELCOL_SVC},${WRK_SVC}"; NOLOCAL=(--no-local-policy "${WRK_SVC}")
+else
+  DAEMON_SVCS="${OTELCOL_SVC}";            NOLOCAL=()
+  echo "   wrk2api as Deployment (not DaemonSet)"
+fi
 python3 "$REPO/d2k8s/d2k8s.py" \
   --registry "$REGISTRY" \
-  --daemon-services "${OTELCOL_SVC},${WRK_SVC}" \
-  --no-local-policy "${WRK_SVC}" \
+  --daemon-services "${DAEMON_SVCS}" \
+  "${NOLOCAL[@]}" \
   $SKIPF \
   "$BUILD/docker/docker-compose.yml" "$K8S" || die "d2k8s failed"
 [ -d "$K8S" ] || die "d2k8s produced no k8s dir"
@@ -188,9 +223,10 @@ python3 "$UTILS/inject_perf_env.py" "$K8S" "$VARIANT" ${GC:+--gc "$GC"} || die "
 #    with this variant's suffix. An existing file is respected (hand edits kept).
 NODEPIN=$DSB/node-pinning-${NAME}.yaml
 NOREQ=""; [ "$NOPIN_REQ" = 1 ] && NOREQ="--no-requests"   # placement-only (no CPU requests)
+AAFLAG=""; [ "$ANTI" = 1 ] && AAFLAG="--anti-affinity"    # no co-located traced call edges (pins wrk2api too)
 if [ ! -f "$NODEPIN" ]; then
-  echo "=== [6] no $NODEPIN -> generating canonical placement for '$VARIANT'${NOREQ:+ (placement-only)} ==="
-  python3 "$UTILS/gen_node_pinning.py" "$VARIANT" "$NODEPIN" $NOREQ || die "pinning generation failed"
+  echo "=== [6] no $NODEPIN -> generating ${ANTI:+anti-affinity }placement for '$VARIANT'${NOREQ:+ (placement-only)} ==="
+  python3 "$UTILS/gen_node_pinning.py" "$VARIANT" "$NODEPIN" $NOREQ $AAFLAG || die "pinning generation failed"
 fi
 echo "=== [6] node pinning from $NODEPIN${NOREQ:+ (placement-only: strip requests)} ==="
 python3 "$UTILS/pin_nodes.py" "$NODEPIN" "$K8S" $NOREQ || die "pin_nodes failed"

@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/uniqueid_service_pb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/uniqueid_service_pb_esrev2_proc/ot"
 )
 
 type UniqueIdService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *UniqueIdService_GRPCServerHandler) Run(ctx context.Context) error
 	return s.Serve(lis)
 }
 
-
 func (handler *UniqueIdService_GRPCServerHandler) ComposeUniqueId(ctx context.Context, req *UniqueIdService_OTServerWrapperInterface_ComposeUniqueId_Request) (*UniqueIdService_OTServerWrapperInterface_ComposeUniqueId_Response, error) {
 	reqID, postType, traceCtx := req.unmarshall()
 	ret0, err := handler.Service.ComposeUniqueId(ctx, reqID, postType, traceCtx)
@@ -53,4 +53,3 @@ func (handler *UniqueIdService_GRPCServerHandler) ComposeUniqueId(ctx context.Co
 	rsp.marshall(ret0)
 	return rsp, nil
 }
-

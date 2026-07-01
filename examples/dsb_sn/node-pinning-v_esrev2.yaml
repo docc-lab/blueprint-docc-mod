@@ -1,71 +1,47 @@
-# Auto-generated node-pinning for variant 'v-esrev2' (canonical rev2 placement).
-# Hot node = node-1: composepost+hometimeline+hometimeline-cache co-located
-# for the asymmetric-pressure design. DaemonSets (otelcol, wrk2api) NOT pinned.
-# 24 services across 9 nodes. Service names = <base>-v-esrev2-ctr.
+# Auto-generated node-pinning for variant 'v-esrev2' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-v-esrev2-ctr.
 # Consumed by pin_nodes.py. Edit freely.
 
 node-1:
   - composepost-service-v-esrev2-ctr:
-      requests_cpu: 12000
-  - hometimeline-cache-v-esrev2-ctr:
-      requests_cpu: 2000
-  - hometimeline-service-v-esrev2-ctr:
-      requests_cpu: 5000
+  - userid-service-v-esrev2-ctr:
 
 node-2:
-  - social-cache-v-esrev2-ctr:
-      requests_cpu: 4000
-  - social-db-v-esrev2-ctr:
-      requests_cpu: 25000
-  - socialgraph-service-v-esrev2-ctr:
-      requests_cpu: 6000
+  - hometimeline-service-v-esrev2-ctr:
+  - hometimeline-cache-v-esrev2-ctr:
+  - urlshorten-service-v-esrev2-ctr:
+  - urlshorten-db-v-esrev2-ctr:
 
 node-3:
-  - uniqueid-service-v-esrev2-ctr:
-      requests_cpu: 3000
+  - usertimeline-service-v-esrev2-ctr:
+  - usertimeline-cache-v-esrev2-ctr:
+  - usertimeline-db-v-esrev2-ctr:
   - usermention-service-v-esrev2-ctr:
-      requests_cpu: 4000
 
 node-4:
-  - usertimeline-cache-v-esrev2-ctr:
-      requests_cpu: 2000
-  - usertimeline-db-v-esrev2-ctr:
-      requests_cpu: 11000
-  - usertimeline-service-v-esrev2-ctr:
-      requests_cpu: 8000
+  - socialgraph-service-v-esrev2-ctr:
+  - social-cache-v-esrev2-ctr:
+  - social-db-v-esrev2-ctr:
+  - text-service-v-esrev2-ctr:
 
 node-5:
-  - media-service-v-esrev2-ctr:
-      requests_cpu: 2000
-  - text-service-v-esrev2-ctr:
-      requests_cpu: 8000
-  - userid-service-v-esrev2-ctr:
-      requests_cpu: 6000
+  - post-storage-service-v-esrev2-ctr:
+  - post-cache-v-esrev2-ctr:
+  - post-db-v-esrev2-ctr:
 
 node-6:
-  - post-cache-v-esrev2-ctr:
-      requests_cpu: 2000
-  - post-db-v-esrev2-ctr:
-      requests_cpu: 3000
-  - post-storage-service-v-esrev2-ctr:
-      requests_cpu: 5000
+  - uniqueid-service-v-esrev2-ctr:
+  - media-service-v-esrev2-ctr:
 
 node-7:
-  - urlshorten-db-v-esrev2-ctr:
-      requests_cpu: 2000
-  - urlshorten-service-v-esrev2-ctr:
-      requests_cpu: 5000
+  - wrk2api-service-v-esrev2-ctr:
 
 node-8:
   - user-service-v-esrev2-ctr:
-      requests_cpu: 3000
   - user-cache-v-esrev2-ctr:
-      requests_cpu: 2000
   - user-db-v-esrev2-ctr:
-      requests_cpu: 2000
 
 node-9:
   - jaeger-v-esrev2-ctr:
-      requests_cpu: 20000
   - elasticsearch-v-esrev2-ctr:
-      requests_cpu: 4000

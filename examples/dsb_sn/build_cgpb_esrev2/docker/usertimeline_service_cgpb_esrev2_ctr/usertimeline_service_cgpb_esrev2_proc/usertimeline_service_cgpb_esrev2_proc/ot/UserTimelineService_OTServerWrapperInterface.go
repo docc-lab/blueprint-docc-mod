@@ -3,24 +3,24 @@ package ot
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/trace"
+	"strconv"
 	"strings"
 	"sync/atomic"
-	"strconv"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UserTimelineService_OTServerWrapperInterface interface {
 	ReadUserTimeline(ctx context.Context, reqID int64, userID int64, start int64, stop int64, traceCtx string) ([]int64, error)
-	WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64, traceCtx string) (error)
-	
+	WriteUserTimeline(ctx context.Context, reqID int64, postID int64, userID int64, timestamp int64, traceCtx string) error
 }
 
 type UserTimelineService_OTServerWrapper struct {
-	Service socialnetwork.UserTimelineService
+	Service    socialnetwork.UserTimelineService
 	CollClient backend.Tracer
 }
 
@@ -31,14 +31,13 @@ func New_UserTimelineService_OTServerWrapper(ctx context.Context, service social
 	return handler, nil
 }
 
-
 func (handler *UserTimelineService_OTServerWrapper) ReadUserTimeline(ctx context.Context, reqID int64, userID int64, start int64, stop int64, traceCtx string) (ret0 []int64, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -82,13 +81,13 @@ func (handler *UserTimelineService_OTServerWrapper) ReadUserTimeline(ctx context
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ReadUserTimeline(ctx, reqID, userID, start, stop)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -99,7 +98,7 @@ func (handler *UserTimelineService_OTServerWrapper) WriteUserTimeline(ctx contex
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -143,14 +142,13 @@ func (handler *UserTimelineService_OTServerWrapper) WriteUserTimeline(ctx contex
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.WriteUserTimeline(ctx, reqID, postID, userID, timestamp)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

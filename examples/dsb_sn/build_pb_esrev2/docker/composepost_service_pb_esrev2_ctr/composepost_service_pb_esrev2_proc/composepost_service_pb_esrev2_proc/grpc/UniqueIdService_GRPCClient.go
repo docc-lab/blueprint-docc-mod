@@ -2,16 +2,17 @@
 package grpc
 
 import (
+	"blueprint/goproc/composepost_service_pb_esrev2_proc/ot"
 	"context"
 	"time"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/composepost_service_pb_esrev2_proc/ot"
 )
 
 type UniqueIdService_GRPCClient struct {
 	ot.UniqueIdService_OTServerWrapperInterface
-	Client UniqueIdService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  UniqueIdService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -34,7 +35,6 @@ func New_UniqueIdService_GRPCClient(ctx context.Context, serverAddress string) (
 	return c, nil
 }
 
-
 func (client *UniqueIdService_GRPCClient) ComposeUniqueId(ctx context.Context, reqID int64, postType int64, traceCtx string) (ret0 int64, err error) {
 	// Create and marshall the GRPC Request object
 	req := &UniqueIdService_OTServerWrapperInterface_ComposeUniqueId_Request{}
@@ -53,7 +53,6 @@ func (client *UniqueIdService_GRPCClient) ComposeUniqueId(ctx context.Context, r
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
-

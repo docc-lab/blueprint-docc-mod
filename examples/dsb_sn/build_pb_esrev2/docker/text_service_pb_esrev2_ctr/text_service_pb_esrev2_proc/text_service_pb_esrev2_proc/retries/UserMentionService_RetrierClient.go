@@ -2,23 +2,23 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/text_service_pb_esrev2_proc/ot"
+	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserMentionService_RetrierClient struct {
-	Client ot.UserMentionService_OTClientWrapperInterface
+	Client   ot.UserMentionService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_UserMentionService_RetrierClient (ctx context.Context, client ot.UserMentionService_OTClientWrapperInterface) (*UserMentionService_RetrierClient, error) {
+func New_UserMentionService_RetrierClient(ctx context.Context, client ot.UserMentionService_OTClientWrapperInterface) (*UserMentionService_RetrierClient, error) {
 	handler := &UserMentionService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *UserMentionService_RetrierClient) ComposeUserMentions(ctx context.Context, reqID int64, usernames []string) (ret0 []socialnetwork.UserMention, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -29,4 +29,3 @@ func (client *UserMentionService_RetrierClient) ComposeUserMentions(ctx context.
 	}
 	return
 }
-

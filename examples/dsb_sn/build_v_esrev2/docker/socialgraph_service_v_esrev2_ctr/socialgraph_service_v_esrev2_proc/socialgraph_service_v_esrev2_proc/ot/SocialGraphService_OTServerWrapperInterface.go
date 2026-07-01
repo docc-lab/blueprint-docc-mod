@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -84,15 +83,10 @@ func (handler *SocialGraphService_OTServerWrapper) Follow(ctx context.Context, r
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.Follow(ctx, reqID, userID, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -145,15 +139,10 @@ func (handler *SocialGraphService_OTServerWrapper) FollowWithUsername(ctx contex
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.FollowWithUsername(ctx, reqID, userUsername, followeeUsername)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -206,15 +195,10 @@ func (handler *SocialGraphService_OTServerWrapper) GetFollowees(ctx context.Cont
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.GetFollowees(ctx, reqID, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -267,15 +251,10 @@ func (handler *SocialGraphService_OTServerWrapper) GetFollowers(ctx context.Cont
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.GetFollowers(ctx, reqID, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -328,15 +307,10 @@ func (handler *SocialGraphService_OTServerWrapper) InsertUser(ctx context.Contex
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.InsertUser(ctx, reqID, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -389,15 +363,10 @@ func (handler *SocialGraphService_OTServerWrapper) Unfollow(ctx context.Context,
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.Unfollow(ctx, reqID, userID, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -450,15 +419,10 @@ func (handler *SocialGraphService_OTServerWrapper) UnfollowWithUsername(ctx cont
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.UnfollowWithUsername(ctx, reqID, userUsername, followeeUsername)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }

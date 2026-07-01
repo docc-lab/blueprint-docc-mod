@@ -25,9 +25,9 @@ spec:
         - name: BRIDGE_KIND
           value: v
         - name: GC_INTERVAL_SEC
-          value: '0'
+          value: '0.1'
         - name: GOGC
-          value: '100'
+          value: 'off'
         - name: OTELCOL_V_ESREV2_DIAL_ADDR
           value: otelcol-v-esrev2-ctr:4317
         - name: UNIQUEID_SERVICE_V_ESREV2_GRPC_BIND_ADDR
@@ -37,10 +37,7 @@ spec:
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 3000m
       hostname: uniqueid-service-v-esrev2-ctr
       restartPolicy: Always
       nodeSelector:
-        kubernetes.io/hostname: node-3
+        kubernetes.io/hostname: node-6

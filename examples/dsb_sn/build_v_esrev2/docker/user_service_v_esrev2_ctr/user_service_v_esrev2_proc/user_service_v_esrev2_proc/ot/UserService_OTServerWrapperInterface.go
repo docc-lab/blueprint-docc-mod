@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -82,15 +81,10 @@ func (handler *UserService_OTServerWrapper) ComposeCreatorWithUserId(ctx context
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.ComposeCreatorWithUserId(ctx, reqID, userID, username)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -143,15 +137,10 @@ func (handler *UserService_OTServerWrapper) ComposeCreatorWithUsername(ctx conte
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.ComposeCreatorWithUsername(ctx, reqID, username)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -204,15 +193,10 @@ func (handler *UserService_OTServerWrapper) Login(ctx context.Context, reqID int
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.Login(ctx, reqID, username, password)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -265,15 +249,10 @@ func (handler *UserService_OTServerWrapper) RegisterUser(ctx context.Context, re
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.RegisterUser(ctx, reqID, firstName, lastName, username, password)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -326,15 +305,10 @@ func (handler *UserService_OTServerWrapper) RegisterUserWithId(ctx context.Conte
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.RegisterUserWithId(ctx, reqID, firstName, lastName, username, password, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }

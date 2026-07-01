@@ -2,13 +2,13 @@
 package ot
 
 import (
-	"sync/atomic"
 	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
+	"sync/atomic"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -42,9 +42,6 @@ func (handler *TracePressureService_OTClientWrapper) Spam(ctx context.Context, n
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("TracePressureService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "TracePressureServiceClient_Spam", trace.WithSpanKind(trace.SpanKindClient))
 

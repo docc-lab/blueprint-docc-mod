@@ -2,13 +2,13 @@
 package http
 
 import (
-	"context"
 	"net/url"
 	"fmt"
 	"io"
 	"errors"
 	"net/http"
 	"encoding/json"
+	"context"
 )
 
 type Wrk2APIService_HTTPClient struct {

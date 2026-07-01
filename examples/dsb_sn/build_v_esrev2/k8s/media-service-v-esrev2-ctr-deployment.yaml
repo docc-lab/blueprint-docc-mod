@@ -25,9 +25,9 @@ spec:
         - name: BRIDGE_KIND
           value: v
         - name: GC_INTERVAL_SEC
-          value: '0'
+          value: '0.1'
         - name: GOGC
-          value: '100'
+          value: 'off'
         - name: MEDIA_SERVICE_V_ESREV2_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
         - name: OTELCOL_V_ESREV2_DIAL_ADDR
@@ -37,10 +37,7 @@ spec:
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 2000m
       hostname: media-service-v-esrev2-ctr
       restartPolicy: Always
       nodeSelector:
-        kubernetes.io/hostname: node-5
+        kubernetes.io/hostname: node-6

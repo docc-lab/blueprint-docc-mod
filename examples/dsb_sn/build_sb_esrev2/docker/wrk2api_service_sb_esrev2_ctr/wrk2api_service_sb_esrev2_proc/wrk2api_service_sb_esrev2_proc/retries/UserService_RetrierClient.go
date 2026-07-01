@@ -2,23 +2,23 @@
 package retries
 
 import (
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"context"
 	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/ot"
+	"context"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserService_RetrierClient struct {
-	Client ot.UserService_OTClientWrapperInterface
+	Client   ot.UserService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_UserService_RetrierClient (ctx context.Context, client ot.UserService_OTClientWrapperInterface) (*UserService_RetrierClient, error) {
+func New_UserService_RetrierClient(ctx context.Context, client ot.UserService_OTClientWrapperInterface) (*UserService_RetrierClient, error) {
 	handler := &UserService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *UserService_RetrierClient) ComposeCreatorWithUserId(ctx context.Context, reqID int64, userID int64, username string) (ret0 socialnetwork.Creator, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -69,4 +69,3 @@ func (client *UserService_RetrierClient) RegisterUserWithId(ctx context.Context,
 	}
 	return
 }
-

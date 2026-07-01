@@ -2,8 +2,8 @@
 package retries
 
 import (
-	"context"
 	"blueprint/testclients/ot"
+	"context"
 )
 
 type UserIDService_RetrierClient struct {

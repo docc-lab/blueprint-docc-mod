@@ -2,16 +2,17 @@
 package grpc
 
 import (
+	"blueprint/goproc/socialgraph_service_cgpb_esrev2_proc/ot"
 	"context"
 	"time"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/socialgraph_service_cgpb_esrev2_proc/ot"
 )
 
 type UserIDService_GRPCClient struct {
 	ot.UserIDService_OTServerWrapperInterface
-	Client UserIDService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  UserIDService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -34,7 +35,6 @@ func New_UserIDService_GRPCClient(ctx context.Context, serverAddress string) (*U
 	return c, nil
 }
 
-
 func (client *UserIDService_GRPCClient) GetUserId(ctx context.Context, reqID int64, username string, traceCtx string) (ret0 int64, err error) {
 	// Create and marshall the GRPC Request object
 	req := &UserIDService_OTServerWrapperInterface_GetUserId_Request{}
@@ -53,7 +53,6 @@ func (client *UserIDService_GRPCClient) GetUserId(ctx context.Context, reqID int
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
-

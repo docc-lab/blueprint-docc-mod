@@ -90,6 +90,12 @@ func newBridgeProcessor(ctx context.Context, kind, addr, port string) (tracesdk.
 			return nil, "v", fmt.Errorf("failed to create vanilla span processor: %w", err)
 		}
 		return p, "v", nil
+	case "rc":
+		p, err := NewRandomCheckpointProcessor(ctx, addr, port)
+		if err != nil {
+			return nil, "rc", fmt.Errorf("failed to create random-checkpoint span processor: %w", err)
+		}
+		return p, "rc", nil
 	case "priority":
 		p, err := NewPriorityProcessor(ctx, addr, port)
 		if err != nil {

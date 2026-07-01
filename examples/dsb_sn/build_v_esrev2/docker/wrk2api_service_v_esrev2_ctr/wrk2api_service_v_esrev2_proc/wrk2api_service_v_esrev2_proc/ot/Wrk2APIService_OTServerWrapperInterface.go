@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -83,15 +82,10 @@ func (handler *Wrk2APIService_OTServerWrapper) ComposePost(ctx context.Context, 
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, ret1, err = handler.Service.ComposePost(ctx, userId, username, post_type, text, media_types, media_ids)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -144,15 +138,10 @@ func (handler *Wrk2APIService_OTServerWrapper) Follow(ctx context.Context, usern
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.Follow(ctx, username, followeeName, userId, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -205,15 +194,10 @@ func (handler *Wrk2APIService_OTServerWrapper) ReadHomeTimeline(ctx context.Cont
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.ReadHomeTimeline(ctx, userId, start, stop)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -266,15 +250,10 @@ func (handler *Wrk2APIService_OTServerWrapper) ReadUserTimeline(ctx context.Cont
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	ret0, err = handler.Service.ReadUserTimeline(ctx, userId, start, stop)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -327,15 +306,10 @@ func (handler *Wrk2APIService_OTServerWrapper) Register(ctx context.Context, fir
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.Register(ctx, firstName, lastName, username, password, userId)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }
@@ -388,15 +362,10 @@ func (handler *Wrk2APIService_OTServerWrapper) Unfollow(ctx context.Context, use
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-
 	err = handler.Service.Unfollow(ctx, username, followeeName, userId, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
 	return
 }

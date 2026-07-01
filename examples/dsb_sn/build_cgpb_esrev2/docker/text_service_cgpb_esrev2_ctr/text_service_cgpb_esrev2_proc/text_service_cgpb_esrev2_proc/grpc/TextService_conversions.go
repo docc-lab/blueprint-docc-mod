@@ -24,27 +24,30 @@ func (msg *TextService_OTServerWrapperInterface_ComposeText_Request) unmarshall(
 // Server-side function to pack TextService_OTServerWrapperInterface.ComposeText retvals into a GRPC TextService_OTServerWrapperInterface_ComposeText_Response struct
 func (msg *TextService_OTServerWrapperInterface_ComposeText_Response) marshall(ret0 string, ret1 []socialnetwork.UserMention, ret2 []socialnetwork.URL) *TextService_OTServerWrapperInterface_ComposeText_Response {
 	msg.Ret0 = string(ret0)
-	for _, v := range ret1 { msg.Ret1 = append(msg.Ret1, new(TextService_UserMention).marshall(&v)) }
-	for _, v := range ret2 { msg.Ret2 = append(msg.Ret2, new(TextService_URL).marshall(&v)) }
+	for _, v := range ret1 {
+		msg.Ret1 = append(msg.Ret1, new(TextService_UserMention).marshall(&v))
+	}
+	for _, v := range ret2 {
+		msg.Ret2 = append(msg.Ret2, new(TextService_URL).marshall(&v))
+	}
 	return msg
 }
 
 // Client-side function to unpack TextService_OTServerWrapperInterface.ComposeText retvals from a GRPC TextService_OTServerWrapperInterface_ComposeText_Response struct
 func (msg *TextService_OTServerWrapperInterface_ComposeText_Response) unmarshall() (ret0 string, ret1 []socialnetwork.UserMention, ret2 []socialnetwork.URL) {
 	ret0 = string(msg.Ret0)
-	
+
 	ret1 = make([]socialnetwork.UserMention, len(msg.Ret1))
 	for i, v := range msg.Ret1 {
 		v.unmarshall(&ret1[i])
 	}
-	
+
 	ret2 = make([]socialnetwork.URL, len(msg.Ret2))
 	for i, v := range msg.Ret2 {
 		v.unmarshall(&ret2[i])
 	}
 	return
 }
-
 
 // Utility function to pack socialnetwork.URL into a GRPC TextService_URL message
 func (msg *TextService_URL) marshall(obj *socialnetwork.URL) *TextService_URL {
@@ -71,4 +74,3 @@ func (msg *TextService_UserMention) unmarshall(obj *socialnetwork.UserMention) {
 	obj.UserID = int64(msg.UserID)
 	obj.Username = string(msg.Username)
 }
-

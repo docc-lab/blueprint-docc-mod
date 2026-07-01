@@ -2,22 +2,21 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/composepost_service_sb_esrev2_proc/ot"
+	"context"
 )
 
 type UserTimelineService_RetrierClient struct {
-	Client ot.UserTimelineService_OTClientWrapperInterface
+	Client   ot.UserTimelineService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_UserTimelineService_RetrierClient (ctx context.Context, client ot.UserTimelineService_OTClientWrapperInterface) (*UserTimelineService_RetrierClient, error) {
+func New_UserTimelineService_RetrierClient(ctx context.Context, client ot.UserTimelineService_OTClientWrapperInterface) (*UserTimelineService_RetrierClient, error) {
 	handler := &UserTimelineService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *UserTimelineService_RetrierClient) ReadUserTimeline(ctx context.Context, reqID int64, userID int64, start int64, stop int64) (ret0 []int64, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -38,4 +37,3 @@ func (client *UserTimelineService_RetrierClient) WriteUserTimeline(ctx context.C
 	}
 	return
 }
-

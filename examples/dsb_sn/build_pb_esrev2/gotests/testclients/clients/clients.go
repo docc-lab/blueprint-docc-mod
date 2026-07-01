@@ -9,16 +9,16 @@
 package clients
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
-	"blueprint/testclients/retries"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
 	"blueprint/testclients/grpc"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 	"blueprint/testclients/ot"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"blueprint/testclients/retries"
 	"blueprint/testclients/pool"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 // Initializes the clients namespace by defining all of the nodes that run

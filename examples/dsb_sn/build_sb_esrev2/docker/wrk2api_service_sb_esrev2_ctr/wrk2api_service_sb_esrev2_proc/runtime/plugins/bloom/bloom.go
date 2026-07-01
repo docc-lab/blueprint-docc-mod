@@ -32,8 +32,9 @@ func New(m uint64, k uint) *BloomFilter {
 // This is useful when you need to know m and k before deserializing, for example.
 // Returns the calculated m and k values.
 // Uses the standard Bloom filter formulas:
-//   m = - (n * ln(p)) / (ln(2)^2)
-//   k = (m / n) * ln(2)
+//
+//	m = - (n * ln(p)) / (ln(2)^2)
+//	k = (m / n) * ln(2)
 func EstimateParameters(n uint, p float64) (m uint64, k uint) {
 	if p <= 0 || p >= 1 {
 		// Invalid false positive rate, use default
@@ -66,57 +67,85 @@ func EstimateParameters(n uint, p float64) (m uint64, k uint) {
 // n is the expected number of elements, p is the desired false positive rate (0 < p < 1).
 // This calculates the optimal m (bit array size) and k (number of hash functions)
 // using the standard Bloom filter formulas:
-//   m = - (n * ln(p)) / (ln(2)^2)
-//   k = (m / n) * ln(2)
+//
+//	m = - (n * ln(p)) / (ln(2)^2)
+//	k = (m / n) * ln(2)
 func NewWithEstimates(n uint, p float64) *BloomFilter {
 	m, k := EstimateParameters(n, p)
 	return New(m, k)
 }
 
-// Add adds an element to the Bloom filter.
-func (bf *BloomFilter) Add(data []byte) {
-	// Generate base hashes using MurmurHash3-like approach
-	// This generates 4 hash values similar to bits-and-blooms sum256
-	h1, h2, _, _ := baseHashes(data)
-
-	// Use double hashing to generate k positions
-	// bits-and-blooms uses the location function which computes:
-	// location_i = (h1 + i*h2) mod m for all i from 0 to k-1
-	// This is the standard double hashing approach
+// setBits sets the k double-hashing positions derived from base hashes (h1,h2).
+func (bf *BloomFilter) setBits(h1, h2 uint64) {
 	for i := uint(0); i < bf.k; i++ {
-		// Double hashing formula: (h1 + i*h2) mod m
-		hash := (h1 + uint64(i)*h2) % bf.m
-
-		// Set the bit
-		bitIndex := hash % bf.m
-		byteIndex := bitIndex / 8
-		bitOffset := bitIndex % 8
-		bf.bits[byteIndex] |= 1 << bitOffset
+		// Double hashing: location_i = (h1 + i*h2) mod m
+		bitIndex := (h1 + uint64(i)*h2) % bf.m
+		bf.bits[bitIndex/8] |= 1 << (bitIndex % 8)
 	}
 }
 
-// Test checks if an element might be in the Bloom filter.
-// Returns true if the element might be present (with possibility of false positives).
-func (bf *BloomFilter) Test(data []byte) bool {
-	// Generate base hashes
-	h1, h2, _, _ := baseHashes(data)
-
-	// Check all k positions using the same double hashing as Add
+// testBits reports whether all k positions derived from (h1,h2) are set.
+func (bf *BloomFilter) testBits(h1, h2 uint64) bool {
 	for i := uint(0); i < bf.k; i++ {
-		// Double hashing formula: (h1 + i*h2) mod m
-		hash := (h1 + uint64(i)*h2) % bf.m
-
-		bitIndex := hash % bf.m
-		byteIndex := bitIndex / 8
-		bitOffset := bitIndex % 8
-
-		// If any bit is not set, element is definitely not present
-		if (bf.bits[byteIndex] & (1 << bitOffset)) == 0 {
+		bitIndex := (h1 + uint64(i)*h2) % bf.m
+		if (bf.bits[bitIndex/8] & (1 << (bitIndex % 8))) == 0 {
 			return false
 		}
 	}
-
 	return true
+}
+
+// Add adds an element to the Bloom filter, deriving the base hashes (h1,h2) by
+// running MurmurHash3 over the input. Use this for arbitrary (non-random) inputs.
+func (bf *BloomFilter) Add(data []byte) {
+	h1, h2, _, _ := baseHashes(data)
+	bf.setBits(h1, h2)
+}
+
+// Test reports whether an element might be in the filter (false positives possible).
+// Mirrors Add: it MurmurHash-es the input to obtain the base hashes.
+func (bf *BloomFilter) Test(data []byte) bool {
+	h1, h2, _, _ := baseHashes(data)
+	return bf.testBits(h1, h2)
+}
+
+// AddPrehashed adds an element WITHOUT re-hashing — the base hashes (h1,h2) are
+// taken directly from the input bytes via splitHashes. This is correct ONLY when
+// `data` is already uniformly random hash-quality material (e.g. an OTel span ID,
+// 8 random bytes), in which case MurmurHash would be redundant whitening. It is
+// deterministic (same bytes -> same positions everywhere) and yields the same
+// false-positive rate as Add, so reconstruction fidelity is unchanged.
+//
+// IMPORTANT: pass the RAW random bytes (e.g. the 8-byte SpanID), not a hex/ascii
+// rendering of them — a hex string carries only 4 bits of entropy per byte.
+func (bf *BloomFilter) AddPrehashed(data []byte) {
+	h1, h2 := splitHashes(data)
+	bf.setBits(h1, h2)
+}
+
+// TestPrehashed is the get-counterpart of AddPrehashed: it derives (h1,h2)
+// directly from the (random) input bytes with no MurmurHash pass. Must be used
+// against filters populated with AddPrehashed (same derivation on both sides).
+func (bf *BloomFilter) TestPrehashed(data []byte) bool {
+	h1, h2 := splitHashes(data)
+	return bf.testBits(h1, h2)
+}
+
+// splitHashes derives two base-hash words (h1,h2) directly from already-random
+// input bytes, with no hashing: the first half of the bytes becomes h1 and the
+// second half h2 (big-endian packing; >8 bytes per half wrap, which is fine for
+// random input). For an 8-byte span ID this yields two independent uniform 32-bit
+// words — exactly what the (h1 + i*h2) double-hashing scheme needs.
+func splitHashes(data []byte) (h1, h2 uint64) {
+	mid := (len(data) + 1) / 2
+	for i := 0; i < len(data); i++ {
+		if i < mid {
+			h1 = h1<<8 | uint64(data[i])
+		} else {
+			h2 = h2<<8 | uint64(data[i])
+		}
+	}
+	return h1, h2
 }
 
 // baseHashes generates 4 base hash values from the input data.

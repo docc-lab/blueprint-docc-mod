@@ -2,7 +2,6 @@
 package ot
 
 import (
-	"strconv"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"go.opentelemetry.io/otel/trace"
@@ -10,6 +9,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
 	"sync/atomic"
+	"strconv"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 

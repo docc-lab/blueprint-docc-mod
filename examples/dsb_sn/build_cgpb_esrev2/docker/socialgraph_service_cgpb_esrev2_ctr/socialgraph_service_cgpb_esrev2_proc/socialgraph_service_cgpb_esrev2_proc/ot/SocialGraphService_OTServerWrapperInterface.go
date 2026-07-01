@@ -2,30 +2,30 @@
 package ot
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strconv"
 	"context"
-	"go.opentelemetry.io/otel/trace"
+	"strconv"
 	"strings"
 	"sync/atomic"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type SocialGraphService_OTServerWrapperInterface interface {
-	Follow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) (error)
-	FollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) (error)
+	Follow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) error
+	FollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) error
 	GetFollowees(ctx context.Context, reqID int64, userID int64, traceCtx string) ([]int64, error)
 	GetFollowers(ctx context.Context, reqID int64, userID int64, traceCtx string) ([]int64, error)
-	InsertUser(ctx context.Context, reqID int64, userID int64, traceCtx string) (error)
-	Unfollow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) (error)
-	UnfollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) (error)
-	
+	InsertUser(ctx context.Context, reqID int64, userID int64, traceCtx string) error
+	Unfollow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) error
+	UnfollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) error
 }
 
 type SocialGraphService_OTServerWrapper struct {
-	Service socialnetwork.SocialGraphService
+	Service    socialnetwork.SocialGraphService
 	CollClient backend.Tracer
 }
 
@@ -36,14 +36,13 @@ func New_SocialGraphService_OTServerWrapper(ctx context.Context, service socialn
 	return handler, nil
 }
 
-
 func (handler *SocialGraphService_OTServerWrapper) Follow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) (err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -87,13 +86,13 @@ func (handler *SocialGraphService_OTServerWrapper) Follow(ctx context.Context, r
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.Follow(ctx, reqID, userID, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -104,7 +103,7 @@ func (handler *SocialGraphService_OTServerWrapper) FollowWithUsername(ctx contex
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -148,13 +147,13 @@ func (handler *SocialGraphService_OTServerWrapper) FollowWithUsername(ctx contex
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.FollowWithUsername(ctx, reqID, userUsername, followeeUsername)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -165,7 +164,7 @@ func (handler *SocialGraphService_OTServerWrapper) GetFollowees(ctx context.Cont
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -209,13 +208,13 @@ func (handler *SocialGraphService_OTServerWrapper) GetFollowees(ctx context.Cont
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.GetFollowees(ctx, reqID, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -226,7 +225,7 @@ func (handler *SocialGraphService_OTServerWrapper) GetFollowers(ctx context.Cont
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -270,13 +269,13 @@ func (handler *SocialGraphService_OTServerWrapper) GetFollowers(ctx context.Cont
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.GetFollowers(ctx, reqID, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -287,7 +286,7 @@ func (handler *SocialGraphService_OTServerWrapper) InsertUser(ctx context.Contex
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -331,13 +330,13 @@ func (handler *SocialGraphService_OTServerWrapper) InsertUser(ctx context.Contex
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.InsertUser(ctx, reqID, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -348,7 +347,7 @@ func (handler *SocialGraphService_OTServerWrapper) Unfollow(ctx context.Context,
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -392,13 +391,13 @@ func (handler *SocialGraphService_OTServerWrapper) Unfollow(ctx context.Context,
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.Unfollow(ctx, reqID, userID, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -409,7 +408,7 @@ func (handler *SocialGraphService_OTServerWrapper) UnfollowWithUsername(ctx cont
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -453,14 +452,13 @@ func (handler *SocialGraphService_OTServerWrapper) UnfollowWithUsername(ctx cont
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.UnfollowWithUsername(ctx, reqID, userUsername, followeeUsername)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

@@ -23,20 +23,21 @@ func (msg *UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Reque
 
 // Server-side function to pack UserMentionService_OTServerWrapperInterface.ComposeUserMentions retvals into a GRPC UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response struct
 func (msg *UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response) marshall(ret0 []socialnetwork.UserMention) *UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response {
-	for _, v := range ret0 { msg.Ret0 = append(msg.Ret0, new(UserMentionService_UserMention).marshall(&v)) }
+	for _, v := range ret0 {
+		msg.Ret0 = append(msg.Ret0, new(UserMentionService_UserMention).marshall(&v))
+	}
 	return msg
 }
 
 // Client-side function to unpack UserMentionService_OTServerWrapperInterface.ComposeUserMentions retvals from a GRPC UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response struct
 func (msg *UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response) unmarshall() (ret0 []socialnetwork.UserMention) {
-	
+
 	ret0 = make([]socialnetwork.UserMention, len(msg.Ret0))
 	for i, v := range msg.Ret0 {
 		v.unmarshall(&ret0[i])
 	}
 	return
 }
-
 
 // Utility function to pack socialnetwork.UserMention into a GRPC UserMentionService_UserMention message
 func (msg *UserMentionService_UserMention) marshall(obj *socialnetwork.UserMention) *UserMentionService_UserMention {
@@ -50,4 +51,3 @@ func (msg *UserMentionService_UserMention) unmarshall(obj *socialnetwork.UserMen
 	obj.UserID = int64(msg.UserID)
 	obj.Username = string(msg.Username)
 }
-

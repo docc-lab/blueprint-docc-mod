@@ -2,16 +2,17 @@
 package grpc
 
 import (
+	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/ot"
 	"context"
 	"time"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/ot"
 )
 
 type ComposePostService_GRPCClient struct {
 	ot.ComposePostService_OTServerWrapperInterface
-	Client ComposePostService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  ComposePostService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -34,7 +35,6 @@ func New_ComposePostService_GRPCClient(ctx context.Context, serverAddress string
 	return c, nil
 }
 
-
 func (client *ComposePostService_GRPCClient) ComposePost(ctx context.Context, reqID int64, username string, userID int64, text string, mediaIDs []int64, mediaTypes []string, postType int64, traceCtx string) (ret0 int64, ret1 []int64, err error) {
 	// Create and marshall the GRPC Request object
 	req := &ComposePostService_OTServerWrapperInterface_ComposePost_Request{}
@@ -53,7 +53,6 @@ func (client *ComposePostService_GRPCClient) ComposePost(ctx context.Context, re
 		return
 	}
 
-	ret0, ret1 =  rsp.unmarshall()
+	ret0, ret1 = rsp.unmarshall()
 	return
 }
-

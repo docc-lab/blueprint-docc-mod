@@ -2,17 +2,18 @@
 package grpc
 
 import (
+	"blueprint/goproc/composepost_service_sb_esrev2_proc/ot"
 	"context"
 	"time"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/composepost_service_sb_esrev2_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type MediaService_GRPCClient struct {
 	ot.MediaService_OTServerWrapperInterface
-	Client MediaService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  MediaService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -35,7 +36,6 @@ func New_MediaService_GRPCClient(ctx context.Context, serverAddress string) (*Me
 	return c, nil
 }
 
-
 func (client *MediaService_GRPCClient) ComposeMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIds []int64, traceCtx string) (ret0 []socialnetwork.Media, err error) {
 	// Create and marshall the GRPC Request object
 	req := &MediaService_OTServerWrapperInterface_ComposeMedia_Request{}
@@ -54,7 +54,6 @@ func (client *MediaService_GRPCClient) ComposeMedia(ctx context.Context, reqID i
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
-

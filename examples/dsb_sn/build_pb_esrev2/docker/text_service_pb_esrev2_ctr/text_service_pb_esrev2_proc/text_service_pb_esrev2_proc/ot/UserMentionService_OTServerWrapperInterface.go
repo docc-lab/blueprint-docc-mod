@@ -3,10 +3,10 @@ package ot
 
 import (
 	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserMentionService_OTServerWrapperInterface interface {
 	ComposeUserMentions(ctx context.Context, reqID int64, usernames []string, traceCtx string) ([]socialnetwork.UserMention, error)
-	
 }

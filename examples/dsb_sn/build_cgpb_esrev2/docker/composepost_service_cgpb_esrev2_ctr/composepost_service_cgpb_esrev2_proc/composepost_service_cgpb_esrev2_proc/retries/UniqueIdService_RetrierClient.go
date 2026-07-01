@@ -2,22 +2,21 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/composepost_service_cgpb_esrev2_proc/ot"
+	"context"
 )
 
 type UniqueIdService_RetrierClient struct {
-	Client ot.UniqueIdService_OTClientWrapperInterface
+	Client   ot.UniqueIdService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_UniqueIdService_RetrierClient (ctx context.Context, client ot.UniqueIdService_OTClientWrapperInterface) (*UniqueIdService_RetrierClient, error) {
+func New_UniqueIdService_RetrierClient(ctx context.Context, client ot.UniqueIdService_OTClientWrapperInterface) (*UniqueIdService_RetrierClient, error) {
 	handler := &UniqueIdService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *UniqueIdService_RetrierClient) ComposeUniqueId(ctx context.Context, reqID int64, postType int64) (ret0 int64, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -28,4 +27,3 @@ func (client *UniqueIdService_RetrierClient) ComposeUniqueId(ctx context.Context
 	}
 	return
 }
-

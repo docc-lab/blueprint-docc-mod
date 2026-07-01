@@ -2,13 +2,13 @@
 package ot
 
 import (
+	"strings"
 	"sync/atomic"
 	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -45,14 +45,24 @@ func (handler *SocialGraphService_OTClientWrapper) Follow(ctx context.Context, r
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_Follow", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -85,7 +95,16 @@ func (handler *SocialGraphService_OTClientWrapper) Follow(ctx context.Context, r
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -98,14 +117,24 @@ func (handler *SocialGraphService_OTClientWrapper) FollowWithUsername(ctx contex
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_FollowWithUsername", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -138,7 +167,16 @@ func (handler *SocialGraphService_OTClientWrapper) FollowWithUsername(ctx contex
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -151,14 +189,24 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowees(ctx context.Cont
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_GetFollowees", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -191,7 +239,16 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowees(ctx context.Cont
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -204,14 +261,24 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowers(ctx context.Cont
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_GetFollowers", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -244,7 +311,16 @@ func (handler *SocialGraphService_OTClientWrapper) GetFollowers(ctx context.Cont
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -257,14 +333,24 @@ func (handler *SocialGraphService_OTClientWrapper) InsertUser(ctx context.Contex
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_InsertUser", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -297,7 +383,16 @@ func (handler *SocialGraphService_OTClientWrapper) InsertUser(ctx context.Contex
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -310,14 +405,24 @@ func (handler *SocialGraphService_OTClientWrapper) Unfollow(ctx context.Context,
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_Unfollow", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -350,7 +455,16 @@ func (handler *SocialGraphService_OTClientWrapper) Unfollow(ctx context.Context,
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -363,14 +477,24 @@ func (handler *SocialGraphService_OTClientWrapper) UnfollowWithUsername(ctx cont
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("SocialGraphService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "SocialGraphServiceClient_UnfollowWithUsername", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -403,7 +527,16 @@ func (handler *SocialGraphService_OTClientWrapper) UnfollowWithUsername(ctx cont
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 

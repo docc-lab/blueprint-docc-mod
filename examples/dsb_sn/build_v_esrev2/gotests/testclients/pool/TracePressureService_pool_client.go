@@ -9,11 +9,11 @@
 package pool
 
 import (
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"blueprint/testclients/http"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 	"blueprint/testclients/ot"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 )
 
 // Initializes the TracePressureService_PoolClient namespace by defining all of the nodes that run

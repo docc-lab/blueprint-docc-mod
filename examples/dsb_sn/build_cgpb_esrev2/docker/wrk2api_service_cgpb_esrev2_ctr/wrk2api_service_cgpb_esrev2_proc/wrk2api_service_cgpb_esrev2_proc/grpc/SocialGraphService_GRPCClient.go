@@ -2,16 +2,17 @@
 package grpc
 
 import (
+	"blueprint/goproc/wrk2api_service_cgpb_esrev2_proc/ot"
 	"context"
 	"time"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/wrk2api_service_cgpb_esrev2_proc/ot"
 )
 
 type SocialGraphService_GRPCClient struct {
 	ot.SocialGraphService_OTServerWrapperInterface
-	Client SocialGraphService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  SocialGraphService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -34,7 +35,6 @@ func New_SocialGraphService_GRPCClient(ctx context.Context, serverAddress string
 	return c, nil
 }
 
-
 func (client *SocialGraphService_GRPCClient) Follow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) (err error) {
 	// Create and marshall the GRPC Request object
 	req := &SocialGraphService_OTServerWrapperInterface_Follow_Request{}
@@ -53,7 +53,7 @@ func (client *SocialGraphService_GRPCClient) Follow(ctx context.Context, reqID i
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
 
@@ -75,7 +75,7 @@ func (client *SocialGraphService_GRPCClient) FollowWithUsername(ctx context.Cont
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
 
@@ -97,7 +97,7 @@ func (client *SocialGraphService_GRPCClient) GetFollowees(ctx context.Context, r
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -119,7 +119,7 @@ func (client *SocialGraphService_GRPCClient) GetFollowers(ctx context.Context, r
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -141,7 +141,7 @@ func (client *SocialGraphService_GRPCClient) InsertUser(ctx context.Context, req
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
 
@@ -163,7 +163,7 @@ func (client *SocialGraphService_GRPCClient) Unfollow(ctx context.Context, reqID
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
 
@@ -185,7 +185,6 @@ func (client *SocialGraphService_GRPCClient) UnfollowWithUsername(ctx context.Co
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
-

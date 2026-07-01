@@ -3,16 +3,17 @@ package grpc
 
 import (
 	"blueprint/goproc/text_service_pb_esrev2_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"time"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type UrlShortenService_GRPCClient struct {
 	ot.UrlShortenService_OTServerWrapperInterface
-	Client UrlShortenService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  UrlShortenService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -35,7 +36,6 @@ func New_UrlShortenService_GRPCClient(ctx context.Context, serverAddress string)
 	return c, nil
 }
 
-
 func (client *UrlShortenService_GRPCClient) ComposeUrls(ctx context.Context, reqID int64, urls []string, traceCtx string) (ret0 []socialnetwork.URL, err error) {
 	// Create and marshall the GRPC Request object
 	req := &UrlShortenService_OTServerWrapperInterface_ComposeUrls_Request{}
@@ -54,7 +54,7 @@ func (client *UrlShortenService_GRPCClient) ComposeUrls(ctx context.Context, req
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -76,7 +76,6 @@ func (client *UrlShortenService_GRPCClient) GetExtendedUrls(ctx context.Context,
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
-

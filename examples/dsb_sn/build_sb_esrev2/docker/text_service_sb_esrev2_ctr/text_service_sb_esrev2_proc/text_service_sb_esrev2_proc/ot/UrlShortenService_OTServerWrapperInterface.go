@@ -3,11 +3,11 @@ package ot
 
 import (
 	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UrlShortenService_OTServerWrapperInterface interface {
 	ComposeUrls(ctx context.Context, reqID int64, urls []string, traceCtx string) ([]socialnetwork.URL, error)
 	GetExtendedUrls(ctx context.Context, reqID int64, shortenedUrls []string, traceCtx string) ([]string, error)
-	
 }

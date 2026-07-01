@@ -2,23 +2,23 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/composepost_service_pb_esrev2_proc/ot"
+	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type TextService_RetrierClient struct {
-	Client ot.TextService_OTClientWrapperInterface
+	Client   ot.TextService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_TextService_RetrierClient (ctx context.Context, client ot.TextService_OTClientWrapperInterface) (*TextService_RetrierClient, error) {
+func New_TextService_RetrierClient(ctx context.Context, client ot.TextService_OTClientWrapperInterface) (*TextService_RetrierClient, error) {
 	handler := &TextService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *TextService_RetrierClient) ComposeText(ctx context.Context, reqID int64, text string) (ret0 string, ret1 []socialnetwork.UserMention, ret2 []socialnetwork.URL, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -29,4 +29,3 @@ func (client *TextService_RetrierClient) ComposeText(ctx context.Context, reqID 
 	}
 	return
 }
-

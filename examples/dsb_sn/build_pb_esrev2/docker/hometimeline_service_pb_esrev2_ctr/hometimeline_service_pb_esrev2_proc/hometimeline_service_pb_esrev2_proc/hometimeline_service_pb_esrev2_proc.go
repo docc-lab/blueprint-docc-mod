@@ -2,23 +2,24 @@
 //
 // It provides funcs for instantiating the hometimeline_service_pb_esrev2_proc namespace.
 //
-// To instantiate the hometimeline_service_pb_esrev2_proc namespace, first call [New_hometimeline_service_pb_esrev2_proc] and then either call 
+// To instantiate the hometimeline_service_pb_esrev2_proc namespace, first call [New_hometimeline_service_pb_esrev2_proc] and then either call
 // [Build] or [BuildWithParent].
-// 
+//
 // See [golang.NamespaceBuilder] docs for more information about the behavior of [Build]
 package main
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"blueprint/goproc/hometimeline_service_pb_esrev2_proc/grpc"
 	"blueprint/goproc/hometimeline_service_pb_esrev2_proc/ot"
 	"blueprint/goproc/hometimeline_service_pb_esrev2_proc/retries"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
-	"blueprint/goproc/hometimeline_service_pb_esrev2_proc/grpc"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 )
 
 // Initializes the hometimeline_service_pb_esrev2_proc namespace by defining all of the nodes that run
@@ -35,17 +36,18 @@ func New_hometimeline_service_pb_esrev2_proc(name string) *golang.NamespaceBuild
 }
 
 // hometimeline_service_pb_esrev2_proc requires that its arguments are either:
-//  - explicitly set with [golang.NamespaceBuilder.Set]
-//  - passed on the command line (if built using [golang.NamespaceBuilder.Build])
-//  - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
+//   - explicitly set with [golang.NamespaceBuilder.Set]
+//   - passed on the command line (if built using [golang.NamespaceBuilder.Build])
+//   - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
 //
 // The following arguments will be eagerly checked and building the namespace
 // will fail if they haven't been provided:
-//   hometimeline_cache_pb_esrev2.dial_addr
-//   hometimeline_service_pb_esrev2.grpc.bind_addr
-//   otelcol_pb_esrev2.dial_addr
-//   post_storage_service_pb_esrev2.grpc.dial_addr
-//   socialgraph_service_pb_esrev2.grpc.dial_addr
+//
+//	hometimeline_cache_pb_esrev2.dial_addr
+//	hometimeline_service_pb_esrev2.grpc.bind_addr
+//	otelcol_pb_esrev2.dial_addr
+//	post_storage_service_pb_esrev2.grpc.dial_addr
+//	socialgraph_service_pb_esrev2.grpc.dial_addr
 //
 // The following arguments are optional and a failure will only occur if the client
 // tries to build a node that needs the argument to be set
@@ -59,21 +61,22 @@ func set_hometimeline_service_pb_esrev2_proc_Args(b *golang.NamespaceBuilder) {
 
 // When the hometimeline_service_pb_esrev2_proc namespace is built it will automatically instantiate
 // the following nodes:
-//   hometimeline_service_pb_esrev2_proc.stdoutmetriccollector
-//   hometimeline_service_pb_esrev2_proc.logger
-//   hometimeline_cache_pb_esrev2.client
-//   post_storage_service_pb_esrev2.grpc_client
-//   otelcol_pb_esrev2.client
-//   post_storage_service_pb_esrev2.client.ot
-//   post_storage_service_pb_esrev2.client.retrier
-//   post_storage_service_pb_esrev2.client
-//   socialgraph_service_pb_esrev2.grpc_client
-//   socialgraph_service_pb_esrev2.client.ot
-//   socialgraph_service_pb_esrev2.client.retrier
-//   socialgraph_service_pb_esrev2.client
-//   hometimeline_service_pb_esrev2
-//   hometimeline_service_pb_esrev2.server.ot
-//   hometimeline_service_pb_esrev2.grpc_server
+//
+//	hometimeline_service_pb_esrev2_proc.stdoutmetriccollector
+//	hometimeline_service_pb_esrev2_proc.logger
+//	hometimeline_cache_pb_esrev2.client
+//	post_storage_service_pb_esrev2.grpc_client
+//	otelcol_pb_esrev2.client
+//	post_storage_service_pb_esrev2.client.ot
+//	post_storage_service_pb_esrev2.client.retrier
+//	post_storage_service_pb_esrev2.client
+//	socialgraph_service_pb_esrev2.grpc_client
+//	socialgraph_service_pb_esrev2.client.ot
+//	socialgraph_service_pb_esrev2.client.retrier
+//	socialgraph_service_pb_esrev2.client
+//	hometimeline_service_pb_esrev2
+//	hometimeline_service_pb_esrev2.server.ot
+//	hometimeline_service_pb_esrev2.grpc_server
 func set_hometimeline_service_pb_esrev2_proc_Instances(b *golang.NamespaceBuilder) {
 	b.Instantiate("hometimeline_service_pb_esrev2_proc.stdoutmetriccollector")
 	b.Instantiate("hometimeline_service_pb_esrev2_proc.logger")
@@ -94,21 +97,22 @@ func set_hometimeline_service_pb_esrev2_proc_Instances(b *golang.NamespaceBuilde
 
 // The hometimeline_service_pb_esrev2_proc namespace contains definitions for instantiating
 // the following nodes:
-//   hometimeline_cache_pb_esrev2.client
-//   hometimeline_service_pb_esrev2
-//   hometimeline_service_pb_esrev2.grpc_server
-//   hometimeline_service_pb_esrev2.server.ot
-//   hometimeline_service_pb_esrev2_proc.logger
-//   hometimeline_service_pb_esrev2_proc.stdoutmetriccollector
-//   otelcol_pb_esrev2.client
-//   post_storage_service_pb_esrev2.client
-//   post_storage_service_pb_esrev2.client.ot
-//   post_storage_service_pb_esrev2.client.retrier
-//   post_storage_service_pb_esrev2.grpc_client
-//   socialgraph_service_pb_esrev2.client
-//   socialgraph_service_pb_esrev2.client.ot
-//   socialgraph_service_pb_esrev2.client.retrier
-//   socialgraph_service_pb_esrev2.grpc_client
+//
+//	hometimeline_cache_pb_esrev2.client
+//	hometimeline_service_pb_esrev2
+//	hometimeline_service_pb_esrev2.grpc_server
+//	hometimeline_service_pb_esrev2.server.ot
+//	hometimeline_service_pb_esrev2_proc.logger
+//	hometimeline_service_pb_esrev2_proc.stdoutmetriccollector
+//	otelcol_pb_esrev2.client
+//	post_storage_service_pb_esrev2.client
+//	post_storage_service_pb_esrev2.client.ot
+//	post_storage_service_pb_esrev2.client.retrier
+//	post_storage_service_pb_esrev2.grpc_client
+//	socialgraph_service_pb_esrev2.client
+//	socialgraph_service_pb_esrev2.client.ot
+//	socialgraph_service_pb_esrev2.client.retrier
+//	socialgraph_service_pb_esrev2.grpc_client
 func set_hometimeline_service_pb_esrev2_proc_Definitions(b *golang.NamespaceBuilder) {
 	b.Define("hometimeline_cache_pb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
@@ -116,162 +120,162 @@ func set_hometimeline_service_pb_esrev2_proc_Definitions(b *golang.NamespaceBuil
 		if err := n.Get("hometimeline_cache_pb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return redis.NewRedisCacheClient(n.Context(), addr)
 	})
-	
+
 	b.Define("hometimeline_service_pb_esrev2", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var homeTimelineCache backend.Cache
 		if err := n.Get("hometimeline_cache_pb_esrev2.client", &homeTimelineCache); err != nil {
 			return nil, err
 		}
-		
+
 		var postStorageService socialnetwork.PostStorageService
 		if err := n.Get("post_storage_service_pb_esrev2.client", &postStorageService); err != nil {
 			return nil, err
 		}
-		
+
 		var socialGraphService socialnetwork.SocialGraphService
 		if err := n.Get("socialgraph_service_pb_esrev2.client", &socialGraphService); err != nil {
 			return nil, err
 		}
-		
+
 		return socialnetwork.NewHomeTimelineServiceImpl(n.Context(), homeTimelineCache, postStorageService, socialGraphService)
 	})
-	
+
 	b.Define("hometimeline_service_pb_esrev2.grpc_server", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service ot.HomeTimelineService_OTServerWrapperInterface
 		if err := n.Get("hometimeline_service_pb_esrev2.server.ot", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var serverAddr string
 		if err := n.Get("hometimeline_service_pb_esrev2.grpc.bind_addr", &serverAddr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_HomeTimelineService_GRPCServerHandler(n.Context(), service, serverAddr)
 	})
-	
+
 	b.Define("hometimeline_service_pb_esrev2.server.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service socialnetwork.HomeTimelineService
 		if err := n.Get("hometimeline_service_pb_esrev2", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var otCollectorClient backend.Tracer
 		if err := n.Get("otelcol_pb_esrev2.client", &otCollectorClient); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_HomeTimelineService_OTServerWrapper(n.Context(), service, otCollectorClient)
 	})
-	
+
 	b.Define("hometimeline_service_pb_esrev2_proc.logger", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return slogger.NewSLogger(n.Context())
 	})
-	
+
 	b.Define("hometimeline_service_pb_esrev2_proc.stdoutmetriccollector", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return opentelemetry.NewStdoutMetricCollector(n.Context())
 	})
-	
+
 	b.Define("otelcol_pb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("otelcol_pb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return otelcol.NewOTCollectorTracer(n.Context(), addr, "8080")
 	})
-	
+
 	b.Define("post_storage_service_pb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.PostStorageService
 		err := n.Get("post_storage_service_pb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("post_storage_service_pb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.PostStorageService_OTServerWrapperInterface
 		if err := n.Get("post_storage_service_pb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_pb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_PostStorageService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("post_storage_service_pb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.PostStorageService_OTClientWrapperInterface
 		if err := n.Get("post_storage_service_pb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_PostStorageService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("post_storage_service_pb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("post_storage_service_pb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_PostStorageService_GRPCClient(n.Context(), addr)
 	})
-	
+
 	b.Define("socialgraph_service_pb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.SocialGraphService
 		err := n.Get("socialgraph_service_pb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("socialgraph_service_pb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.SocialGraphService_OTServerWrapperInterface
 		if err := n.Get("socialgraph_service_pb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_pb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_SocialGraphService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("socialgraph_service_pb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.SocialGraphService_OTClientWrapperInterface
 		if err := n.Get("socialgraph_service_pb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_SocialGraphService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("socialgraph_service_pb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("socialgraph_service_pb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_SocialGraphService_GRPCClient(n.Context(), addr)
 	})
-	
+
 }

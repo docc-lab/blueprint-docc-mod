@@ -19,7 +19,6 @@ services:
      - HOMETIMELINE_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=hometimeline_service_sb_esrev2_ctr:12345
      - MEDIA_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=media_service_sb_esrev2_ctr:12345
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - POST_STORAGE_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=post_storage_service_sb_esrev2_ctr:12345
      - TEXT_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=text_service_sb_esrev2_ctr:12345
      - UNIQUEID_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=uniqueid_service_sb_esrev2_ctr:12345
@@ -68,7 +67,6 @@ services:
      - HOMETIMELINE_CACHE_SB_ESREV2_DIAL_ADDR=hometimeline_cache_sb_esrev2_ctr:6379
      - HOMETIMELINE_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - POST_STORAGE_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=post_storage_service_sb_esrev2_ctr:12345
      - SOCIALGRAPH_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=socialgraph_service_sb_esrev2_ctr:12345
     restart: always
@@ -105,7 +103,6 @@ services:
      - GOGC=off
      - MEDIA_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
     restart: always
 
   otelcol_sb_esrev2_ctr:
@@ -157,7 +154,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - POST_CACHE_SB_ESREV2_DIAL_ADDR=post_cache_sb_esrev2_ctr:6379
      - POST_DB_SB_ESREV2_DIAL_ADDR=post_db_sb_esrev2_ctr:27017
      - POST_STORAGE_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
@@ -195,7 +191,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - SOCIALGRAPH_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
      - SOCIAL_CACHE_SB_ESREV2_DIAL_ADDR=social_cache_sb_esrev2_ctr:6379
      - SOCIAL_DB_SB_ESREV2_DIAL_ADDR=social_db_sb_esrev2_ctr:27017
@@ -216,7 +211,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - TEXT_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
      - URLSHORTEN_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=urlshorten_service_sb_esrev2_ctr:12345
      - USERMENTION_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=usermention_service_sb_esrev2_ctr:12345
@@ -236,7 +230,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - TRACEPRESSURE_SERVICE_SB_ESREV2_HTTP_BIND_ADDR=0.0.0.0:2000
     restart: always
 
@@ -254,7 +247,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - UNIQUEID_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
     restart: always
 
@@ -281,7 +273,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - URLSHORTEN_DB_SB_ESREV2_DIAL_ADDR=urlshorten_db_sb_esrev2_ctr:27017
      - URLSHORTEN_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
     restart: always
@@ -318,7 +309,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - SOCIALGRAPH_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=socialgraph_service_sb_esrev2_ctr:12345
      - USER_CACHE_SB_ESREV2_DIAL_ADDR=user_cache_sb_esrev2_ctr:6379
      - USER_DB_SB_ESREV2_DIAL_ADDR=user_db_sb_esrev2_ctr:27017
@@ -339,7 +329,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - USERID_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
      - USER_CACHE_SB_ESREV2_DIAL_ADDR=user_cache_sb_esrev2_ctr:6379
      - USER_DB_SB_ESREV2_DIAL_ADDR=user_db_sb_esrev2_ctr:27017
@@ -359,7 +348,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - USERMENTION_SERVICE_SB_ESREV2_GRPC_BIND_ADDR=0.0.0.0:12345
      - USER_CACHE_SB_ESREV2_DIAL_ADDR=user_cache_sb_esrev2_ctr:6379
      - USER_DB_SB_ESREV2_DIAL_ADDR=user_db_sb_esrev2_ctr:27017
@@ -397,7 +385,6 @@ services:
      - GC_INTERVAL_SEC=0.1
      - GOGC=off
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - POST_STORAGE_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=post_storage_service_sb_esrev2_ctr:12345
      - USERTIMELINE_CACHE_SB_ESREV2_DIAL_ADDR=usertimeline_cache_sb_esrev2_ctr:6379
      - USERTIMELINE_DB_SB_ESREV2_DIAL_ADDR=usertimeline_db_sb_esrev2_ctr:27017
@@ -420,7 +407,6 @@ services:
      - GOGC=off
      - HOMETIMELINE_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=hometimeline_service_sb_esrev2_ctr:12345
      - OTELCOL_SB_ESREV2_DIAL_ADDR=otelcol_sb_esrev2_ctr:4317
-     - OTLP_RETRY=off
      - SOCIALGRAPH_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=socialgraph_service_sb_esrev2_ctr:12345
      - USERTIMELINE_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=usertimeline_service_sb_esrev2_ctr:12345
      - USER_SERVICE_SB_ESREV2_GRPC_DIAL_ADDR=user_service_sb_esrev2_ctr:12345

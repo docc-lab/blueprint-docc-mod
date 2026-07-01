@@ -2,11 +2,11 @@
 package grpc
 
 import (
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"blueprint/testclients/ot"
 	"context"
 	"time"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type UniqueIdService_GRPCClient struct {

@@ -7,5 +7,4 @@ import (
 
 type UserIDService_OTServerWrapperInterface interface {
 	GetUserId(ctx context.Context, reqID int64, username string, traceCtx string) (int64, error)
-	
 }

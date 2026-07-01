@@ -2,11 +2,11 @@
 package ot
 
 import (
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type MediaService_OTServerWrapperInterface interface {
 	ComposeMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIds []int64, traceCtx string) ([]socialnetwork.Media, error)
-	
 }

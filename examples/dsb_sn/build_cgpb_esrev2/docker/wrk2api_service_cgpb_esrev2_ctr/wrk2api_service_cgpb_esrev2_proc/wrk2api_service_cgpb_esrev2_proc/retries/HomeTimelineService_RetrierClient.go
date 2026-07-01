@@ -7,17 +7,16 @@ import (
 )
 
 type HomeTimelineService_RetrierClient struct {
-	Client ot.HomeTimelineService_OTClientWrapperInterface
+	Client   ot.HomeTimelineService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_HomeTimelineService_RetrierClient (ctx context.Context, client ot.HomeTimelineService_OTClientWrapperInterface) (*HomeTimelineService_RetrierClient, error) {
+func New_HomeTimelineService_RetrierClient(ctx context.Context, client ot.HomeTimelineService_OTClientWrapperInterface) (*HomeTimelineService_RetrierClient, error) {
 	handler := &HomeTimelineService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *HomeTimelineService_RetrierClient) ReadHomeTimeline(ctx context.Context, reqID int64, userID int64, start int64, stop int64) (ret0 []int64, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -38,4 +37,3 @@ func (client *HomeTimelineService_RetrierClient) WriteHomeTimeline(ctx context.C
 	}
 	return
 }
-

@@ -2,24 +2,24 @@
 package ot
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"context"
+	"strconv"
 	"strings"
 	"sync/atomic"
-	"strconv"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"context"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type MediaService_OTClientWrapperInterface interface {
 	ComposeMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIds []int64) ([]socialnetwork.Media, error)
-	
 }
 
 type MediaService_OTClientWrapper struct {
-	Client MediaService_OTServerWrapperInterface
+	Client     MediaService_OTServerWrapperInterface
 	CollClient backend.Tracer
 }
 
@@ -30,7 +30,6 @@ func New_MediaService_OTClientWrapper(ctx context.Context, client MediaService_O
 	return handler, nil
 }
 
-
 func (handler *MediaService_OTClientWrapper) ComposeMedia(ctx context.Context, reqID int64, mediaTypes []string, mediaIds []int64) (ret0 []socialnetwork.Media, err error) {
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
@@ -40,17 +39,17 @@ func (handler *MediaService_OTClientWrapper) ComposeMedia(ctx context.Context, r
 			baggage[k] = v
 		}
 	}
-	
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("MediaService_OTServerWrapperInterface")
 
 	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
 	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+
 	ctx, span := tr.Start(ctx, "MediaServiceClient_ComposeMedia", trace.WithSpanKind(trace.SpanKindClient))
 
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -71,16 +70,15 @@ func (handler *MediaService_OTClientWrapper) ComposeMedia(ctx context.Context, r
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	ret0, err = handler.Client.ComposeMedia(ctx, reqID, mediaTypes, mediaIds, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
 	return
 }
-

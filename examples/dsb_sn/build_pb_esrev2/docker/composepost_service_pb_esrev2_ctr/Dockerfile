@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process composepost_service_pb_esrev2_proc
 #
 
-FROM golang:1.26.3-bookworm AS composepost_service_pb_esrev2_proc
+FROM golang:1.26.4-bookworm AS composepost_service_pb_esrev2_proc
 
 COPY ./composepost_service_pb_esrev2_proc /src
 

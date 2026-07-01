@@ -2,22 +2,23 @@
 //
 // It provides funcs for instantiating the text_service_cgpb_esrev2_proc namespace.
 //
-// To instantiate the text_service_cgpb_esrev2_proc namespace, first call [New_text_service_cgpb_esrev2_proc] and then either call 
+// To instantiate the text_service_cgpb_esrev2_proc namespace, first call [New_text_service_cgpb_esrev2_proc] and then either call
 // [Build] or [BuildWithParent].
-// 
+//
 // See [golang.NamespaceBuilder] docs for more information about the behavior of [Build]
 package main
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"blueprint/goproc/text_service_cgpb_esrev2_proc/grpc"
 	"blueprint/goproc/text_service_cgpb_esrev2_proc/ot"
+	"blueprint/goproc/text_service_cgpb_esrev2_proc/retries"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
-	"blueprint/goproc/text_service_cgpb_esrev2_proc/grpc"
-	"blueprint/goproc/text_service_cgpb_esrev2_proc/retries"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 )
 
 // Initializes the text_service_cgpb_esrev2_proc namespace by defining all of the nodes that run
@@ -34,16 +35,17 @@ func New_text_service_cgpb_esrev2_proc(name string) *golang.NamespaceBuilder {
 }
 
 // text_service_cgpb_esrev2_proc requires that its arguments are either:
-//  - explicitly set with [golang.NamespaceBuilder.Set]
-//  - passed on the command line (if built using [golang.NamespaceBuilder.Build])
-//  - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
+//   - explicitly set with [golang.NamespaceBuilder.Set]
+//   - passed on the command line (if built using [golang.NamespaceBuilder.Build])
+//   - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
 //
 // The following arguments will be eagerly checked and building the namespace
 // will fail if they haven't been provided:
-//   otelcol_cgpb_esrev2.dial_addr
-//   text_service_cgpb_esrev2.grpc.bind_addr
-//   urlshorten_service_cgpb_esrev2.grpc.dial_addr
-//   usermention_service_cgpb_esrev2.grpc.dial_addr
+//
+//	otelcol_cgpb_esrev2.dial_addr
+//	text_service_cgpb_esrev2.grpc.bind_addr
+//	urlshorten_service_cgpb_esrev2.grpc.dial_addr
+//	usermention_service_cgpb_esrev2.grpc.dial_addr
 //
 // The following arguments are optional and a failure will only occur if the client
 // tries to build a node that needs the argument to be set
@@ -56,20 +58,21 @@ func set_text_service_cgpb_esrev2_proc_Args(b *golang.NamespaceBuilder) {
 
 // When the text_service_cgpb_esrev2_proc namespace is built it will automatically instantiate
 // the following nodes:
-//   text_service_cgpb_esrev2_proc.stdoutmetriccollector
-//   text_service_cgpb_esrev2_proc.logger
-//   urlshorten_service_cgpb_esrev2.grpc_client
-//   otelcol_cgpb_esrev2.client
-//   urlshorten_service_cgpb_esrev2.client.ot
-//   urlshorten_service_cgpb_esrev2.client.retrier
-//   urlshorten_service_cgpb_esrev2.client
-//   usermention_service_cgpb_esrev2.grpc_client
-//   usermention_service_cgpb_esrev2.client.ot
-//   usermention_service_cgpb_esrev2.client.retrier
-//   usermention_service_cgpb_esrev2.client
-//   text_service_cgpb_esrev2
-//   text_service_cgpb_esrev2.server.ot
-//   text_service_cgpb_esrev2.grpc_server
+//
+//	text_service_cgpb_esrev2_proc.stdoutmetriccollector
+//	text_service_cgpb_esrev2_proc.logger
+//	urlshorten_service_cgpb_esrev2.grpc_client
+//	otelcol_cgpb_esrev2.client
+//	urlshorten_service_cgpb_esrev2.client.ot
+//	urlshorten_service_cgpb_esrev2.client.retrier
+//	urlshorten_service_cgpb_esrev2.client
+//	usermention_service_cgpb_esrev2.grpc_client
+//	usermention_service_cgpb_esrev2.client.ot
+//	usermention_service_cgpb_esrev2.client.retrier
+//	usermention_service_cgpb_esrev2.client
+//	text_service_cgpb_esrev2
+//	text_service_cgpb_esrev2.server.ot
+//	text_service_cgpb_esrev2.grpc_server
 func set_text_service_cgpb_esrev2_proc_Instances(b *golang.NamespaceBuilder) {
 	b.Instantiate("text_service_cgpb_esrev2_proc.stdoutmetriccollector")
 	b.Instantiate("text_service_cgpb_esrev2_proc.logger")
@@ -89,20 +92,21 @@ func set_text_service_cgpb_esrev2_proc_Instances(b *golang.NamespaceBuilder) {
 
 // The text_service_cgpb_esrev2_proc namespace contains definitions for instantiating
 // the following nodes:
-//   otelcol_cgpb_esrev2.client
-//   text_service_cgpb_esrev2
-//   text_service_cgpb_esrev2.grpc_server
-//   text_service_cgpb_esrev2.server.ot
-//   text_service_cgpb_esrev2_proc.logger
-//   text_service_cgpb_esrev2_proc.stdoutmetriccollector
-//   urlshorten_service_cgpb_esrev2.client
-//   urlshorten_service_cgpb_esrev2.client.ot
-//   urlshorten_service_cgpb_esrev2.client.retrier
-//   urlshorten_service_cgpb_esrev2.grpc_client
-//   usermention_service_cgpb_esrev2.client
-//   usermention_service_cgpb_esrev2.client.ot
-//   usermention_service_cgpb_esrev2.client.retrier
-//   usermention_service_cgpb_esrev2.grpc_client
+//
+//	otelcol_cgpb_esrev2.client
+//	text_service_cgpb_esrev2
+//	text_service_cgpb_esrev2.grpc_server
+//	text_service_cgpb_esrev2.server.ot
+//	text_service_cgpb_esrev2_proc.logger
+//	text_service_cgpb_esrev2_proc.stdoutmetriccollector
+//	urlshorten_service_cgpb_esrev2.client
+//	urlshorten_service_cgpb_esrev2.client.ot
+//	urlshorten_service_cgpb_esrev2.client.retrier
+//	urlshorten_service_cgpb_esrev2.grpc_client
+//	usermention_service_cgpb_esrev2.client
+//	usermention_service_cgpb_esrev2.client.ot
+//	usermention_service_cgpb_esrev2.client.retrier
+//	usermention_service_cgpb_esrev2.grpc_client
 func set_text_service_cgpb_esrev2_proc_Definitions(b *golang.NamespaceBuilder) {
 	b.Define("otelcol_cgpb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
@@ -110,147 +114,147 @@ func set_text_service_cgpb_esrev2_proc_Definitions(b *golang.NamespaceBuilder) {
 		if err := n.Get("otelcol_cgpb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return otelcol.NewOTCollectorTracer(n.Context(), addr, "8080")
 	})
-	
+
 	b.Define("text_service_cgpb_esrev2", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var urlShortenService socialnetwork.UrlShortenService
 		if err := n.Get("urlshorten_service_cgpb_esrev2.client", &urlShortenService); err != nil {
 			return nil, err
 		}
-		
+
 		var userMentionService socialnetwork.UserMentionService
 		if err := n.Get("usermention_service_cgpb_esrev2.client", &userMentionService); err != nil {
 			return nil, err
 		}
-		
+
 		return socialnetwork.NewTextServiceImpl(n.Context(), urlShortenService, userMentionService)
 	})
-	
+
 	b.Define("text_service_cgpb_esrev2.grpc_server", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service ot.TextService_OTServerWrapperInterface
 		if err := n.Get("text_service_cgpb_esrev2.server.ot", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var serverAddr string
 		if err := n.Get("text_service_cgpb_esrev2.grpc.bind_addr", &serverAddr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_TextService_GRPCServerHandler(n.Context(), service, serverAddr)
 	})
-	
+
 	b.Define("text_service_cgpb_esrev2.server.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service socialnetwork.TextService
 		if err := n.Get("text_service_cgpb_esrev2", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var otCollectorClient backend.Tracer
 		if err := n.Get("otelcol_cgpb_esrev2.client", &otCollectorClient); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_TextService_OTServerWrapper(n.Context(), service, otCollectorClient)
 	})
-	
+
 	b.Define("text_service_cgpb_esrev2_proc.logger", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return slogger.NewSLogger(n.Context())
 	})
-	
+
 	b.Define("text_service_cgpb_esrev2_proc.stdoutmetriccollector", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return opentelemetry.NewStdoutMetricCollector(n.Context())
 	})
-	
+
 	b.Define("urlshorten_service_cgpb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.UrlShortenService
 		err := n.Get("urlshorten_service_cgpb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("urlshorten_service_cgpb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UrlShortenService_OTServerWrapperInterface
 		if err := n.Get("urlshorten_service_cgpb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_cgpb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_UrlShortenService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("urlshorten_service_cgpb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UrlShortenService_OTClientWrapperInterface
 		if err := n.Get("urlshorten_service_cgpb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_UrlShortenService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("urlshorten_service_cgpb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("urlshorten_service_cgpb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_UrlShortenService_GRPCClient(n.Context(), addr)
 	})
-	
+
 	b.Define("usermention_service_cgpb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.UserMentionService
 		err := n.Get("usermention_service_cgpb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("usermention_service_cgpb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UserMentionService_OTServerWrapperInterface
 		if err := n.Get("usermention_service_cgpb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_cgpb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_UserMentionService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("usermention_service_cgpb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UserMentionService_OTClientWrapperInterface
 		if err := n.Get("usermention_service_cgpb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_UserMentionService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("usermention_service_cgpb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("usermention_service_cgpb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_UserMentionService_GRPCClient(n.Context(), addr)
 	})
-	
+
 }

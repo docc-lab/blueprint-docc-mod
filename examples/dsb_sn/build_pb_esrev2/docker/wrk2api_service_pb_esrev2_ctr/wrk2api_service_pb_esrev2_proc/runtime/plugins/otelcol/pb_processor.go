@@ -476,7 +476,10 @@ func (p *PathBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWri
 	} else {
 		// Non-checkpoint: same anchor; propagate inherited + self.
 		propCkpt4 = inheritedCkpt4
-		bf.Add([]byte(spanID))
+		// Span IDs are already uniformly random -> use them directly as bloom hash
+		// material (no MurmurHash). Same FPR, ~31% cheaper Add. RAW 8 bytes, not the
+		// hex string. See notes/bloom_prehashed_spanid.md.
+		bf.AddPrehashed(sid8[:])
 		propBloomBytes = bf.Bytes()
 	}
 	propagationPacked := packPathBridgeBR(depth, propCkpt4, propBloomBytes)

@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process usertimeline_service_cgpb_esrev2_proc
 #
 
-FROM golang:1.26.3-bookworm AS usertimeline_service_cgpb_esrev2_proc
+FROM golang:1.26.4-bookworm AS usertimeline_service_cgpb_esrev2_proc
 
 COPY ./usertimeline_service_cgpb_esrev2_proc /src
 

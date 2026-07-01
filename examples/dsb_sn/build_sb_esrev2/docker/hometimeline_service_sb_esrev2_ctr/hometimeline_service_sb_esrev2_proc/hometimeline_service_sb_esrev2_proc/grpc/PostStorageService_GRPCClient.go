@@ -2,17 +2,18 @@
 package grpc
 
 import (
-	"google.golang.org/grpc/credentials/insecure"
 	"blueprint/goproc/hometimeline_service_sb_esrev2_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"time"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type PostStorageService_GRPCClient struct {
 	ot.PostStorageService_OTServerWrapperInterface
-	Client PostStorageService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  PostStorageService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -35,7 +36,6 @@ func New_PostStorageService_GRPCClient(ctx context.Context, serverAddress string
 	return c, nil
 }
 
-
 func (client *PostStorageService_GRPCClient) ReadPost(ctx context.Context, reqID int64, postID int64, traceCtx string) (ret0 socialnetwork.Post, err error) {
 	// Create and marshall the GRPC Request object
 	req := &PostStorageService_OTServerWrapperInterface_ReadPost_Request{}
@@ -54,7 +54,7 @@ func (client *PostStorageService_GRPCClient) ReadPost(ctx context.Context, reqID
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -76,7 +76,7 @@ func (client *PostStorageService_GRPCClient) ReadPosts(ctx context.Context, reqI
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -98,7 +98,6 @@ func (client *PostStorageService_GRPCClient) StorePost(ctx context.Context, reqI
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
-

@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/text_service_cgpb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/text_service_cgpb_esrev2_proc/ot"
 )
 
 type TextService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *TextService_GRPCServerHandler) Run(ctx context.Context) error {
 	return s.Serve(lis)
 }
 
-
 func (handler *TextService_GRPCServerHandler) ComposeText(ctx context.Context, req *TextService_OTServerWrapperInterface_ComposeText_Request) (*TextService_OTServerWrapperInterface_ComposeText_Response, error) {
 	reqID, text, traceCtx := req.unmarshall()
 	ret0, ret1, ret2, err := handler.Service.ComposeText(ctx, reqID, text, traceCtx)
@@ -53,4 +53,3 @@ func (handler *TextService_GRPCServerHandler) ComposeText(ctx context.Context, r
 	rsp.marshall(ret0, ret1, ret2)
 	return rsp, nil
 }
-

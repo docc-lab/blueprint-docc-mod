@@ -25,20 +25,21 @@ func (msg *MediaService_OTServerWrapperInterface_ComposeMedia_Request) unmarshal
 
 // Server-side function to pack MediaService_OTServerWrapperInterface.ComposeMedia retvals into a GRPC MediaService_OTServerWrapperInterface_ComposeMedia_Response struct
 func (msg *MediaService_OTServerWrapperInterface_ComposeMedia_Response) marshall(ret0 []socialnetwork.Media) *MediaService_OTServerWrapperInterface_ComposeMedia_Response {
-	for _, v := range ret0 { msg.Ret0 = append(msg.Ret0, new(MediaService_Media).marshall(&v)) }
+	for _, v := range ret0 {
+		msg.Ret0 = append(msg.Ret0, new(MediaService_Media).marshall(&v))
+	}
 	return msg
 }
 
 // Client-side function to unpack MediaService_OTServerWrapperInterface.ComposeMedia retvals from a GRPC MediaService_OTServerWrapperInterface_ComposeMedia_Response struct
 func (msg *MediaService_OTServerWrapperInterface_ComposeMedia_Response) unmarshall() (ret0 []socialnetwork.Media) {
-	
+
 	ret0 = make([]socialnetwork.Media, len(msg.Ret0))
 	for i, v := range msg.Ret0 {
 		v.unmarshall(&ret0[i])
 	}
 	return
 }
-
 
 // Utility function to pack socialnetwork.Media into a GRPC MediaService_Media message
 func (msg *MediaService_Media) marshall(obj *socialnetwork.Media) *MediaService_Media {
@@ -52,4 +53,3 @@ func (msg *MediaService_Media) unmarshall(obj *socialnetwork.Media) {
 	obj.MediaID = int64(msg.MediaID)
 	obj.MediaType = string(msg.MediaType)
 }
-

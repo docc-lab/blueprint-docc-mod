@@ -27,17 +27,15 @@ spec:
         - name: COMPOSEPOST_SERVICE_CGPB_ESREV2_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
         - name: GC_INTERVAL_SEC
-          value: '0'
+          value: '0.1'
         - name: GOGC
-          value: '100'
+          value: 'off'
         - name: HOMETIMELINE_SERVICE_CGPB_ESREV2_GRPC_DIAL_ADDR
           value: hometimeline-service-cgpb-esrev2-ctr:12345
         - name: MEDIA_SERVICE_CGPB_ESREV2_GRPC_DIAL_ADDR
           value: media-service-cgpb-esrev2-ctr:12345
         - name: OTELCOL_CGPB_ESREV2_DIAL_ADDR
           value: otelcol-cgpb-esrev2-ctr:4317
-        - name: OTLP_RETRY
-          value: 'off'
         - name: POST_STORAGE_SERVICE_CGPB_ESREV2_GRPC_DIAL_ADDR
           value: post-storage-service-cgpb-esrev2-ctr:12345
         - name: TEXT_SERVICE_CGPB_ESREV2_GRPC_DIAL_ADDR
@@ -53,9 +51,6 @@ spec:
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 12000m
       hostname: composepost-service-cgpb-esrev2-ctr
       restartPolicy: Always
       nodeSelector:

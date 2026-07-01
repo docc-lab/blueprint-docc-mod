@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/user_service_cgpb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/user_service_cgpb_esrev2_proc/ot"
 )
 
 type UserService_GRPCServerHandler struct {
@@ -40,7 +41,6 @@ func (handler *UserService_GRPCServerHandler) Run(ctx context.Context) error {
 
 	return s.Serve(lis)
 }
-
 
 func (handler *UserService_GRPCServerHandler) ComposeCreatorWithUserId(ctx context.Context, req *UserService_OTServerWrapperInterface_ComposeCreatorWithUserId_Request) (*UserService_OTServerWrapperInterface_ComposeCreatorWithUserId_Response, error) {
 	reqID, userID, username, traceCtx := req.unmarshall()
@@ -101,4 +101,3 @@ func (handler *UserService_GRPCServerHandler) RegisterUserWithId(ctx context.Con
 	rsp.marshall()
 	return rsp, nil
 }
-

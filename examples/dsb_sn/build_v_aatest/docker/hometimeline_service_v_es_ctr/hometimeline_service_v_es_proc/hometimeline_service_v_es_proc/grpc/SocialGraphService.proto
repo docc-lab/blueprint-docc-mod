@@ -1,0 +1,84 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message SocialGraphService_OTServerWrapperInterface_FollowWithUsername_Request {
+    sint64 reqID = 1;
+    string userUsername = 2;
+    string followeeUsername = 3;
+    string traceCtx = 4;
+}
+
+message SocialGraphService_OTServerWrapperInterface_FollowWithUsername_Response {
+}
+
+message SocialGraphService_OTServerWrapperInterface_Follow_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    sint64 followeeID = 3;
+    string traceCtx = 4;
+}
+
+message SocialGraphService_OTServerWrapperInterface_Follow_Response {
+}
+
+message SocialGraphService_OTServerWrapperInterface_GetFollowees_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    string traceCtx = 3;
+}
+
+message SocialGraphService_OTServerWrapperInterface_GetFollowees_Response {
+    repeated sint64 ret0 = 1;
+}
+
+message SocialGraphService_OTServerWrapperInterface_GetFollowers_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    string traceCtx = 3;
+}
+
+message SocialGraphService_OTServerWrapperInterface_GetFollowers_Response {
+    repeated sint64 ret0 = 1;
+}
+
+message SocialGraphService_OTServerWrapperInterface_InsertUser_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    string traceCtx = 3;
+}
+
+message SocialGraphService_OTServerWrapperInterface_InsertUser_Response {
+}
+
+message SocialGraphService_OTServerWrapperInterface_UnfollowWithUsername_Request {
+    sint64 reqID = 1;
+    string userUsername = 2;
+    string followeeUsername = 3;
+    string traceCtx = 4;
+}
+
+message SocialGraphService_OTServerWrapperInterface_UnfollowWithUsername_Response {
+}
+
+message SocialGraphService_OTServerWrapperInterface_Unfollow_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    sint64 followeeID = 3;
+    string traceCtx = 4;
+}
+
+message SocialGraphService_OTServerWrapperInterface_Unfollow_Response {
+}
+
+service SocialGraphService_OTServerWrapperInterface {
+    rpc Follow (SocialGraphService_OTServerWrapperInterface_Follow_Request) returns (SocialGraphService_OTServerWrapperInterface_Follow_Response) {}
+    rpc FollowWithUsername (SocialGraphService_OTServerWrapperInterface_FollowWithUsername_Request) returns (SocialGraphService_OTServerWrapperInterface_FollowWithUsername_Response) {}
+    rpc GetFollowees (SocialGraphService_OTServerWrapperInterface_GetFollowees_Request) returns (SocialGraphService_OTServerWrapperInterface_GetFollowees_Response) {}
+    rpc GetFollowers (SocialGraphService_OTServerWrapperInterface_GetFollowers_Request) returns (SocialGraphService_OTServerWrapperInterface_GetFollowers_Response) {}
+    rpc InsertUser (SocialGraphService_OTServerWrapperInterface_InsertUser_Request) returns (SocialGraphService_OTServerWrapperInterface_InsertUser_Response) {}
+    rpc Unfollow (SocialGraphService_OTServerWrapperInterface_Unfollow_Request) returns (SocialGraphService_OTServerWrapperInterface_Unfollow_Response) {}
+    rpc UnfollowWithUsername (SocialGraphService_OTServerWrapperInterface_UnfollowWithUsername_Request) returns (SocialGraphService_OTServerWrapperInterface_UnfollowWithUsername_Response) {}
+}
+

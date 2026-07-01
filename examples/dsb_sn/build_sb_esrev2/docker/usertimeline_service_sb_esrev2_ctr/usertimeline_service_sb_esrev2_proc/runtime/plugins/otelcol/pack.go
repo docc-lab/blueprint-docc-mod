@@ -152,21 +152,21 @@ func varintLen(n int) int {
 		n = 0
 	}
 	switch {
-	case n < 1 << 7:
+	case n < 1<<7:
 		return 1
-	case n < 1 << 14:
+	case n < 1<<14:
 		return 2
-	case n < 1 << 21:
+	case n < 1<<21:
 		return 3
-	case n < 1 << 28:
+	case n < 1<<28:
 		return 4
-	case n < 1 << 35:
+	case n < 1<<35:
 		return 5
-	case n < 1 << 42:
+	case n < 1<<42:
 		return 6
-	case n < 1 << 49:
+	case n < 1<<49:
 		return 7
-	case n < 1 << 56:
+	case n < 1<<56:
 		return 8
 	}
 	return 9
@@ -189,6 +189,99 @@ func unpackBR(buf []byte) (depthMod int, bloomBytes []byte, ok bool) {
 		return 0, nil, false
 	}
 	return int(v), buf[n:], true
+}
+
+// AttrD is the path-bridge depth breadcrumb attached to interior (has-children)
+// NON-checkpoint spans: key "_d", value = varint(ABSOLUTE depth), emitted on
+// the wire as a proto BYTES value (not base64) — exactly mirroring how the SB
+// processor emits "_o". A surviving interior non-checkpoint self-places via its
+// native parent_span_id + this depth; the full anchored payload (`_br`) lives
+// only on checkpoints and leaves. Carried OnStart→export as a base64 string
+// (UTF-8-safe intra-process); convertAttributes base64-decodes to raw varint bytes.
+const AttrD = "_d"
+
+// pbBloomCapacity is the path-bridge bloom sizing population: cpd-1, NOT cpd.
+// Threading only ever tests spans STRICTLY between two checkpoints (the anchor
+// is named by ckpt4, never membership-tested; a payload's own span is never
+// tested against itself), and payloads carry the INHERITED (pre-self) bloom —
+// so the deepest payload holds exactly cpd-1 entries. Matches bridges
+// bridge/pcrb.go PCRBBloomCapacity; the recon side must derive (m,k) from the
+// same capacity.
+func pbBloomCapacity(cpd int) int {
+	if cpd <= 2 {
+		return 1
+	}
+	return cpd - 1
+}
+
+// packPathBridgeBR packs the (canonical, ckpt4-anchored) path-bridge payload:
+//
+//	varint(absolute depth) || ckpt4 || bloomBytes
+//
+// Tag-less (PB is the only path bridge). Used for BOTH the emitted `_br`
+// (checkpoints + leaves: depth, the PREVIOUS checkpoint's 4-byte ckpt4, and the
+// INHERITED pre-self window bloom) AND the propagation baggage (depth, this
+// span's ckpt4 — own id if checkpoint, inherited otherwise — and the propagated
+// bloom). ckpt4 is the first 4 bytes of the big-endian nearest-checkpoint span
+// ID; all-zero = root.
+func packPathBridgeBR(depth int, ckpt4 [4]byte, bloomBytes []byte) []byte {
+	out := make([]byte, 0, varintLen(depth)+4+len(bloomBytes))
+	out = binary.AppendUvarint(out, uint64(maxInt(depth, 0)))
+	out = append(out, ckpt4[:]...)
+	out = append(out, bloomBytes...)
+	return out
+}
+
+// unpackPathBridgeBR reverses packPathBridgeBR. bloomBytes is a sub-slice of
+// buf (copy if retaining past buf's lifetime). ok=false on a malformed payload.
+func unpackPathBridgeBR(buf []byte) (depth int, ckpt4 [4]byte, bloomBytes []byte, ok bool) {
+	v, n := binary.Uvarint(buf)
+	if n <= 0 {
+		return 0, ckpt4, nil, false
+	}
+	rest := buf[n:]
+	if len(rest) < 4 {
+		return 0, ckpt4, nil, false
+	}
+	copy(ckpt4[:], rest[:4])
+	return int(v), ckpt4, rest[4:], true
+}
+
+// packCGPRBBR packs the (canonical, ckpt4-anchored) call-graph path-bridge
+// payload — CGPRB = PCRB + a window-local hash array:
+//
+//	varint(absolute depth) || ckpt4 || bloomBytes || haBytes
+//
+// Tag-less. bloomBytes is fixed-width (ceil(m/8)) so the decoder splits the HA
+// off as the trailing remainder. Used for BOTH the emitted `_br` (checkpoints +
+// leaves: inherited pre-self bloom + window HA) and the propagation baggage
+// (propagated bloom + HA — reset to empty at a checkpoint). HA entries are
+// (parent_span_id(8) || varint(absolute depth)), appended via haAppendEntry.
+func packCGPRBBR(depth int, ckpt4 [4]byte, bloomBytes, haBytes []byte) []byte {
+	out := make([]byte, 0, varintLen(depth)+4+len(bloomBytes)+len(haBytes))
+	out = binary.AppendUvarint(out, uint64(maxInt(depth, 0)))
+	out = append(out, ckpt4[:]...)
+	out = append(out, bloomBytes...)
+	out = append(out, haBytes...)
+	return out
+}
+
+// unpackCGPRBBR reverses packCGPRBBR. bloomLen is the fixed bloom byte width
+// (ceil(m/8)); the HA is the trailing remainder. bloomBytes/haBytes are
+// sub-slices of buf (copy if retaining past buf's lifetime). ok=false on a
+// malformed payload.
+func unpackCGPRBBR(buf []byte, bloomLen int) (depth int, ckpt4 [4]byte, bloomBytes, haBytes []byte, ok bool) {
+	v, n := binary.Uvarint(buf)
+	if n <= 0 {
+		return 0, ckpt4, nil, nil, false
+	}
+	rest := buf[n:]
+	if len(rest) < 4+bloomLen {
+		return 0, ckpt4, nil, nil, false
+	}
+	copy(ckpt4[:], rest[:4])
+	rest = rest[4:]
+	return int(v), ckpt4, rest[:bloomLen], rest[bloomLen:], true
 }
 
 // packCGPBBR packs the CGPB baggage payload:

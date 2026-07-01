@@ -2,13 +2,13 @@
 package ot
 
 import (
+	"context"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
 	"sync/atomic"
 	"strconv"
-	"context"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -42,9 +42,6 @@ func (handler *UserIDService_OTClientWrapper) GetUserId(ctx context.Context, req
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserIDService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "UserIDServiceClient_GetUserId", trace.WithSpanKind(trace.SpanKindClient))
 

@@ -17,6 +17,6 @@ require (
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f // indirect
 )
 
-replace blueprint/goproc/post_storage_service_pb_esrev2_proc => ../post_storage_service_pb_esrev2_proc
-
 replace github.com/blueprint-uservices/blueprint/runtime => ../runtime
+
+replace blueprint/goproc/post_storage_service_pb_esrev2_proc => ../post_storage_service_pb_esrev2_proc

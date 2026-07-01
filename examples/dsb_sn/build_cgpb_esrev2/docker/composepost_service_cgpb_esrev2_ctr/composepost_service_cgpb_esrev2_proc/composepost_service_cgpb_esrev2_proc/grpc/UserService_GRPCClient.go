@@ -2,17 +2,18 @@
 package grpc
 
 import (
+	"blueprint/goproc/composepost_service_cgpb_esrev2_proc/ot"
 	"context"
 	"time"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/composepost_service_cgpb_esrev2_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UserService_GRPCClient struct {
 	ot.UserService_OTServerWrapperInterface
-	Client UserService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  UserService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -35,7 +36,6 @@ func New_UserService_GRPCClient(ctx context.Context, serverAddress string) (*Use
 	return c, nil
 }
 
-
 func (client *UserService_GRPCClient) ComposeCreatorWithUserId(ctx context.Context, reqID int64, userID int64, username string, traceCtx string) (ret0 socialnetwork.Creator, err error) {
 	// Create and marshall the GRPC Request object
 	req := &UserService_OTServerWrapperInterface_ComposeCreatorWithUserId_Request{}
@@ -54,7 +54,7 @@ func (client *UserService_GRPCClient) ComposeCreatorWithUserId(ctx context.Conte
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -76,7 +76,7 @@ func (client *UserService_GRPCClient) ComposeCreatorWithUsername(ctx context.Con
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -98,7 +98,7 @@ func (client *UserService_GRPCClient) Login(ctx context.Context, reqID int64, us
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -120,7 +120,7 @@ func (client *UserService_GRPCClient) RegisterUser(ctx context.Context, reqID in
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
 
@@ -142,7 +142,6 @@ func (client *UserService_GRPCClient) RegisterUserWithId(ctx context.Context, re
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
-

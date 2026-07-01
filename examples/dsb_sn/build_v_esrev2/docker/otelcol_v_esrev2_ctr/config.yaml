@@ -13,11 +13,7 @@ exporters:
     tls:
       insecure: true
 processors:
-  batch: null
-  memory_limiter:
-    check_interval: 100ms
-    limit_percentage: 70
-    spike_limit_percentage: 20
+  batch: {}
 receivers:
   otlp:
     protocols:
@@ -31,7 +27,6 @@ service:
       exporters:
       - otlp
       processors:
-      - memory_limiter
       - batch
       receivers:
       - otlp

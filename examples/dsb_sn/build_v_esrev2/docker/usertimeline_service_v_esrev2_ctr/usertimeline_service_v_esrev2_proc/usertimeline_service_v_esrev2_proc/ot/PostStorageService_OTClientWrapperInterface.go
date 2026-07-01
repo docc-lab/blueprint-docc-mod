@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -44,9 +43,6 @@ func (handler *PostStorageService_OTClientWrapper) ReadPost(ctx context.Context,
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("PostStorageService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "PostStorageServiceClient_ReadPost", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -98,9 +94,6 @@ func (handler *PostStorageService_OTClientWrapper) ReadPosts(ctx context.Context
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("PostStorageService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-
 	ctx, span := tr.Start(ctx, "PostStorageServiceClient_ReadPosts", trace.WithSpanKind(trace.SpanKindClient))
 
 	defer span.End()
@@ -150,9 +143,6 @@ func (handler *PostStorageService_OTClientWrapper) StorePost(ctx context.Context
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("PostStorageService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "PostStorageServiceClient_StorePost", trace.WithSpanKind(trace.SpanKindClient))
 

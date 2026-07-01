@@ -2,13 +2,13 @@
 package http
 
 import (
-	"errors"
-	"net/http"
-	"encoding/json"
 	"context"
 	"net/url"
 	"fmt"
 	"io"
+	"errors"
+	"net/http"
+	"encoding/json"
 )
 
 type TracePressureService_HTTPClient struct {

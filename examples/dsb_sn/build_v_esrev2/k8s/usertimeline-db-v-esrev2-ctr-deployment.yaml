@@ -26,10 +26,7 @@ spec:
         ports:
         - containerPort: 27017
           protocol: TCP
-        resources:
-          requests:
-            cpu: 11000m
       hostname: usertimeline-db-v-esrev2-ctr
       restartPolicy: Always
       nodeSelector:
-        kubernetes.io/hostname: node-4
+        kubernetes.io/hostname: node-3

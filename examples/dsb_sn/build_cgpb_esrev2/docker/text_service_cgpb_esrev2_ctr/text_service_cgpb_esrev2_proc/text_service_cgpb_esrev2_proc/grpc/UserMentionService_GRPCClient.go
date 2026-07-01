@@ -2,17 +2,18 @@
 package grpc
 
 import (
-	"google.golang.org/grpc/credentials/insecure"
 	"blueprint/goproc/text_service_cgpb_esrev2_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"time"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type UserMentionService_GRPCClient struct {
 	ot.UserMentionService_OTServerWrapperInterface
-	Client UserMentionService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  UserMentionService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -35,7 +36,6 @@ func New_UserMentionService_GRPCClient(ctx context.Context, serverAddress string
 	return c, nil
 }
 
-
 func (client *UserMentionService_GRPCClient) ComposeUserMentions(ctx context.Context, reqID int64, usernames []string, traceCtx string) (ret0 []socialnetwork.UserMention, err error) {
 	// Create and marshall the GRPC Request object
 	req := &UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Request{}
@@ -54,7 +54,6 @@ func (client *UserMentionService_GRPCClient) ComposeUserMentions(ctx context.Con
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
-

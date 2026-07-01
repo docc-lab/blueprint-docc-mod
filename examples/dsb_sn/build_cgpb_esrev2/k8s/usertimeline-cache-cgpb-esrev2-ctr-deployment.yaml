@@ -26,10 +26,7 @@ spec:
         ports:
         - containerPort: 6379
           protocol: TCP
-        resources:
-          requests:
-            cpu: 2000m
       hostname: usertimeline-cache-cgpb-esrev2-ctr
       restartPolicy: Always
       nodeSelector:
-        kubernetes.io/hostname: node-4
+        kubernetes.io/hostname: node-3

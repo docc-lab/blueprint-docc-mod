@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,9 +40,6 @@ func (handler *UniqueIdService_OTClientWrapper) ComposeUniqueId(ctx context.Cont
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UniqueIdService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "UniqueIdServiceClient_ComposeUniqueId", trace.WithSpanKind(trace.SpanKindClient))
 

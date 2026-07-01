@@ -121,7 +121,7 @@ func (msg *UserService_OTServerWrapperInterface_RegisterUser_Response) marshall(
 }
 
 // Client-side function to unpack UserService_OTServerWrapperInterface.RegisterUser retvals from a GRPC UserService_OTServerWrapperInterface_RegisterUser_Response struct
-func (msg *UserService_OTServerWrapperInterface_RegisterUser_Response) unmarshall() () {
+func (msg *UserService_OTServerWrapperInterface_RegisterUser_Response) unmarshall() {
 	return
 }
 
@@ -155,10 +155,9 @@ func (msg *UserService_OTServerWrapperInterface_RegisterUserWithId_Response) mar
 }
 
 // Client-side function to unpack UserService_OTServerWrapperInterface.RegisterUserWithId retvals from a GRPC UserService_OTServerWrapperInterface_RegisterUserWithId_Response struct
-func (msg *UserService_OTServerWrapperInterface_RegisterUserWithId_Response) unmarshall() () {
+func (msg *UserService_OTServerWrapperInterface_RegisterUserWithId_Response) unmarshall() {
 	return
 }
-
 
 // Utility function to pack socialnetwork.Creator into a GRPC UserService_Creator message
 func (msg *UserService_Creator) marshall(obj *socialnetwork.Creator) *UserService_Creator {
@@ -172,4 +171,3 @@ func (msg *UserService_Creator) unmarshall(obj *socialnetwork.Creator) {
 	obj.UserID = int64(msg.UserID)
 	obj.Username = string(msg.Username)
 }
-

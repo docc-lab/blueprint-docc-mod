@@ -2,11 +2,12 @@
 package http
 
 import (
+	"blueprint/goproc/wrk2api_service_pb_esrev2_proc/ot"
 	"context"
 	"encoding/json"
 	"net/http"
+
 	"github.com/gorilla/mux"
-	"blueprint/goproc/wrk2api_service_pb_esrev2_proc/ot"
 )
 
 type Wrk2APIService_HTTPServerHandler struct {
@@ -25,21 +26,21 @@ func New_Wrk2APIService_HTTPServerHandler(ctx context.Context, service ot.Wrk2AP
 func (handler *Wrk2APIService_HTTPServerHandler) Run(ctx context.Context) error {
 	router := mux.NewRouter()
 	// Add paths for the mux router
-	
+
 	router.Path("/ComposePost").HandlerFunc(handler.ComposePost)
-	
+
 	router.Path("/Follow").HandlerFunc(handler.Follow)
-	
+
 	router.Path("/ReadHomeTimeline").HandlerFunc(handler.ReadHomeTimeline)
-	
+
 	router.Path("/ReadUserTimeline").HandlerFunc(handler.ReadUserTimeline)
-	
+
 	router.Path("/Register").HandlerFunc(handler.Register)
-	
+
 	router.Path("/Unfollow").HandlerFunc(handler.Unfollow)
-	
-	srv := &http.Server {
-		Addr: handler.Address,
+
+	srv := &http.Server{
+		Addr:    handler.Address,
 		Handler: router,
 	}
 
@@ -53,11 +54,10 @@ func (handler *Wrk2APIService_HTTPServerHandler) Run(ctx context.Context) error 
 	return srv.ListenAndServe()
 }
 
-
 func (handler *Wrk2APIService_HTTPServerHandler) ComposePost(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer r.Body.Close()
-	
+
 	request_userId := r.URL.Query().Get("userId")
 	var userId int64
 	if request_userId != "" {
@@ -67,9 +67,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) ComposePost(w http.ResponseWrit
 			return
 		}
 	}
-	
+
 	username := r.URL.Query().Get("username")
-	
+
 	request_post_type := r.URL.Query().Get("post_type")
 	var post_type int64
 	if request_post_type != "" {
@@ -79,9 +79,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) ComposePost(w http.ResponseWrit
 			return
 		}
 	}
-	
+
 	text := r.URL.Query().Get("text")
-	
+
 	request_media_types := r.URL.Query().Get("media_types")
 	var media_types []string
 	if request_media_types != "" {
@@ -91,7 +91,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) ComposePost(w http.ResponseWrit
 			return
 		}
 	}
-	
+
 	request_media_ids := r.URL.Query().Get("media_ids")
 	var media_ids []int64
 	if request_media_ids != "" {
@@ -101,9 +101,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) ComposePost(w http.ResponseWrit
 			return
 		}
 	}
-	
+
 	traceCtx := r.URL.Query().Get("traceCtx")
-	
+
 	ctx := context.Background()
 	ret0, ret1, err := handler.Service.ComposePost(ctx, userId, username, post_type, text, media_types, media_ids, traceCtx)
 	if err != nil {
@@ -111,28 +111,26 @@ func (handler *Wrk2APIService_HTTPServerHandler) ComposePost(w http.ResponseWrit
 		return
 	}
 	response := struct {
-		
 		Ret0 int64
-		
+
 		Ret1 []int64
-		
 	}{}
-	
+
 	response.Ret0 = ret0
-	
+
 	response.Ret1 = ret1
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 
 func (handler *Wrk2APIService_HTTPServerHandler) Follow(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer r.Body.Close()
-	
+
 	username := r.URL.Query().Get("username")
-	
+
 	followeeName := r.URL.Query().Get("followeeName")
-	
+
 	request_userId := r.URL.Query().Get("userId")
 	var userId int64
 	if request_userId != "" {
@@ -142,7 +140,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) Follow(w http.ResponseWriter, r
 			return
 		}
 	}
-	
+
 	request_followeeID := r.URL.Query().Get("followeeID")
 	var followeeID int64
 	if request_followeeID != "" {
@@ -152,9 +150,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) Follow(w http.ResponseWriter, r
 			return
 		}
 	}
-	
+
 	traceCtx := r.URL.Query().Get("traceCtx")
-	
+
 	ctx := context.Background()
 	err = handler.Service.Follow(ctx, username, followeeName, userId, followeeID, traceCtx)
 	if err != nil {
@@ -162,16 +160,15 @@ func (handler *Wrk2APIService_HTTPServerHandler) Follow(w http.ResponseWriter, r
 		return
 	}
 	response := struct {
-		
 	}{}
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 
 func (handler *Wrk2APIService_HTTPServerHandler) ReadHomeTimeline(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer r.Body.Close()
-	
+
 	request_userId := r.URL.Query().Get("userId")
 	var userId int64
 	if request_userId != "" {
@@ -181,7 +178,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadHomeTimeline(w http.Respons
 			return
 		}
 	}
-	
+
 	request_start := r.URL.Query().Get("start")
 	var start int64
 	if request_start != "" {
@@ -191,7 +188,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadHomeTimeline(w http.Respons
 			return
 		}
 	}
-	
+
 	request_stop := r.URL.Query().Get("stop")
 	var stop int64
 	if request_stop != "" {
@@ -201,9 +198,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadHomeTimeline(w http.Respons
 			return
 		}
 	}
-	
+
 	traceCtx := r.URL.Query().Get("traceCtx")
-	
+
 	ctx := context.Background()
 	ret0, err := handler.Service.ReadHomeTimeline(ctx, userId, start, stop, traceCtx)
 	if err != nil {
@@ -211,20 +208,18 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadHomeTimeline(w http.Respons
 		return
 	}
 	response := struct {
-		
 		Ret0 []int64
-		
 	}{}
-	
+
 	response.Ret0 = ret0
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 
 func (handler *Wrk2APIService_HTTPServerHandler) ReadUserTimeline(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer r.Body.Close()
-	
+
 	request_userId := r.URL.Query().Get("userId")
 	var userId int64
 	if request_userId != "" {
@@ -234,7 +229,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadUserTimeline(w http.Respons
 			return
 		}
 	}
-	
+
 	request_start := r.URL.Query().Get("start")
 	var start int64
 	if request_start != "" {
@@ -244,7 +239,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadUserTimeline(w http.Respons
 			return
 		}
 	}
-	
+
 	request_stop := r.URL.Query().Get("stop")
 	var stop int64
 	if request_stop != "" {
@@ -254,9 +249,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadUserTimeline(w http.Respons
 			return
 		}
 	}
-	
+
 	traceCtx := r.URL.Query().Get("traceCtx")
-	
+
 	ctx := context.Background()
 	ret0, err := handler.Service.ReadUserTimeline(ctx, userId, start, stop, traceCtx)
 	if err != nil {
@@ -264,28 +259,26 @@ func (handler *Wrk2APIService_HTTPServerHandler) ReadUserTimeline(w http.Respons
 		return
 	}
 	response := struct {
-		
 		Ret0 []int64
-		
 	}{}
-	
+
 	response.Ret0 = ret0
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 
 func (handler *Wrk2APIService_HTTPServerHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer r.Body.Close()
-	
+
 	firstName := r.URL.Query().Get("firstName")
-	
+
 	lastName := r.URL.Query().Get("lastName")
-	
+
 	username := r.URL.Query().Get("username")
-	
+
 	password := r.URL.Query().Get("password")
-	
+
 	request_userId := r.URL.Query().Get("userId")
 	var userId int64
 	if request_userId != "" {
@@ -295,9 +288,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) Register(w http.ResponseWriter,
 			return
 		}
 	}
-	
+
 	traceCtx := r.URL.Query().Get("traceCtx")
-	
+
 	ctx := context.Background()
 	err = handler.Service.Register(ctx, firstName, lastName, username, password, userId, traceCtx)
 	if err != nil {
@@ -305,20 +298,19 @@ func (handler *Wrk2APIService_HTTPServerHandler) Register(w http.ResponseWriter,
 		return
 	}
 	response := struct {
-		
 	}{}
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 
 func (handler *Wrk2APIService_HTTPServerHandler) Unfollow(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer r.Body.Close()
-	
+
 	username := r.URL.Query().Get("username")
-	
+
 	followeeName := r.URL.Query().Get("followeeName")
-	
+
 	request_userId := r.URL.Query().Get("userId")
 	var userId int64
 	if request_userId != "" {
@@ -328,7 +320,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) Unfollow(w http.ResponseWriter,
 			return
 		}
 	}
-	
+
 	request_followeeID := r.URL.Query().Get("followeeID")
 	var followeeID int64
 	if request_followeeID != "" {
@@ -338,9 +330,9 @@ func (handler *Wrk2APIService_HTTPServerHandler) Unfollow(w http.ResponseWriter,
 			return
 		}
 	}
-	
+
 	traceCtx := r.URL.Query().Get("traceCtx")
-	
+
 	ctx := context.Background()
 	err = handler.Service.Unfollow(ctx, username, followeeName, userId, followeeID, traceCtx)
 	if err != nil {
@@ -348,9 +340,7 @@ func (handler *Wrk2APIService_HTTPServerHandler) Unfollow(w http.ResponseWriter,
 		return
 	}
 	response := struct {
-		
 	}{}
-	
+
 	json.NewEncoder(w).Encode(response)
 }
-

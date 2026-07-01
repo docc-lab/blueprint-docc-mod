@@ -2,6 +2,7 @@ package opentelemetry
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/blueprint"
@@ -160,11 +161,22 @@ func generateClientHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile := filepath.Join(server.Package.Path, impl.Name+".go")
-	// return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplate, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplateSBridge, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplateCGPB, server, outputFile)
-	return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplatePath, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTClientWrapper", clientSideTemplateVanilla, server, outputFile)
+	// Select the OT client wrapper template by bridge kind (OT_BRIDGE env, set per
+	// build by build_deploy_dsb.sh from the spec). vanilla => plain spans, NO bridge
+	// data; pb/path, cgpb, sb => their bridge-specific wrappers. Default = path.
+	tmpl := clientSideTemplatePath
+	switch os.Getenv("OT_BRIDGE") {
+	case "v", "vanilla":
+		tmpl = clientSideTemplateVanilla
+	case "cgpb":
+		tmpl = clientSideTemplateCGPB
+	case "sb":
+		tmpl = clientSideTemplateSBridge
+	case "pb", "path", "rc", "":
+		tmpl = clientSideTemplatePath
+	}
+	slog.Info(fmt.Sprintf("OT client wrapper: OT_BRIDGE=%q", os.Getenv("OT_BRIDGE")))
+	return gogen.ExecuteTemplateToFile("OTClientWrapper", tmpl, server, outputFile)
 }
 
 type clientArgs struct {

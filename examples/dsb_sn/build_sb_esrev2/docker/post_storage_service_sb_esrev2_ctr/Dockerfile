@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process post_storage_service_sb_esrev2_proc
 #
 
-FROM golang:1.26.3-bookworm AS post_storage_service_sb_esrev2_proc
+FROM golang:1.26.4-bookworm AS post_storage_service_sb_esrev2_proc
 
 COPY ./post_storage_service_sb_esrev2_proc /src
 

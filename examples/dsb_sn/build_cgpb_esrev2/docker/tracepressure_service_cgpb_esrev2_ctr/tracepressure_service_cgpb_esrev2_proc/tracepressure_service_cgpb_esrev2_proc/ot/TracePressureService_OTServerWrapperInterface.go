@@ -2,24 +2,24 @@
 package ot
 
 import (
-	"strings"
-	"strconv"
-	"go.opentelemetry.io/otel/trace"
-	"sync/atomic"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
-	"go.opentelemetry.io/otel/attribute"
+	"strconv"
+	"strings"
+	"sync/atomic"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type TracePressureService_OTServerWrapperInterface interface {
 	Spam(ctx context.Context, n int64, traceCtx string) (int64, error)
-	
 }
 
 type TracePressureService_OTServerWrapper struct {
-	Service socialnetwork.TracePressureService
+	Service    socialnetwork.TracePressureService
 	CollClient backend.Tracer
 }
 
@@ -30,14 +30,13 @@ func New_TracePressureService_OTServerWrapper(ctx context.Context, service socia
 	return handler, nil
 }
 
-
 func (handler *TracePressureService_OTServerWrapper) Spam(ctx context.Context, n int64, traceCtx string) (ret0 int64, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -81,14 +80,13 @@ func (handler *TracePressureService_OTServerWrapper) Spam(ctx context.Context, n
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.Spam(ctx, n)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

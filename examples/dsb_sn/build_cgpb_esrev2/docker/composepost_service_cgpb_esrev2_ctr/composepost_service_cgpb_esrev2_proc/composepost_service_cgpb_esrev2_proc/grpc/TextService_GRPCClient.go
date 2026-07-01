@@ -2,17 +2,18 @@
 package grpc
 
 import (
+	"blueprint/goproc/composepost_service_cgpb_esrev2_proc/ot"
 	"context"
 	"time"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"blueprint/goproc/composepost_service_cgpb_esrev2_proc/ot"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type TextService_GRPCClient struct {
 	ot.TextService_OTServerWrapperInterface
-	Client TextService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  TextService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -35,7 +36,6 @@ func New_TextService_GRPCClient(ctx context.Context, serverAddress string) (*Tex
 	return c, nil
 }
 
-
 func (client *TextService_GRPCClient) ComposeText(ctx context.Context, reqID int64, text string, traceCtx string) (ret0 string, ret1 []socialnetwork.UserMention, ret2 []socialnetwork.URL, err error) {
 	// Create and marshall the GRPC Request object
 	req := &TextService_OTServerWrapperInterface_ComposeText_Request{}
@@ -54,7 +54,6 @@ func (client *TextService_GRPCClient) ComposeText(ctx context.Context, reqID int
 		return
 	}
 
-	ret0, ret1, ret2 =  rsp.unmarshall()
+	ret0, ret1, ret2 = rsp.unmarshall()
 	return
 }
-

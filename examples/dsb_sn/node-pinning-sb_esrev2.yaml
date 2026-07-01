@@ -1,95 +1,47 @@
-# Example configuration for pinning services to nodes
-# Node names should match the actual Kubernetes node names (kubernetes.io/hostname)
-# Service names should match the deployment names (without -deployment.yaml suffix)
+# Auto-generated node-pinning for variant 'sb-esrev2' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-sb-esrev2-ctr.
+# Consumed by pin_nodes.py. Edit freely.
 
 node-1:
   - composepost-service-sb-esrev2-ctr:
-      requests_cpu: 12000
-      # limits_cpu: 2000
-  - hometimeline-cache-sb-esrev2-ctr:
-      requests_cpu: 2000
-      # limits_cpu: 2000
-  - hometimeline-service-sb-esrev2-ctr:
-      requests_cpu: 5000
-    #   limits_cpu: 2000
+  - userid-service-sb-esrev2-ctr:
 
 node-2:
-  - social-cache-sb-esrev2-ctr:
-      requests_cpu: 4000
-    #   limits_cpu: 2000
-  - social-db-sb-esrev2-ctr:
-      requests_cpu: 25000
-    #   limits_cpu: 2000
-  - socialgraph-service-sb-esrev2-ctr:
-      requests_cpu: 6000
-    #   limits_cpu: 2000
+  - hometimeline-service-sb-esrev2-ctr:
+  - hometimeline-cache-sb-esrev2-ctr:
+  - urlshorten-service-sb-esrev2-ctr:
+  - urlshorten-db-sb-esrev2-ctr:
 
 node-3:
-  - uniqueid-service-sb-esrev2-ctr:
-      requests_cpu: 3000
-    #   limits_cpu: 2000
+  - usertimeline-service-sb-esrev2-ctr:
+  - usertimeline-cache-sb-esrev2-ctr:
+  - usertimeline-db-sb-esrev2-ctr:
   - usermention-service-sb-esrev2-ctr:
-      requests_cpu: 4000
-    #   limits_cpu: 2000
-  # - wrk2api-service-sb-esrev2-ctr:
-  #     # requests_cpu: 2000
-  #   #   limits_cpu: 2000
 
 node-4:
-  - usertimeline-cache-sb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - usertimeline-db-sb-esrev2-ctr:
-      requests_cpu: 11000
-    #   limits_cpu: 2000
-  - usertimeline-service-sb-esrev2-ctr:
-      requests_cpu: 8000
-    #   limits_cpu: 2000
+  - socialgraph-service-sb-esrev2-ctr:
+  - social-cache-sb-esrev2-ctr:
+  - social-db-sb-esrev2-ctr:
+  - text-service-sb-esrev2-ctr:
 
 node-5:
-  - media-service-sb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - text-service-sb-esrev2-ctr:
-      requests_cpu: 8000
-    #   limits_cpu: 2000
-  - userid-service-sb-esrev2-ctr:
-      requests_cpu: 6000
-    #   limits_cpu: 2000
+  - post-storage-service-sb-esrev2-ctr:
+  - post-cache-sb-esrev2-ctr:
+  - post-db-sb-esrev2-ctr:
 
 node-6:
-  - post-cache-sb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - post-db-sb-esrev2-ctr:
-      requests_cpu: 3000
-    #   limits_cpu: 2000
-  - post-storage-service-sb-esrev2-ctr:
-      requests_cpu: 5000
-    #   limits_cpu: 2000
+  - uniqueid-service-sb-esrev2-ctr:
+  - media-service-sb-esrev2-ctr:
 
 node-7:
-  - urlshorten-db-sb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  - urlshorten-service-sb-esrev2-ctr:
-      requests_cpu: 5000
-    #   limits_cpu: 2000
+  - wrk2api-service-sb-esrev2-ctr:
 
 node-8:
   - user-service-sb-esrev2-ctr:
-      requests_cpu: 3000
-    #   limits_cpu: 2000
   - user-cache-sb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
   - user-db-sb-esrev2-ctr:
-      requests_cpu: 2000
-    #   limits_cpu: 2000
-  
+
 node-9:
   - jaeger-sb-esrev2-ctr:
-      requests_cpu: 20000
-
   - elasticsearch-sb-esrev2-ctr:
-      requests_cpu: 4000

@@ -3,22 +3,22 @@ package ot
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"strconv"
 	"strings"
 	"sync/atomic"
-	"strconv"
+
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UniqueIdService_OTClientWrapperInterface interface {
 	ComposeUniqueId(ctx context.Context, reqID int64, postType int64) (int64, error)
-	
 }
 
 type UniqueIdService_OTClientWrapper struct {
-	Client UniqueIdService_OTServerWrapperInterface
+	Client     UniqueIdService_OTServerWrapperInterface
 	CollClient backend.Tracer
 }
 
@@ -29,7 +29,6 @@ func New_UniqueIdService_OTClientWrapper(ctx context.Context, client UniqueIdSer
 	return handler, nil
 }
 
-
 func (handler *UniqueIdService_OTClientWrapper) ComposeUniqueId(ctx context.Context, reqID int64, postType int64) (ret0 int64, err error) {
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
@@ -39,17 +38,17 @@ func (handler *UniqueIdService_OTClientWrapper) ComposeUniqueId(ctx context.Cont
 			baggage[k] = v
 		}
 	}
-	
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UniqueIdService_OTServerWrapperInterface")
 
 	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
 	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+
 	ctx, span := tr.Start(ctx, "UniqueIdServiceClient_ComposeUniqueId", trace.WithSpanKind(trace.SpanKindClient))
 
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -70,16 +69,15 @@ func (handler *UniqueIdService_OTClientWrapper) ComposeUniqueId(ctx context.Cont
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	ret0, err = handler.Client.ComposeUniqueId(ctx, reqID, postType, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
 	return
 }
-

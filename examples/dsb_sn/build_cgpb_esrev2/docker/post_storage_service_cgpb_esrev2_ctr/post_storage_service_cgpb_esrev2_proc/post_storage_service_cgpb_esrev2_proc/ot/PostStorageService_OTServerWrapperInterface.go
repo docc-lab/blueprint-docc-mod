@@ -2,26 +2,26 @@
 package ot
 
 import (
+	"context"
+	"strconv"
 	"strings"
 	"sync/atomic"
-	"strconv"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"context"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type PostStorageService_OTServerWrapperInterface interface {
 	ReadPost(ctx context.Context, reqID int64, postID int64, traceCtx string) (socialnetwork.Post, error)
 	ReadPosts(ctx context.Context, reqID int64, postIDs []int64, traceCtx string) ([]socialnetwork.Post, error)
-	StorePost(ctx context.Context, reqID int64, post socialnetwork.Post, traceCtx string) (error)
-	
+	StorePost(ctx context.Context, reqID int64, post socialnetwork.Post, traceCtx string) error
 }
 
 type PostStorageService_OTServerWrapper struct {
-	Service socialnetwork.PostStorageService
+	Service    socialnetwork.PostStorageService
 	CollClient backend.Tracer
 }
 
@@ -32,14 +32,13 @@ func New_PostStorageService_OTServerWrapper(ctx context.Context, service socialn
 	return handler, nil
 }
 
-
 func (handler *PostStorageService_OTServerWrapper) ReadPost(ctx context.Context, reqID int64, postID int64, traceCtx string) (ret0 socialnetwork.Post, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -83,13 +82,13 @@ func (handler *PostStorageService_OTServerWrapper) ReadPost(ctx context.Context,
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ReadPost(ctx, reqID, postID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -100,7 +99,7 @@ func (handler *PostStorageService_OTServerWrapper) ReadPosts(ctx context.Context
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -144,13 +143,13 @@ func (handler *PostStorageService_OTServerWrapper) ReadPosts(ctx context.Context
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ReadPosts(ctx, reqID, postIDs)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -161,7 +160,7 @@ func (handler *PostStorageService_OTServerWrapper) StorePost(ctx context.Context
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -205,14 +204,13 @@ func (handler *PostStorageService_OTServerWrapper) StorePost(ctx context.Context
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.StorePost(ctx, reqID, post)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/usertimeline_service_cgpb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/usertimeline_service_cgpb_esrev2_proc/ot"
 )
 
 type UserTimelineService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *UserTimelineService_GRPCServerHandler) Run(ctx context.Context) e
 	return s.Serve(lis)
 }
 
-
 func (handler *UserTimelineService_GRPCServerHandler) ReadUserTimeline(ctx context.Context, req *UserTimelineService_OTServerWrapperInterface_ReadUserTimeline_Request) (*UserTimelineService_OTServerWrapperInterface_ReadUserTimeline_Response, error) {
 	reqID, userID, start, stop, traceCtx := req.unmarshall()
 	ret0, err := handler.Service.ReadUserTimeline(ctx, reqID, userID, start, stop, traceCtx)
@@ -65,4 +65,3 @@ func (handler *UserTimelineService_GRPCServerHandler) WriteUserTimeline(ctx cont
 	rsp.marshall()
 	return rsp, nil
 }
-

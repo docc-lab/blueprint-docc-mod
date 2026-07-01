@@ -2,16 +2,17 @@
 package grpc
 
 import (
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"blueprint/goproc/composepost_service_cgpb_esrev2_proc/ot"
 	"context"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type UserTimelineService_GRPCClient struct {
 	ot.UserTimelineService_OTServerWrapperInterface
-	Client UserTimelineService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
+	Client  UserTimelineService_OTServerWrapperInterfaceClient // The actual GRPC-generated client
 	Timeout time.Duration
 }
 
@@ -34,7 +35,6 @@ func New_UserTimelineService_GRPCClient(ctx context.Context, serverAddress strin
 	return c, nil
 }
 
-
 func (client *UserTimelineService_GRPCClient) ReadUserTimeline(ctx context.Context, reqID int64, userID int64, start int64, stop int64, traceCtx string) (ret0 []int64, err error) {
 	// Create and marshall the GRPC Request object
 	req := &UserTimelineService_OTServerWrapperInterface_ReadUserTimeline_Request{}
@@ -53,7 +53,7 @@ func (client *UserTimelineService_GRPCClient) ReadUserTimeline(ctx context.Conte
 		return
 	}
 
-	ret0 =  rsp.unmarshall()
+	ret0 = rsp.unmarshall()
 	return
 }
 
@@ -75,7 +75,6 @@ func (client *UserTimelineService_GRPCClient) WriteUserTimeline(ctx context.Cont
 		return
 	}
 
-	 rsp.unmarshall()
+	rsp.unmarshall()
 	return
 }
-

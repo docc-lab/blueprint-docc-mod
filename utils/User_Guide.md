@@ -148,6 +148,7 @@ The script assumes a working CloudLab kubespray cluster and these already in pla
 | `--hard <pct>` | Collector controller hard (force-GC) threshold %. | 70 |
 | `--cp-safety <f>` | CP-vs-LP shedding dial (higher = protect CP harder). | 1 |
 | `--no-pin-requests` | Node-pin places services on nodes (nodeSelector) but sets **no** CPU requests — avoids over-reserving cores. | off |
+| `--collector <mode>` | otelcol pipeline mode. `passthrough` = strip priority **and** memory_limiter → `receivers→batch→exporters` (use for **overhead** experiments so the collector imposes no shedding/limiting). Unset = wiring default (priority for bridges; for shedding studies). | unset |
 | `--build-collector` | Rebuild + push the `otelcontribcol` base image first. | off |
 | `--skip-build` | Skip d2k8s image builds (reuse existing images). | off |
 | `--apply` | Deploy: evict the live variant, apply, wait for Running. | off |

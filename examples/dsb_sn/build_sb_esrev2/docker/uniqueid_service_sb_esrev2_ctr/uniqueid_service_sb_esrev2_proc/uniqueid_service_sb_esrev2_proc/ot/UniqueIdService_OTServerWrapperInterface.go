@@ -2,24 +2,27 @@
 package ot
 
 import (
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
-	"sync/atomic"
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UniqueIdService_OTServerWrapperInterface interface {
 	ComposeUniqueId(ctx context.Context, reqID int64, postType int64, traceCtx string) (int64, error)
-	
 }
 
 type UniqueIdService_OTServerWrapper struct {
-	Service socialnetwork.UniqueIdService
+	Service    socialnetwork.UniqueIdService
 	CollClient backend.Tracer
 }
 
@@ -30,14 +33,13 @@ func New_UniqueIdService_OTServerWrapper(ctx context.Context, service socialnetw
 	return handler, nil
 }
 
-
 func (handler *UniqueIdService_OTServerWrapper) ComposeUniqueId(ctx context.Context, reqID int64, postType int64, traceCtx string) (ret0 int64, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -79,16 +81,45 @@ func (handler *UniqueIdService_OTServerWrapper) ComposeUniqueId(ctx context.Cont
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	childCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+	eventCount := atomic.Uint64{}
+	ctx = context.WithValue(ctx, "eventCount", &eventCount)
+
+	// End events tracking structures. Matches the bridges Go simulator's
+	// parentEEAcc: a []int slice of sibling start-seqs in the order in
+	// which they ENDED. Client interceptors append each child's startSeq
+	// to this slice when the child's call returns. At server-OnEnd we
+	// varint-encode the slice (dropping the last entry per simulator
+	// semantics; the last sibling's end is implicit at trace
+	// reconstruction) and stash the bytes on a per-span attribute that
+	// the SB processor reads at its own OnEnd hook.
+	childrenMutex := sync.Mutex{}
+	endEvents := []int(nil)
+	ctx = context.WithValue(ctx, "endEvents", &endEvents)
+	ctx = context.WithValue(ctx, "childrenMutex", &childrenMutex)
+
 	ret0, err = handler.Service.ComposeUniqueId(ctx, reqID, postType)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("eventCount", int(eventCount.Load())))
+	// Encode the end-event seqs as varint bytes for the SB processor.
+	// Format: varint(count) || count*varint(seq). The SB processor's
+	// OnEnd hook prepends traceID+depth to form a full DEE triple.
+	// Drop the last entry — its end is implicit at reconstruction time
+	// (mirrors the simulator's kept = rem[:len(rem)-1]).
+	if n := len(endEvents); n > 0 {
+		kept := endEvents[:n-1]
+		buf := make([]byte, 0, 8+5*len(kept))
+		buf = binary.AppendUvarint(buf, uint64(len(kept)))
+		for _, s := range kept {
+			buf = binary.AppendUvarint(buf, uint64(s))
+		}
+		// Base64 the bytes because OTel attributes don't expose a
+		// native []byte type; this is the SDK's only string round
+		// trip on the DEE path, paid once per server-OnEnd.
+		span.SetAttributes(attribute.String("remEndEvents", base64.RawURLEncoding.EncodeToString(buf)))
+	}
 
 	return
 }
-

@@ -2,23 +2,24 @@
 //
 // It provides funcs for instantiating the post_storage_service_cgpb_esrev2_proc namespace.
 //
-// To instantiate the post_storage_service_cgpb_esrev2_proc namespace, first call [New_post_storage_service_cgpb_esrev2_proc] and then either call 
+// To instantiate the post_storage_service_cgpb_esrev2_proc namespace, first call [New_post_storage_service_cgpb_esrev2_proc] and then either call
 // [Build] or [BuildWithParent].
-// 
+//
 // See [golang.NamespaceBuilder] docs for more information about the behavior of [Build]
 package main
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"blueprint/goproc/post_storage_service_cgpb_esrev2_proc/grpc"
+	"blueprint/goproc/post_storage_service_cgpb_esrev2_proc/ot"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
-	"blueprint/goproc/post_storage_service_cgpb_esrev2_proc/ot"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/redis"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 )
 
 // Initializes the post_storage_service_cgpb_esrev2_proc namespace by defining all of the nodes that run
@@ -35,16 +36,17 @@ func New_post_storage_service_cgpb_esrev2_proc(name string) *golang.NamespaceBui
 }
 
 // post_storage_service_cgpb_esrev2_proc requires that its arguments are either:
-//  - explicitly set with [golang.NamespaceBuilder.Set]
-//  - passed on the command line (if built using [golang.NamespaceBuilder.Build])
-//  - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
+//   - explicitly set with [golang.NamespaceBuilder.Set]
+//   - passed on the command line (if built using [golang.NamespaceBuilder.Build])
+//   - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
 //
 // The following arguments will be eagerly checked and building the namespace
 // will fail if they haven't been provided:
-//   otelcol_cgpb_esrev2.dial_addr
-//   post_cache_cgpb_esrev2.dial_addr
-//   post_db_cgpb_esrev2.dial_addr
-//   post_storage_service_cgpb_esrev2.grpc.bind_addr
+//
+//	otelcol_cgpb_esrev2.dial_addr
+//	post_cache_cgpb_esrev2.dial_addr
+//	post_db_cgpb_esrev2.dial_addr
+//	post_storage_service_cgpb_esrev2.grpc.bind_addr
 //
 // The following arguments are optional and a failure will only occur if the client
 // tries to build a node that needs the argument to be set
@@ -57,14 +59,15 @@ func set_post_storage_service_cgpb_esrev2_proc_Args(b *golang.NamespaceBuilder) 
 
 // When the post_storage_service_cgpb_esrev2_proc namespace is built it will automatically instantiate
 // the following nodes:
-//   post_storage_service_cgpb_esrev2_proc.stdoutmetriccollector
-//   post_storage_service_cgpb_esrev2_proc.logger
-//   post_cache_cgpb_esrev2.client
-//   post_db_cgpb_esrev2.client
-//   post_storage_service_cgpb_esrev2
-//   otelcol_cgpb_esrev2.client
-//   post_storage_service_cgpb_esrev2.server.ot
-//   post_storage_service_cgpb_esrev2.grpc_server
+//
+//	post_storage_service_cgpb_esrev2_proc.stdoutmetriccollector
+//	post_storage_service_cgpb_esrev2_proc.logger
+//	post_cache_cgpb_esrev2.client
+//	post_db_cgpb_esrev2.client
+//	post_storage_service_cgpb_esrev2
+//	otelcol_cgpb_esrev2.client
+//	post_storage_service_cgpb_esrev2.server.ot
+//	post_storage_service_cgpb_esrev2.grpc_server
 func set_post_storage_service_cgpb_esrev2_proc_Instances(b *golang.NamespaceBuilder) {
 	b.Instantiate("post_storage_service_cgpb_esrev2_proc.stdoutmetriccollector")
 	b.Instantiate("post_storage_service_cgpb_esrev2_proc.logger")
@@ -78,14 +81,15 @@ func set_post_storage_service_cgpb_esrev2_proc_Instances(b *golang.NamespaceBuil
 
 // The post_storage_service_cgpb_esrev2_proc namespace contains definitions for instantiating
 // the following nodes:
-//   otelcol_cgpb_esrev2.client
-//   post_cache_cgpb_esrev2.client
-//   post_db_cgpb_esrev2.client
-//   post_storage_service_cgpb_esrev2
-//   post_storage_service_cgpb_esrev2.grpc_server
-//   post_storage_service_cgpb_esrev2.server.ot
-//   post_storage_service_cgpb_esrev2_proc.logger
-//   post_storage_service_cgpb_esrev2_proc.stdoutmetriccollector
+//
+//	otelcol_cgpb_esrev2.client
+//	post_cache_cgpb_esrev2.client
+//	post_db_cgpb_esrev2.client
+//	post_storage_service_cgpb_esrev2
+//	post_storage_service_cgpb_esrev2.grpc_server
+//	post_storage_service_cgpb_esrev2.server.ot
+//	post_storage_service_cgpb_esrev2_proc.logger
+//	post_storage_service_cgpb_esrev2_proc.stdoutmetriccollector
 func set_post_storage_service_cgpb_esrev2_proc_Definitions(b *golang.NamespaceBuilder) {
 	b.Define("otelcol_cgpb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
@@ -93,83 +97,83 @@ func set_post_storage_service_cgpb_esrev2_proc_Definitions(b *golang.NamespaceBu
 		if err := n.Get("otelcol_cgpb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return otelcol.NewOTCollectorTracer(n.Context(), addr, "8080")
 	})
-	
+
 	b.Define("post_cache_cgpb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("post_cache_cgpb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return redis.NewRedisCacheClient(n.Context(), addr)
 	})
-	
+
 	b.Define("post_db_cgpb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("post_db_cgpb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return mongodb.NewMongoDB(n.Context(), addr)
 	})
-	
+
 	b.Define("post_storage_service_cgpb_esrev2", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var postStorageCache backend.Cache
 		if err := n.Get("post_cache_cgpb_esrev2.client", &postStorageCache); err != nil {
 			return nil, err
 		}
-		
+
 		var postStorageDB backend.NoSQLDatabase
 		if err := n.Get("post_db_cgpb_esrev2.client", &postStorageDB); err != nil {
 			return nil, err
 		}
-		
+
 		return socialnetwork.NewPostStorageServiceImpl(n.Context(), postStorageCache, postStorageDB)
 	})
-	
+
 	b.Define("post_storage_service_cgpb_esrev2.grpc_server", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service ot.PostStorageService_OTServerWrapperInterface
 		if err := n.Get("post_storage_service_cgpb_esrev2.server.ot", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var serverAddr string
 		if err := n.Get("post_storage_service_cgpb_esrev2.grpc.bind_addr", &serverAddr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_PostStorageService_GRPCServerHandler(n.Context(), service, serverAddr)
 	})
-	
+
 	b.Define("post_storage_service_cgpb_esrev2.server.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service socialnetwork.PostStorageService
 		if err := n.Get("post_storage_service_cgpb_esrev2", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var otCollectorClient backend.Tracer
 		if err := n.Get("otelcol_cgpb_esrev2.client", &otCollectorClient); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_PostStorageService_OTServerWrapper(n.Context(), service, otCollectorClient)
 	})
-	
+
 	b.Define("post_storage_service_cgpb_esrev2_proc.logger", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return slogger.NewSLogger(n.Context())
 	})
-	
+
 	b.Define("post_storage_service_cgpb_esrev2_proc.stdoutmetriccollector", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return opentelemetry.NewStdoutMetricCollector(n.Context())
 	})
-	
+
 }

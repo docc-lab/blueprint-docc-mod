@@ -23,13 +23,15 @@ func (msg *UrlShortenService_OTServerWrapperInterface_ComposeUrls_Request) unmar
 
 // Server-side function to pack UrlShortenService_OTServerWrapperInterface.ComposeUrls retvals into a GRPC UrlShortenService_OTServerWrapperInterface_ComposeUrls_Response struct
 func (msg *UrlShortenService_OTServerWrapperInterface_ComposeUrls_Response) marshall(ret0 []socialnetwork.URL) *UrlShortenService_OTServerWrapperInterface_ComposeUrls_Response {
-	for _, v := range ret0 { msg.Ret0 = append(msg.Ret0, new(UrlShortenService_URL).marshall(&v)) }
+	for _, v := range ret0 {
+		msg.Ret0 = append(msg.Ret0, new(UrlShortenService_URL).marshall(&v))
+	}
 	return msg
 }
 
 // Client-side function to unpack UrlShortenService_OTServerWrapperInterface.ComposeUrls retvals from a GRPC UrlShortenService_OTServerWrapperInterface_ComposeUrls_Response struct
 func (msg *UrlShortenService_OTServerWrapperInterface_ComposeUrls_Response) unmarshall() (ret0 []socialnetwork.URL) {
-	
+
 	ret0 = make([]socialnetwork.URL, len(msg.Ret0))
 	for i, v := range msg.Ret0 {
 		v.unmarshall(&ret0[i])
@@ -65,7 +67,6 @@ func (msg *UrlShortenService_OTServerWrapperInterface_GetExtendedUrls_Response) 
 	return
 }
 
-
 // Utility function to pack socialnetwork.URL into a GRPC UrlShortenService_URL message
 func (msg *UrlShortenService_URL) marshall(obj *socialnetwork.URL) *UrlShortenService_URL {
 	msg.ShortenedUrl = string(obj.ShortenedUrl)
@@ -78,4 +79,3 @@ func (msg *UrlShortenService_URL) unmarshall(obj *socialnetwork.URL) {
 	obj.ShortenedUrl = string(msg.ShortenedUrl)
 	obj.ExpandedUrl = string(msg.ExpandedUrl)
 }
-

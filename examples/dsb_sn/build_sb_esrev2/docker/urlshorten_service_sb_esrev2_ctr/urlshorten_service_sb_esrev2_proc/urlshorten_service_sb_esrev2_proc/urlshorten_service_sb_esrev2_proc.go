@@ -2,22 +2,23 @@
 //
 // It provides funcs for instantiating the urlshorten_service_sb_esrev2_proc namespace.
 //
-// To instantiate the urlshorten_service_sb_esrev2_proc namespace, first call [New_urlshorten_service_sb_esrev2_proc] and then either call 
+// To instantiate the urlshorten_service_sb_esrev2_proc namespace, first call [New_urlshorten_service_sb_esrev2_proc] and then either call
 // [Build] or [BuildWithParent].
-// 
+//
 // See [golang.NamespaceBuilder] docs for more information about the behavior of [Build]
 package main
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
-	"blueprint/goproc/urlshorten_service_sb_esrev2_proc/ot"
 	"blueprint/goproc/urlshorten_service_sb_esrev2_proc/grpc"
+	"blueprint/goproc/urlshorten_service_sb_esrev2_proc/ot"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/mongodb"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 )
 
 // Initializes the urlshorten_service_sb_esrev2_proc namespace by defining all of the nodes that run
@@ -34,15 +35,16 @@ func New_urlshorten_service_sb_esrev2_proc(name string) *golang.NamespaceBuilder
 }
 
 // urlshorten_service_sb_esrev2_proc requires that its arguments are either:
-//  - explicitly set with [golang.NamespaceBuilder.Set]
-//  - passed on the command line (if built using [golang.NamespaceBuilder.Build])
-//  - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
+//   - explicitly set with [golang.NamespaceBuilder.Set]
+//   - passed on the command line (if built using [golang.NamespaceBuilder.Build])
+//   - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
 //
 // The following arguments will be eagerly checked and building the namespace
 // will fail if they haven't been provided:
-//   otelcol_sb_esrev2.dial_addr
-//   urlshorten_db_sb_esrev2.dial_addr
-//   urlshorten_service_sb_esrev2.grpc.bind_addr
+//
+//	otelcol_sb_esrev2.dial_addr
+//	urlshorten_db_sb_esrev2.dial_addr
+//	urlshorten_service_sb_esrev2.grpc.bind_addr
 //
 // The following arguments are optional and a failure will only occur if the client
 // tries to build a node that needs the argument to be set
@@ -54,13 +56,14 @@ func set_urlshorten_service_sb_esrev2_proc_Args(b *golang.NamespaceBuilder) {
 
 // When the urlshorten_service_sb_esrev2_proc namespace is built it will automatically instantiate
 // the following nodes:
-//   urlshorten_service_sb_esrev2_proc.stdoutmetriccollector
-//   urlshorten_service_sb_esrev2_proc.logger
-//   urlshorten_db_sb_esrev2.client
-//   urlshorten_service_sb_esrev2
-//   otelcol_sb_esrev2.client
-//   urlshorten_service_sb_esrev2.server.ot
-//   urlshorten_service_sb_esrev2.grpc_server
+//
+//	urlshorten_service_sb_esrev2_proc.stdoutmetriccollector
+//	urlshorten_service_sb_esrev2_proc.logger
+//	urlshorten_db_sb_esrev2.client
+//	urlshorten_service_sb_esrev2
+//	otelcol_sb_esrev2.client
+//	urlshorten_service_sb_esrev2.server.ot
+//	urlshorten_service_sb_esrev2.grpc_server
 func set_urlshorten_service_sb_esrev2_proc_Instances(b *golang.NamespaceBuilder) {
 	b.Instantiate("urlshorten_service_sb_esrev2_proc.stdoutmetriccollector")
 	b.Instantiate("urlshorten_service_sb_esrev2_proc.logger")
@@ -73,13 +76,14 @@ func set_urlshorten_service_sb_esrev2_proc_Instances(b *golang.NamespaceBuilder)
 
 // The urlshorten_service_sb_esrev2_proc namespace contains definitions for instantiating
 // the following nodes:
-//   otelcol_sb_esrev2.client
-//   urlshorten_db_sb_esrev2.client
-//   urlshorten_service_sb_esrev2
-//   urlshorten_service_sb_esrev2.grpc_server
-//   urlshorten_service_sb_esrev2.server.ot
-//   urlshorten_service_sb_esrev2_proc.logger
-//   urlshorten_service_sb_esrev2_proc.stdoutmetriccollector
+//
+//	otelcol_sb_esrev2.client
+//	urlshorten_db_sb_esrev2.client
+//	urlshorten_service_sb_esrev2
+//	urlshorten_service_sb_esrev2.grpc_server
+//	urlshorten_service_sb_esrev2.server.ot
+//	urlshorten_service_sb_esrev2_proc.logger
+//	urlshorten_service_sb_esrev2_proc.stdoutmetriccollector
 func set_urlshorten_service_sb_esrev2_proc_Definitions(b *golang.NamespaceBuilder) {
 	b.Define("otelcol_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
@@ -87,68 +91,68 @@ func set_urlshorten_service_sb_esrev2_proc_Definitions(b *golang.NamespaceBuilde
 		if err := n.Get("otelcol_sb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return otelcol.NewOTCollectorTracer(n.Context(), addr, "8080")
 	})
-	
+
 	b.Define("urlshorten_db_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("urlshorten_db_sb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return mongodb.NewMongoDB(n.Context(), addr)
 	})
-	
+
 	b.Define("urlshorten_service_sb_esrev2", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var urlShortenDB backend.NoSQLDatabase
 		if err := n.Get("urlshorten_db_sb_esrev2.client", &urlShortenDB); err != nil {
 			return nil, err
 		}
-		
+
 		return socialnetwork.NewUrlShortenServiceImpl(n.Context(), urlShortenDB)
 	})
-	
+
 	b.Define("urlshorten_service_sb_esrev2.grpc_server", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service ot.UrlShortenService_OTServerWrapperInterface
 		if err := n.Get("urlshorten_service_sb_esrev2.server.ot", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var serverAddr string
 		if err := n.Get("urlshorten_service_sb_esrev2.grpc.bind_addr", &serverAddr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_UrlShortenService_GRPCServerHandler(n.Context(), service, serverAddr)
 	})
-	
+
 	b.Define("urlshorten_service_sb_esrev2.server.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service socialnetwork.UrlShortenService
 		if err := n.Get("urlshorten_service_sb_esrev2", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var otCollectorClient backend.Tracer
 		if err := n.Get("otelcol_sb_esrev2.client", &otCollectorClient); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_UrlShortenService_OTServerWrapper(n.Context(), service, otCollectorClient)
 	})
-	
+
 	b.Define("urlshorten_service_sb_esrev2_proc.logger", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return slogger.NewSLogger(n.Context())
 	})
-	
+
 	b.Define("urlshorten_service_sb_esrev2_proc.stdoutmetriccollector", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return opentelemetry.NewStdoutMetricCollector(n.Context())
 	})
-	
+
 }

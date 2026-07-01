@@ -28,7 +28,7 @@ spec:
         - name: JAEGER_SB_ESREV2_OTLP_DIAL_ADDR
           value: jaeger-sb-esrev2-ctr:4317
         - name: GOMEMLIMIT
-          value: 180MiB
+          value: 3276MiB
         image: 10.10.1.1:30000/otelcol-sb-esrev2-ctr:latest
         name: otelcol-sb-esrev2-ctr
         ports:
@@ -39,9 +39,9 @@ spec:
         resources:
           limits:
             cpu: 500m
-            memory: 256Mi
+            memory: 4Gi
           requests:
             cpu: 500m
-            memory: 256Mi
+            memory: 4Gi
       hostname: otelcol-sb-esrev2-ctr
       restartPolicy: Always

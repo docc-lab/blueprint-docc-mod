@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_pb_esrev2ph/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: usertimeline-service-pb-esrev2ph-ctr
+  name: usertimeline-service-pb-esrev2ph-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: usertimeline-service-pb-esrev2ph-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_pb_esrev2ph/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: usertimeline-service-pb-esrev2ph-ctr
+    spec:
+      containers:
+      - env:
+        - name: BRIDGE_KIND
+          value: pb
+        - name: GC_INTERVAL_SEC
+          value: '0'
+        - name: GOGC
+          value: '100'
+        - name: OTELCOL_PB_ESREV2PH_DIAL_ADDR
+          value: otelcol-pb-esrev2ph-ctr:4317
+        - name: POST_STORAGE_SERVICE_PB_ESREV2PH_GRPC_DIAL_ADDR
+          value: post-storage-service-pb-esrev2ph-ctr:12345
+        - name: USERTIMELINE_CACHE_PB_ESREV2PH_DIAL_ADDR
+          value: usertimeline-cache-pb-esrev2ph-ctr:6379
+        - name: USERTIMELINE_DB_PB_ESREV2PH_DIAL_ADDR
+          value: usertimeline-db-pb-esrev2ph-ctr:27017
+        - name: USERTIMELINE_SERVICE_PB_ESREV2PH_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        image: 10.10.1.1:30000/usertimeline-service-pb-esrev2ph-ctr:latest
+        name: usertimeline-service-pb-esrev2ph-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 8000m
+      hostname: usertimeline-service-pb-esrev2ph-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-4

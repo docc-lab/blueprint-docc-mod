@@ -2,25 +2,25 @@
 package ot
 
 import (
-	"strings"
-	"strconv"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"sync/atomic"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
+	"strconv"
+	"strings"
+	"sync/atomic"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UrlShortenService_OTServerWrapperInterface interface {
 	ComposeUrls(ctx context.Context, reqID int64, urls []string, traceCtx string) ([]socialnetwork.URL, error)
 	GetExtendedUrls(ctx context.Context, reqID int64, shortenedUrls []string, traceCtx string) ([]string, error)
-	
 }
 
 type UrlShortenService_OTServerWrapper struct {
-	Service socialnetwork.UrlShortenService
+	Service    socialnetwork.UrlShortenService
 	CollClient backend.Tracer
 }
 
@@ -31,14 +31,13 @@ func New_UrlShortenService_OTServerWrapper(ctx context.Context, service socialne
 	return handler, nil
 }
 
-
 func (handler *UrlShortenService_OTServerWrapper) ComposeUrls(ctx context.Context, reqID int64, urls []string, traceCtx string) (ret0 []socialnetwork.URL, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -82,13 +81,13 @@ func (handler *UrlShortenService_OTServerWrapper) ComposeUrls(ctx context.Contex
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ComposeUrls(ctx, reqID, urls)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -99,7 +98,7 @@ func (handler *UrlShortenService_OTServerWrapper) GetExtendedUrls(ctx context.Co
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -143,14 +142,13 @@ func (handler *UrlShortenService_OTServerWrapper) GetExtendedUrls(ctx context.Co
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.GetExtendedUrls(ctx, reqID, shortenedUrls)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

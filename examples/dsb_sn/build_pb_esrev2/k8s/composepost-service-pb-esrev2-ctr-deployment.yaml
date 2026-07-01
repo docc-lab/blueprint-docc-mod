@@ -27,17 +27,15 @@ spec:
         - name: COMPOSEPOST_SERVICE_PB_ESREV2_GRPC_BIND_ADDR
           value: 0.0.0.0:12345
         - name: GC_INTERVAL_SEC
-          value: '0'
+          value: '0.1'
         - name: GOGC
-          value: '100'
+          value: 'off'
         - name: HOMETIMELINE_SERVICE_PB_ESREV2_GRPC_DIAL_ADDR
           value: hometimeline-service-pb-esrev2-ctr:12345
         - name: MEDIA_SERVICE_PB_ESREV2_GRPC_DIAL_ADDR
           value: media-service-pb-esrev2-ctr:12345
         - name: OTELCOL_PB_ESREV2_DIAL_ADDR
           value: otelcol-pb-esrev2-ctr:4317
-        - name: OTLP_RETRY
-          value: 'off'
         - name: POST_STORAGE_SERVICE_PB_ESREV2_GRPC_DIAL_ADDR
           value: post-storage-service-pb-esrev2-ctr:12345
         - name: TEXT_SERVICE_PB_ESREV2_GRPC_DIAL_ADDR
@@ -48,17 +46,12 @@ spec:
           value: usertimeline-service-pb-esrev2-ctr:12345
         - name: USER_SERVICE_PB_ESREV2_GRPC_DIAL_ADDR
           value: user-service-pb-esrev2-ctr:12345
-        - name: GODEBUG
-          value: gctrace=1
         image: 10.10.1.1:30000/composepost-service-pb-esrev2-ctr:latest
         name: composepost-service-pb-esrev2-ctr
         ports:
         - containerPort: 12345
           protocol: TCP
-        resources:
-          requests:
-            cpu: 12000m
       hostname: composepost-service-pb-esrev2-ctr
+      restartPolicy: Always
       nodeSelector:
         kubernetes.io/hostname: node-1
-      restartPolicy: Always

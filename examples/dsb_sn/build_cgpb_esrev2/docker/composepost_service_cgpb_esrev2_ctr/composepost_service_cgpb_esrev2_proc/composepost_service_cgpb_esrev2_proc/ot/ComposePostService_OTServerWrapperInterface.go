@@ -2,24 +2,24 @@
 package ot
 
 import (
-	"sync/atomic"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
-	"strconv"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
-	"go.opentelemetry.io/otel/trace"
+	"strconv"
+	"strings"
+	"sync/atomic"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type ComposePostService_OTServerWrapperInterface interface {
 	ComposePost(ctx context.Context, reqID int64, username string, userID int64, text string, mediaIDs []int64, mediaTypes []string, postType int64, traceCtx string) (int64, []int64, error)
-	
 }
 
 type ComposePostService_OTServerWrapper struct {
-	Service socialnetwork.ComposePostService
+	Service    socialnetwork.ComposePostService
 	CollClient backend.Tracer
 }
 
@@ -30,14 +30,13 @@ func New_ComposePostService_OTServerWrapper(ctx context.Context, service socialn
 	return handler, nil
 }
 
-
 func (handler *ComposePostService_OTServerWrapper) ComposePost(ctx context.Context, reqID int64, username string, userID int64, text string, mediaIDs []int64, mediaTypes []string, postType int64, traceCtx string) (ret0 int64, ret1 []int64, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -81,14 +80,13 @@ func (handler *ComposePostService_OTServerWrapper) ComposePost(ctx context.Conte
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, ret1, err = handler.Service.ComposePost(ctx, reqID, username, userID, text, mediaIDs, mediaTypes, postType)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

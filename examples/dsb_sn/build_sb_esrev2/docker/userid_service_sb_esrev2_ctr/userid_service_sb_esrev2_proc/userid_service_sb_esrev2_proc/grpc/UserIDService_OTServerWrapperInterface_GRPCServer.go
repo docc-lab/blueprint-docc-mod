@@ -5,6 +5,7 @@ import (
 	"blueprint/goproc/userid_service_sb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
 )
 
@@ -41,7 +42,6 @@ func (handler *UserIDService_GRPCServerHandler) Run(ctx context.Context) error {
 	return s.Serve(lis)
 }
 
-
 func (handler *UserIDService_GRPCServerHandler) GetUserId(ctx context.Context, req *UserIDService_OTServerWrapperInterface_GetUserId_Request) (*UserIDService_OTServerWrapperInterface_GetUserId_Response, error) {
 	reqID, username, traceCtx := req.unmarshall()
 	ret0, err := handler.Service.GetUserId(ctx, reqID, username, traceCtx)
@@ -53,4 +53,3 @@ func (handler *UserIDService_GRPCServerHandler) GetUserId(ctx context.Context, r
 	rsp.marshall(ret0)
 	return rsp, nil
 }
-

@@ -51,13 +51,15 @@ func (msg *PostStorageService_OTServerWrapperInterface_ReadPosts_Request) unmars
 
 // Server-side function to pack PostStorageService_OTServerWrapperInterface.ReadPosts retvals into a GRPC PostStorageService_OTServerWrapperInterface_ReadPosts_Response struct
 func (msg *PostStorageService_OTServerWrapperInterface_ReadPosts_Response) marshall(ret0 []socialnetwork.Post) *PostStorageService_OTServerWrapperInterface_ReadPosts_Response {
-	for _, v := range ret0 { msg.Ret0 = append(msg.Ret0, new(PostStorageService_Post).marshall(&v)) }
+	for _, v := range ret0 {
+		msg.Ret0 = append(msg.Ret0, new(PostStorageService_Post).marshall(&v))
+	}
 	return msg
 }
 
 // Client-side function to unpack PostStorageService_OTServerWrapperInterface.ReadPosts retvals from a GRPC PostStorageService_OTServerWrapperInterface_ReadPosts_Response struct
 func (msg *PostStorageService_OTServerWrapperInterface_ReadPosts_Response) unmarshall() (ret0 []socialnetwork.Post) {
-	
+
 	ret0 = make([]socialnetwork.Post, len(msg.Ret0))
 	for i, v := range msg.Ret0 {
 		v.unmarshall(&ret0[i])
@@ -87,10 +89,9 @@ func (msg *PostStorageService_OTServerWrapperInterface_StorePost_Response) marsh
 }
 
 // Client-side function to unpack PostStorageService_OTServerWrapperInterface.StorePost retvals from a GRPC PostStorageService_OTServerWrapperInterface_StorePost_Response struct
-func (msg *PostStorageService_OTServerWrapperInterface_StorePost_Response) unmarshall() () {
+func (msg *PostStorageService_OTServerWrapperInterface_StorePost_Response) unmarshall() {
 	return
 }
-
 
 // Utility function to pack socialnetwork.Creator into a GRPC PostStorageService_Creator message
 func (msg *PostStorageService_Creator) marshall(obj *socialnetwork.Creator) *PostStorageService_Creator {
@@ -124,9 +125,15 @@ func (msg *PostStorageService_Post) marshall(obj *socialnetwork.Post) *PostStora
 	msg.Creator = new(PostStorageService_Creator).marshall(&obj.Creator)
 	msg.ReqID = int64(obj.ReqID)
 	msg.Text = string(obj.Text)
-	for _, v := range obj.UserMentions { msg.UserMentions = append(msg.UserMentions, new(PostStorageService_UserMention).marshall(&v)) }
-	for _, v := range obj.Medias { msg.Medias = append(msg.Medias, new(PostStorageService_Media).marshall(&v)) }
-	for _, v := range obj.Urls { msg.Urls = append(msg.Urls, new(PostStorageService_URL).marshall(&v)) }
+	for _, v := range obj.UserMentions {
+		msg.UserMentions = append(msg.UserMentions, new(PostStorageService_UserMention).marshall(&v))
+	}
+	for _, v := range obj.Medias {
+		msg.Medias = append(msg.Medias, new(PostStorageService_Media).marshall(&v))
+	}
+	for _, v := range obj.Urls {
+		msg.Urls = append(msg.Urls, new(PostStorageService_URL).marshall(&v))
+	}
 	msg.Timestamp = int64(obj.Timestamp)
 	msg.PostType = int64(obj.PostType)
 	return msg
@@ -138,17 +145,17 @@ func (msg *PostStorageService_Post) unmarshall(obj *socialnetwork.Post) {
 	msg.Creator.unmarshall(&obj.Creator)
 	obj.ReqID = int64(msg.ReqID)
 	obj.Text = string(msg.Text)
-	
+
 	obj.UserMentions = make([]socialnetwork.UserMention, len(msg.UserMentions))
 	for i, v := range msg.UserMentions {
 		v.unmarshall(&obj.UserMentions[i])
 	}
-	
+
 	obj.Medias = make([]socialnetwork.Media, len(msg.Medias))
 	for i, v := range msg.Medias {
 		v.unmarshall(&obj.Medias[i])
 	}
-	
+
 	obj.Urls = make([]socialnetwork.URL, len(msg.Urls))
 	for i, v := range msg.Urls {
 		v.unmarshall(&obj.Urls[i])
@@ -182,4 +189,3 @@ func (msg *PostStorageService_UserMention) unmarshall(obj *socialnetwork.UserMen
 	obj.UserID = int64(msg.UserID)
 	obj.Username = string(msg.Username)
 }
-

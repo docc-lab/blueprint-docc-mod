@@ -3,10 +3,10 @@ package ot
 
 import (
 	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type TextService_OTServerWrapperInterface interface {
 	ComposeText(ctx context.Context, reqID int64, text string, traceCtx string) (string, []socialnetwork.UserMention, []socialnetwork.URL, error)
-	
 }

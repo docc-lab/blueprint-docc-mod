@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/urlshorten_service_pb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/urlshorten_service_pb_esrev2_proc/ot"
 )
 
 type UrlShortenService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *UrlShortenService_GRPCServerHandler) Run(ctx context.Context) err
 	return s.Serve(lis)
 }
 
-
 func (handler *UrlShortenService_GRPCServerHandler) ComposeUrls(ctx context.Context, req *UrlShortenService_OTServerWrapperInterface_ComposeUrls_Request) (*UrlShortenService_OTServerWrapperInterface_ComposeUrls_Response, error) {
 	reqID, urls, traceCtx := req.unmarshall()
 	ret0, err := handler.Service.ComposeUrls(ctx, reqID, urls, traceCtx)
@@ -65,4 +65,3 @@ func (handler *UrlShortenService_GRPCServerHandler) GetExtendedUrls(ctx context.
 	rsp.marshall(ret0)
 	return rsp, nil
 }
-

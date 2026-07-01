@@ -2,22 +2,21 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/user_service_pb_esrev2_proc/ot"
+	"context"
 )
 
 type SocialGraphService_RetrierClient struct {
-	Client ot.SocialGraphService_OTClientWrapperInterface
+	Client   ot.SocialGraphService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_SocialGraphService_RetrierClient (ctx context.Context, client ot.SocialGraphService_OTClientWrapperInterface) (*SocialGraphService_RetrierClient, error) {
+func New_SocialGraphService_RetrierClient(ctx context.Context, client ot.SocialGraphService_OTClientWrapperInterface) (*SocialGraphService_RetrierClient, error) {
 	handler := &SocialGraphService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *SocialGraphService_RetrierClient) Follow(ctx context.Context, reqID int64, userID int64, followeeID int64) (err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -88,4 +87,3 @@ func (client *SocialGraphService_RetrierClient) UnfollowWithUsername(ctx context
 	}
 	return
 }
-

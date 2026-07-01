@@ -152,21 +152,21 @@ func varintLen(n int) int {
 		n = 0
 	}
 	switch {
-	case n < 1 << 7:
+	case n < 1<<7:
 		return 1
-	case n < 1 << 14:
+	case n < 1<<14:
 		return 2
-	case n < 1 << 21:
+	case n < 1<<21:
 		return 3
-	case n < 1 << 28:
+	case n < 1<<28:
 		return 4
-	case n < 1 << 35:
+	case n < 1<<35:
 		return 5
-	case n < 1 << 42:
+	case n < 1<<42:
 		return 6
-	case n < 1 << 49:
+	case n < 1<<49:
 		return 7
-	case n < 1 << 56:
+	case n < 1<<56:
 		return 8
 	}
 	return 9

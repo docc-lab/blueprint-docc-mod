@@ -2,23 +2,23 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/text_service_sb_esrev2_proc/ot"
+	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type UrlShortenService_RetrierClient struct {
-	Client ot.UrlShortenService_OTClientWrapperInterface
+	Client   ot.UrlShortenService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_UrlShortenService_RetrierClient (ctx context.Context, client ot.UrlShortenService_OTClientWrapperInterface) (*UrlShortenService_RetrierClient, error) {
+func New_UrlShortenService_RetrierClient(ctx context.Context, client ot.UrlShortenService_OTClientWrapperInterface) (*UrlShortenService_RetrierClient, error) {
 	handler := &UrlShortenService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *UrlShortenService_RetrierClient) ComposeUrls(ctx context.Context, reqID int64, urls []string) (ret0 []socialnetwork.URL, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -39,4 +39,3 @@ func (client *UrlShortenService_RetrierClient) GetExtendedUrls(ctx context.Conte
 	}
 	return
 }
-

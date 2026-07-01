@@ -3,28 +3,28 @@ package ot
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/trace"
 	"strconv"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
 	"sync/atomic"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Wrk2APIService_OTServerWrapperInterface interface {
 	ComposePost(ctx context.Context, userId int64, username string, post_type int64, text string, media_types []string, media_ids []int64, traceCtx string) (int64, []int64, error)
-	Follow(ctx context.Context, username string, followeeName string, userId int64, followeeID int64, traceCtx string) (error)
+	Follow(ctx context.Context, username string, followeeName string, userId int64, followeeID int64, traceCtx string) error
 	ReadHomeTimeline(ctx context.Context, userId int64, start int64, stop int64, traceCtx string) ([]int64, error)
 	ReadUserTimeline(ctx context.Context, userId int64, start int64, stop int64, traceCtx string) ([]int64, error)
-	Register(ctx context.Context, firstName string, lastName string, username string, password string, userId int64, traceCtx string) (error)
-	Unfollow(ctx context.Context, username string, followeeName string, userId int64, followeeID int64, traceCtx string) (error)
-	
+	Register(ctx context.Context, firstName string, lastName string, username string, password string, userId int64, traceCtx string) error
+	Unfollow(ctx context.Context, username string, followeeName string, userId int64, followeeID int64, traceCtx string) error
 }
 
 type Wrk2APIService_OTServerWrapper struct {
-	Service socialnetwork.Wrk2APIService
+	Service    socialnetwork.Wrk2APIService
 	CollClient backend.Tracer
 }
 
@@ -35,14 +35,13 @@ func New_Wrk2APIService_OTServerWrapper(ctx context.Context, service socialnetwo
 	return handler, nil
 }
 
-
 func (handler *Wrk2APIService_OTServerWrapper) ComposePost(ctx context.Context, userId int64, username string, post_type int64, text string, media_types []string, media_ids []int64, traceCtx string) (ret0 int64, ret1 []int64, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -86,13 +85,13 @@ func (handler *Wrk2APIService_OTServerWrapper) ComposePost(ctx context.Context, 
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, ret1, err = handler.Service.ComposePost(ctx, userId, username, post_type, text, media_types, media_ids)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -103,7 +102,7 @@ func (handler *Wrk2APIService_OTServerWrapper) Follow(ctx context.Context, usern
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -147,13 +146,13 @@ func (handler *Wrk2APIService_OTServerWrapper) Follow(ctx context.Context, usern
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.Follow(ctx, username, followeeName, userId, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -164,7 +163,7 @@ func (handler *Wrk2APIService_OTServerWrapper) ReadHomeTimeline(ctx context.Cont
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -208,13 +207,13 @@ func (handler *Wrk2APIService_OTServerWrapper) ReadHomeTimeline(ctx context.Cont
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ReadHomeTimeline(ctx, userId, start, stop)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -225,7 +224,7 @@ func (handler *Wrk2APIService_OTServerWrapper) ReadUserTimeline(ctx context.Cont
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -269,13 +268,13 @@ func (handler *Wrk2APIService_OTServerWrapper) ReadUserTimeline(ctx context.Cont
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ReadUserTimeline(ctx, userId, start, stop)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -286,7 +285,7 @@ func (handler *Wrk2APIService_OTServerWrapper) Register(ctx context.Context, fir
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -330,13 +329,13 @@ func (handler *Wrk2APIService_OTServerWrapper) Register(ctx context.Context, fir
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.Register(ctx, firstName, lastName, username, password, userId)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -347,7 +346,7 @@ func (handler *Wrk2APIService_OTServerWrapper) Unfollow(ctx context.Context, use
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -391,14 +390,13 @@ func (handler *Wrk2APIService_OTServerWrapper) Unfollow(ctx context.Context, use
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.Unfollow(ctx, username, followeeName, userId, followeeID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

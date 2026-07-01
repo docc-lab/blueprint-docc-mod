@@ -2,24 +2,24 @@
 package ot
 
 import (
+	"context"
+	"strconv"
 	"strings"
 	"sync/atomic"
-	"strconv"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"context"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UserMentionService_OTServerWrapperInterface interface {
 	ComposeUserMentions(ctx context.Context, reqID int64, usernames []string, traceCtx string) ([]socialnetwork.UserMention, error)
-	
 }
 
 type UserMentionService_OTServerWrapper struct {
-	Service socialnetwork.UserMentionService
+	Service    socialnetwork.UserMentionService
 	CollClient backend.Tracer
 }
 
@@ -30,14 +30,13 @@ func New_UserMentionService_OTServerWrapper(ctx context.Context, service socialn
 	return handler, nil
 }
 
-
 func (handler *UserMentionService_OTServerWrapper) ComposeUserMentions(ctx context.Context, reqID int64, usernames []string, traceCtx string) (ret0 []socialnetwork.UserMention, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -81,14 +80,13 @@ func (handler *UserMentionService_OTServerWrapper) ComposeUserMentions(ctx conte
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ComposeUserMentions(ctx, reqID, usernames)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

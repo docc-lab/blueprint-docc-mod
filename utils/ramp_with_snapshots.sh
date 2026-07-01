@@ -90,6 +90,31 @@ snapshot() {
   for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true
 
+  # cAdvisor per-container CPU + mem (CUMULATIVE counters) via the kubelet
+  # stats/summary API, one call per node. usageCoreNanoSeconds is monotonic, so
+  # (after - before) across a step = exact CPU-nanocore-seconds consumed during
+  # that step; /1e9 = CPU-seconds, /achieved_rps = CPU-sec per request. Lighter
+  # than the full /metrics/cadvisor prom dump. Only rows whose pod matches VARIANT.
+  for node in $(kubectl get nodes -o name 2>/dev/null | sed 's#node/##'); do
+    kubectl get --raw "/api/v1/nodes/${node}/proxy/stats/summary" 2>/dev/null
+  done | python3 -c "
+import json, sys
+T='$T'; STEP='$STEP'; VAR='$VARIANT'
+buf=sys.stdin.read(); dec=json.JSONDecoder(); i=0; n=len(buf)
+while i<n:
+    while i<n and buf[i].isspace(): i+=1
+    if i>=n: break
+    try: obj,i=dec.raw_decode(buf,i)
+    except Exception: break
+    for pod in obj.get('pods',[]):
+        nm=pod.get('podRef',{}).get('name','')
+        if VAR not in nm: continue
+        cpu=sum((c.get('cpu',{}) or {}).get('usageCoreNanoSeconds',0) or 0 for c in pod.get('containers',[]))
+        mem=sum((c.get('memory',{}) or {}).get('workingSetBytes',0) or 0 for c in pod.get('containers',[]))
+        print(f'{T}\tsnap\t{STEP}\tcadvisor\t{nm}\tcpu_usage_nanocoreseconds\t{cpu}')
+        print(f'{T}\tsnap\t{STEP}\tcadvisor\t{nm}\tmem_workingset_bytes\t{mem}')
+" >> "$SNAP" 2>/dev/null
+
   # Restart counts
   kubectl get pods -l "$POD_LABEL" -o json 2>/dev/null | python3 -c "
 import json, sys

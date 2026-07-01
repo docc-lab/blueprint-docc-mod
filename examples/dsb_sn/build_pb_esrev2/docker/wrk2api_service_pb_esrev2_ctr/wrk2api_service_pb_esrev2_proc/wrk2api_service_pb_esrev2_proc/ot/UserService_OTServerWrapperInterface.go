@@ -3,6 +3,7 @@ package ot
 
 import (
 	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
@@ -10,7 +11,6 @@ type UserService_OTServerWrapperInterface interface {
 	ComposeCreatorWithUserId(ctx context.Context, reqID int64, userID int64, username string, traceCtx string) (socialnetwork.Creator, error)
 	ComposeCreatorWithUsername(ctx context.Context, reqID int64, username string, traceCtx string) (socialnetwork.Creator, error)
 	Login(ctx context.Context, reqID int64, username string, password string, traceCtx string) (string, error)
-	RegisterUser(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, traceCtx string) (error)
-	RegisterUserWithId(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, userID int64, traceCtx string) (error)
-	
+	RegisterUser(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, traceCtx string) error
+	RegisterUserWithId(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, userID int64, traceCtx string) error
 }

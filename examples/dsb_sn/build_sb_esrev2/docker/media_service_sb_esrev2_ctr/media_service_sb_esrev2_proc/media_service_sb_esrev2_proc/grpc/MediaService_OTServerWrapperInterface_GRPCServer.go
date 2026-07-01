@@ -2,10 +2,11 @@
 package grpc
 
 import (
-	"google.golang.org/grpc"
 	"blueprint/goproc/media_service_sb_esrev2_proc/ot"
 	"context"
 	"net"
+
+	"google.golang.org/grpc"
 )
 
 type MediaService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *MediaService_GRPCServerHandler) Run(ctx context.Context) error {
 	return s.Serve(lis)
 }
 
-
 func (handler *MediaService_GRPCServerHandler) ComposeMedia(ctx context.Context, req *MediaService_OTServerWrapperInterface_ComposeMedia_Request) (*MediaService_OTServerWrapperInterface_ComposeMedia_Response, error) {
 	reqID, mediaTypes, mediaIds, traceCtx := req.unmarshall()
 	ret0, err := handler.Service.ComposeMedia(ctx, reqID, mediaTypes, mediaIds, traceCtx)
@@ -53,4 +53,3 @@ func (handler *MediaService_GRPCServerHandler) ComposeMedia(ctx context.Context,
 	rsp.marshall(ret0)
 	return rsp, nil
 }
-

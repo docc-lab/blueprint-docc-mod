@@ -3,27 +3,27 @@ package ot
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/trace"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"sync/atomic"
-	"go.opentelemetry.io/otel/attribute"
-	"strings"
 	"strconv"
+	"strings"
+	"sync/atomic"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UserService_OTServerWrapperInterface interface {
 	ComposeCreatorWithUserId(ctx context.Context, reqID int64, userID int64, username string, traceCtx string) (socialnetwork.Creator, error)
 	ComposeCreatorWithUsername(ctx context.Context, reqID int64, username string, traceCtx string) (socialnetwork.Creator, error)
 	Login(ctx context.Context, reqID int64, username string, password string, traceCtx string) (string, error)
-	RegisterUser(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, traceCtx string) (error)
-	RegisterUserWithId(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, userID int64, traceCtx string) (error)
-	
+	RegisterUser(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, traceCtx string) error
+	RegisterUserWithId(ctx context.Context, reqID int64, firstName string, lastName string, username string, password string, userID int64, traceCtx string) error
 }
 
 type UserService_OTServerWrapper struct {
-	Service socialnetwork.UserService
+	Service    socialnetwork.UserService
 	CollClient backend.Tracer
 }
 
@@ -34,14 +34,13 @@ func New_UserService_OTServerWrapper(ctx context.Context, service socialnetwork.
 	return handler, nil
 }
 
-
 func (handler *UserService_OTServerWrapper) ComposeCreatorWithUserId(ctx context.Context, reqID int64, userID int64, username string, traceCtx string) (ret0 socialnetwork.Creator, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -85,13 +84,13 @@ func (handler *UserService_OTServerWrapper) ComposeCreatorWithUserId(ctx context
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ComposeCreatorWithUserId(ctx, reqID, userID, username)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -102,7 +101,7 @@ func (handler *UserService_OTServerWrapper) ComposeCreatorWithUsername(ctx conte
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -146,13 +145,13 @@ func (handler *UserService_OTServerWrapper) ComposeCreatorWithUsername(ctx conte
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ComposeCreatorWithUsername(ctx, reqID, username)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -163,7 +162,7 @@ func (handler *UserService_OTServerWrapper) Login(ctx context.Context, reqID int
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -207,13 +206,13 @@ func (handler *UserService_OTServerWrapper) Login(ctx context.Context, reqID int
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.Login(ctx, reqID, username, password)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -224,7 +223,7 @@ func (handler *UserService_OTServerWrapper) RegisterUser(ctx context.Context, re
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -268,13 +267,13 @@ func (handler *UserService_OTServerWrapper) RegisterUser(ctx context.Context, re
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.RegisterUser(ctx, reqID, firstName, lastName, username, password)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
@@ -285,7 +284,7 @@ func (handler *UserService_OTServerWrapper) RegisterUserWithId(ctx context.Conte
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -329,14 +328,13 @@ func (handler *UserService_OTServerWrapper) RegisterUserWithId(ctx context.Conte
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	err = handler.Service.RegisterUserWithId(ctx, reqID, firstName, lastName, username, password, userID)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

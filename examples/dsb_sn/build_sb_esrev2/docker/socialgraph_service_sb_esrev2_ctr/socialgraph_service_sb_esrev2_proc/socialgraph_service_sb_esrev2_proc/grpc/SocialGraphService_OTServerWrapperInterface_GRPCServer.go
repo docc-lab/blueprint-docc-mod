@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/socialgraph_service_sb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/socialgraph_service_sb_esrev2_proc/ot"
 )
 
 type SocialGraphService_GRPCServerHandler struct {
@@ -40,7 +41,6 @@ func (handler *SocialGraphService_GRPCServerHandler) Run(ctx context.Context) er
 
 	return s.Serve(lis)
 }
-
 
 func (handler *SocialGraphService_GRPCServerHandler) Follow(ctx context.Context, req *SocialGraphService_OTServerWrapperInterface_Follow_Request) (*SocialGraphService_OTServerWrapperInterface_Follow_Response, error) {
 	reqID, userID, followeeID, traceCtx := req.unmarshall()
@@ -125,4 +125,3 @@ func (handler *SocialGraphService_GRPCServerHandler) UnfollowWithUsername(ctx co
 	rsp.marshall()
 	return rsp, nil
 }
-

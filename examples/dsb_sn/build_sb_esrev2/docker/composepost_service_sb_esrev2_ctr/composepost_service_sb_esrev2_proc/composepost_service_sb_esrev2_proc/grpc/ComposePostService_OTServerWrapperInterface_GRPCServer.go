@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/composepost_service_sb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/composepost_service_sb_esrev2_proc/ot"
 )
 
 type ComposePostService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *ComposePostService_GRPCServerHandler) Run(ctx context.Context) er
 	return s.Serve(lis)
 }
 
-
 func (handler *ComposePostService_GRPCServerHandler) ComposePost(ctx context.Context, req *ComposePostService_OTServerWrapperInterface_ComposePost_Request) (*ComposePostService_OTServerWrapperInterface_ComposePost_Response, error) {
 	reqID, username, userID, text, mediaIDs, mediaTypes, postType, traceCtx := req.unmarshall()
 	ret0, ret1, err := handler.Service.ComposePost(ctx, reqID, username, userID, text, mediaIDs, mediaTypes, postType, traceCtx)
@@ -53,4 +53,3 @@ func (handler *ComposePostService_GRPCServerHandler) ComposePost(ctx context.Con
 	rsp.marshall(ret0, ret1)
 	return rsp, nil
 }
-

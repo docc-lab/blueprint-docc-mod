@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/post_storage_service_sb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/post_storage_service_sb_esrev2_proc/ot"
 )
 
 type PostStorageService_GRPCServerHandler struct {
@@ -40,7 +41,6 @@ func (handler *PostStorageService_GRPCServerHandler) Run(ctx context.Context) er
 
 	return s.Serve(lis)
 }
-
 
 func (handler *PostStorageService_GRPCServerHandler) ReadPost(ctx context.Context, req *PostStorageService_OTServerWrapperInterface_ReadPost_Request) (*PostStorageService_OTServerWrapperInterface_ReadPost_Response, error) {
 	reqID, postID, traceCtx := req.unmarshall()
@@ -77,4 +77,3 @@ func (handler *PostStorageService_GRPCServerHandler) StorePost(ctx context.Conte
 	rsp.marshall()
 	return rsp, nil
 }
-

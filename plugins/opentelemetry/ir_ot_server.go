@@ -2,6 +2,7 @@ package opentelemetry
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 
@@ -210,11 +211,21 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, impl.Name))
 	outputFile = filepath.Join(server.Package.Path, impl.Name+".go")
-	// return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplate, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplateSBridge, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplateCGPB, server, outputFile)
-	return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplatePath, server, outputFile)
-	// return gogen.ExecuteTemplateToFile("OTServerWrapper", serverTemplateVanilla, server, outputFile)
+	// Select the OT server wrapper template by bridge kind (OT_BRIDGE env, set per
+	// build from the spec). Must match the client-side selection above.
+	stmpl := serverTemplatePath
+	switch os.Getenv("OT_BRIDGE") {
+	case "v", "vanilla":
+		stmpl = serverTemplateVanilla
+	case "cgpb":
+		stmpl = serverTemplateCGPB
+	case "sb":
+		stmpl = serverTemplateSBridge
+	case "pb", "path", "rc", "":
+		stmpl = serverTemplatePath
+	}
+	slog.Info(fmt.Sprintf("OT server wrapper: OT_BRIDGE=%q", os.Getenv("OT_BRIDGE")))
+	return gogen.ExecuteTemplateToFile("OTServerWrapper", stmpl, server, outputFile)
 }
 
 func generateClientSideInterfaces(builder golang.ModuleBuilder, iface *gocode.ServiceInterface, outputPackage string) error {

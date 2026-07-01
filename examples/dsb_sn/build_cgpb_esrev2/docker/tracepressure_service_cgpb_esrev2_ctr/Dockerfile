@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process tracepressure_service_cgpb_esrev2_proc
 #
 
-FROM golang:1.26.3-bookworm AS tracepressure_service_cgpb_esrev2_proc
+FROM golang:1.26.4-bookworm AS tracepressure_service_cgpb_esrev2_proc
 
 COPY ./tracepressure_service_cgpb_esrev2_proc /src
 

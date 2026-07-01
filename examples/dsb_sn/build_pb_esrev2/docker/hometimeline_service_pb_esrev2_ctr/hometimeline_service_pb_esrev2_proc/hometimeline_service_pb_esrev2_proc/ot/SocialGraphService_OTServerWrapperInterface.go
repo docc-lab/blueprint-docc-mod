@@ -6,12 +6,11 @@ import (
 )
 
 type SocialGraphService_OTServerWrapperInterface interface {
-	Follow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) (error)
-	FollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) (error)
+	Follow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) error
+	FollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) error
 	GetFollowees(ctx context.Context, reqID int64, userID int64, traceCtx string) ([]int64, error)
 	GetFollowers(ctx context.Context, reqID int64, userID int64, traceCtx string) ([]int64, error)
-	InsertUser(ctx context.Context, reqID int64, userID int64, traceCtx string) (error)
-	Unfollow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) (error)
-	UnfollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) (error)
-	
+	InsertUser(ctx context.Context, reqID int64, userID int64, traceCtx string) error
+	Unfollow(ctx context.Context, reqID int64, userID int64, followeeID int64, traceCtx string) error
+	UnfollowWithUsername(ctx context.Context, reqID int64, userUsername string, followeeUsername string, traceCtx string) error
 }

@@ -3,12 +3,12 @@ package ot
 
 import (
 	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type PostStorageService_OTServerWrapperInterface interface {
 	ReadPost(ctx context.Context, reqID int64, postID int64, traceCtx string) (socialnetwork.Post, error)
 	ReadPosts(ctx context.Context, reqID int64, postIDs []int64, traceCtx string) ([]socialnetwork.Post, error)
-	StorePost(ctx context.Context, reqID int64, post socialnetwork.Post, traceCtx string) (error)
-	
+	StorePost(ctx context.Context, reqID int64, post socialnetwork.Post, traceCtx string) error
 }

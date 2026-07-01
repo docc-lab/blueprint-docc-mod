@@ -2,23 +2,24 @@
 //
 // It provides funcs for instantiating the wrk2api_service_sb_esrev2_proc namespace.
 //
-// To instantiate the wrk2api_service_sb_esrev2_proc namespace, first call [New_wrk2api_service_sb_esrev2_proc] and then either call 
+// To instantiate the wrk2api_service_sb_esrev2_proc namespace, first call [New_wrk2api_service_sb_esrev2_proc] and then either call
 // [Build] or [BuildWithParent].
-// 
+//
 // See [golang.NamespaceBuilder] docs for more information about the behavior of [Build]
 package main
 
 import (
+	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/grpc"
+	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/http"
+	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/ot"
+	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/retries"
+
+	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/opentelemetry"
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
-	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/ot"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/retries"
-	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/http"
-	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/grpc"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/slogger"
 )
 
 // Initializes the wrk2api_service_sb_esrev2_proc namespace by defining all of the nodes that run
@@ -35,19 +36,20 @@ func New_wrk2api_service_sb_esrev2_proc(name string) *golang.NamespaceBuilder {
 }
 
 // wrk2api_service_sb_esrev2_proc requires that its arguments are either:
-//  - explicitly set with [golang.NamespaceBuilder.Set]
-//  - passed on the command line (if built using [golang.NamespaceBuilder.Build])
-//  - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
+//   - explicitly set with [golang.NamespaceBuilder.Set]
+//   - passed on the command line (if built using [golang.NamespaceBuilder.Build])
+//   - are defined in parent (if built using [golang.NamespaceBuilder.BuildWithParent])
 //
 // The following arguments will be eagerly checked and building the namespace
 // will fail if they haven't been provided:
-//   composepost_service_sb_esrev2.grpc.dial_addr
-//   hometimeline_service_sb_esrev2.grpc.dial_addr
-//   otelcol_sb_esrev2.dial_addr
-//   socialgraph_service_sb_esrev2.grpc.dial_addr
-//   user_service_sb_esrev2.grpc.dial_addr
-//   usertimeline_service_sb_esrev2.grpc.dial_addr
-//   wrk2api_service_sb_esrev2.http.bind_addr
+//
+//	composepost_service_sb_esrev2.grpc.dial_addr
+//	hometimeline_service_sb_esrev2.grpc.dial_addr
+//	otelcol_sb_esrev2.dial_addr
+//	socialgraph_service_sb_esrev2.grpc.dial_addr
+//	user_service_sb_esrev2.grpc.dial_addr
+//	usertimeline_service_sb_esrev2.grpc.dial_addr
+//	wrk2api_service_sb_esrev2.http.bind_addr
 //
 // The following arguments are optional and a failure will only occur if the client
 // tries to build a node that needs the argument to be set
@@ -63,32 +65,33 @@ func set_wrk2api_service_sb_esrev2_proc_Args(b *golang.NamespaceBuilder) {
 
 // When the wrk2api_service_sb_esrev2_proc namespace is built it will automatically instantiate
 // the following nodes:
-//   wrk2api_service_sb_esrev2_proc.stdoutmetriccollector
-//   wrk2api_service_sb_esrev2_proc.logger
-//   user_service_sb_esrev2.grpc_client
-//   otelcol_sb_esrev2.client
-//   user_service_sb_esrev2.client.ot
-//   user_service_sb_esrev2.client.retrier
-//   user_service_sb_esrev2.client
-//   composepost_service_sb_esrev2.grpc_client
-//   composepost_service_sb_esrev2.client.ot
-//   composepost_service_sb_esrev2.client.retrier
-//   composepost_service_sb_esrev2.client
-//   usertimeline_service_sb_esrev2.grpc_client
-//   usertimeline_service_sb_esrev2.client.ot
-//   usertimeline_service_sb_esrev2.client.retrier
-//   usertimeline_service_sb_esrev2.client
-//   hometimeline_service_sb_esrev2.grpc_client
-//   hometimeline_service_sb_esrev2.client.ot
-//   hometimeline_service_sb_esrev2.client.retrier
-//   hometimeline_service_sb_esrev2.client
-//   socialgraph_service_sb_esrev2.grpc_client
-//   socialgraph_service_sb_esrev2.client.ot
-//   socialgraph_service_sb_esrev2.client.retrier
-//   socialgraph_service_sb_esrev2.client
-//   wrk2api_service_sb_esrev2
-//   wrk2api_service_sb_esrev2.server.ot
-//   wrk2api_service_sb_esrev2.http_server
+//
+//	wrk2api_service_sb_esrev2_proc.stdoutmetriccollector
+//	wrk2api_service_sb_esrev2_proc.logger
+//	user_service_sb_esrev2.grpc_client
+//	otelcol_sb_esrev2.client
+//	user_service_sb_esrev2.client.ot
+//	user_service_sb_esrev2.client.retrier
+//	user_service_sb_esrev2.client
+//	composepost_service_sb_esrev2.grpc_client
+//	composepost_service_sb_esrev2.client.ot
+//	composepost_service_sb_esrev2.client.retrier
+//	composepost_service_sb_esrev2.client
+//	usertimeline_service_sb_esrev2.grpc_client
+//	usertimeline_service_sb_esrev2.client.ot
+//	usertimeline_service_sb_esrev2.client.retrier
+//	usertimeline_service_sb_esrev2.client
+//	hometimeline_service_sb_esrev2.grpc_client
+//	hometimeline_service_sb_esrev2.client.ot
+//	hometimeline_service_sb_esrev2.client.retrier
+//	hometimeline_service_sb_esrev2.client
+//	socialgraph_service_sb_esrev2.grpc_client
+//	socialgraph_service_sb_esrev2.client.ot
+//	socialgraph_service_sb_esrev2.client.retrier
+//	socialgraph_service_sb_esrev2.client
+//	wrk2api_service_sb_esrev2
+//	wrk2api_service_sb_esrev2.server.ot
+//	wrk2api_service_sb_esrev2.http_server
 func set_wrk2api_service_sb_esrev2_proc_Instances(b *golang.NamespaceBuilder) {
 	b.Instantiate("wrk2api_service_sb_esrev2_proc.stdoutmetriccollector")
 	b.Instantiate("wrk2api_service_sb_esrev2_proc.logger")
@@ -120,32 +123,33 @@ func set_wrk2api_service_sb_esrev2_proc_Instances(b *golang.NamespaceBuilder) {
 
 // The wrk2api_service_sb_esrev2_proc namespace contains definitions for instantiating
 // the following nodes:
-//   composepost_service_sb_esrev2.client
-//   composepost_service_sb_esrev2.client.ot
-//   composepost_service_sb_esrev2.client.retrier
-//   composepost_service_sb_esrev2.grpc_client
-//   hometimeline_service_sb_esrev2.client
-//   hometimeline_service_sb_esrev2.client.ot
-//   hometimeline_service_sb_esrev2.client.retrier
-//   hometimeline_service_sb_esrev2.grpc_client
-//   otelcol_sb_esrev2.client
-//   socialgraph_service_sb_esrev2.client
-//   socialgraph_service_sb_esrev2.client.ot
-//   socialgraph_service_sb_esrev2.client.retrier
-//   socialgraph_service_sb_esrev2.grpc_client
-//   user_service_sb_esrev2.client
-//   user_service_sb_esrev2.client.ot
-//   user_service_sb_esrev2.client.retrier
-//   user_service_sb_esrev2.grpc_client
-//   usertimeline_service_sb_esrev2.client
-//   usertimeline_service_sb_esrev2.client.ot
-//   usertimeline_service_sb_esrev2.client.retrier
-//   usertimeline_service_sb_esrev2.grpc_client
-//   wrk2api_service_sb_esrev2
-//   wrk2api_service_sb_esrev2.http_server
-//   wrk2api_service_sb_esrev2.server.ot
-//   wrk2api_service_sb_esrev2_proc.logger
-//   wrk2api_service_sb_esrev2_proc.stdoutmetriccollector
+//
+//	composepost_service_sb_esrev2.client
+//	composepost_service_sb_esrev2.client.ot
+//	composepost_service_sb_esrev2.client.retrier
+//	composepost_service_sb_esrev2.grpc_client
+//	hometimeline_service_sb_esrev2.client
+//	hometimeline_service_sb_esrev2.client.ot
+//	hometimeline_service_sb_esrev2.client.retrier
+//	hometimeline_service_sb_esrev2.grpc_client
+//	otelcol_sb_esrev2.client
+//	socialgraph_service_sb_esrev2.client
+//	socialgraph_service_sb_esrev2.client.ot
+//	socialgraph_service_sb_esrev2.client.retrier
+//	socialgraph_service_sb_esrev2.grpc_client
+//	user_service_sb_esrev2.client
+//	user_service_sb_esrev2.client.ot
+//	user_service_sb_esrev2.client.retrier
+//	user_service_sb_esrev2.grpc_client
+//	usertimeline_service_sb_esrev2.client
+//	usertimeline_service_sb_esrev2.client.ot
+//	usertimeline_service_sb_esrev2.client.retrier
+//	usertimeline_service_sb_esrev2.grpc_client
+//	wrk2api_service_sb_esrev2
+//	wrk2api_service_sb_esrev2.http_server
+//	wrk2api_service_sb_esrev2.server.ot
+//	wrk2api_service_sb_esrev2_proc.logger
+//	wrk2api_service_sb_esrev2_proc.stdoutmetriccollector
 func set_wrk2api_service_sb_esrev2_proc_Definitions(b *golang.NamespaceBuilder) {
 	b.Define("composepost_service_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
@@ -153,288 +157,288 @@ func set_wrk2api_service_sb_esrev2_proc_Definitions(b *golang.NamespaceBuilder) 
 		err := n.Get("composepost_service_sb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("composepost_service_sb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.ComposePostService_OTServerWrapperInterface
 		if err := n.Get("composepost_service_sb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_sb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_ComposePostService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("composepost_service_sb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.ComposePostService_OTClientWrapperInterface
 		if err := n.Get("composepost_service_sb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_ComposePostService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("composepost_service_sb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("composepost_service_sb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_ComposePostService_GRPCClient(n.Context(), addr)
 	})
-	
+
 	b.Define("hometimeline_service_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.HomeTimelineService
 		err := n.Get("hometimeline_service_sb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("hometimeline_service_sb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.HomeTimelineService_OTServerWrapperInterface
 		if err := n.Get("hometimeline_service_sb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_sb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_HomeTimelineService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("hometimeline_service_sb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.HomeTimelineService_OTClientWrapperInterface
 		if err := n.Get("hometimeline_service_sb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_HomeTimelineService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("hometimeline_service_sb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("hometimeline_service_sb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_HomeTimelineService_GRPCClient(n.Context(), addr)
 	})
-	
+
 	b.Define("otelcol_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("otelcol_sb_esrev2.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return otelcol.NewOTCollectorTracer(n.Context(), addr, "8080")
 	})
-	
+
 	b.Define("socialgraph_service_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.SocialGraphService
 		err := n.Get("socialgraph_service_sb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("socialgraph_service_sb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.SocialGraphService_OTServerWrapperInterface
 		if err := n.Get("socialgraph_service_sb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_sb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_SocialGraphService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("socialgraph_service_sb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.SocialGraphService_OTClientWrapperInterface
 		if err := n.Get("socialgraph_service_sb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_SocialGraphService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("socialgraph_service_sb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("socialgraph_service_sb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_SocialGraphService_GRPCClient(n.Context(), addr)
 	})
-	
+
 	b.Define("user_service_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.UserService
 		err := n.Get("user_service_sb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("user_service_sb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UserService_OTServerWrapperInterface
 		if err := n.Get("user_service_sb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_sb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_UserService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("user_service_sb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UserService_OTClientWrapperInterface
 		if err := n.Get("user_service_sb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_UserService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("user_service_sb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("user_service_sb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_UserService_GRPCClient(n.Context(), addr)
 	})
-	
+
 	b.Define("usertimeline_service_sb_esrev2.client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin workflow/ir_workflowservice.go
 		var client socialnetwork.UserTimelineService
 		err := n.Get("usertimeline_service_sb_esrev2.client.retrier", &client)
 		return client, err
 	})
-	
+
 	b.Define("usertimeline_service_sb_esrev2.client.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UserTimelineService_OTServerWrapperInterface
 		if err := n.Get("usertimeline_service_sb_esrev2.grpc_client", &client); err != nil {
 			return nil, err
 		}
-		
+
 		var coll_client backend.Tracer
 		if err := n.Get("otelcol_sb_esrev2.client", &coll_client); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_UserTimelineService_OTClientWrapper(n.Context(), client, coll_client)
 	})
-	
+
 	b.Define("usertimeline_service_sb_esrev2.client.retrier", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var client ot.UserTimelineService_OTClientWrapperInterface
 		if err := n.Get("usertimeline_service_sb_esrev2.client.ot", &client); err != nil {
 			return nil, err
 		}
-		
+
 		return retries.New_UserTimelineService_RetrierClient(n.Context(), client)
 	})
-	
+
 	b.Define("usertimeline_service_sb_esrev2.grpc_client", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var addr string
 		if err := n.Get("usertimeline_service_sb_esrev2.grpc.dial_addr", &addr); err != nil {
 			return nil, err
 		}
-		
+
 		return grpc.New_UserTimelineService_GRPCClient(n.Context(), addr)
 	})
-	
+
 	b.Define("wrk2api_service_sb_esrev2", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var userService socialnetwork.UserService
 		if err := n.Get("user_service_sb_esrev2.client", &userService); err != nil {
 			return nil, err
 		}
-		
+
 		var composePostService socialnetwork.ComposePostService
 		if err := n.Get("composepost_service_sb_esrev2.client", &composePostService); err != nil {
 			return nil, err
 		}
-		
+
 		var userTimelineService socialnetwork.UserTimelineService
 		if err := n.Get("usertimeline_service_sb_esrev2.client", &userTimelineService); err != nil {
 			return nil, err
 		}
-		
+
 		var homeTimelineService socialnetwork.HomeTimelineService
 		if err := n.Get("hometimeline_service_sb_esrev2.client", &homeTimelineService); err != nil {
 			return nil, err
 		}
-		
+
 		var socialGraphService socialnetwork.SocialGraphService
 		if err := n.Get("socialgraph_service_sb_esrev2.client", &socialGraphService); err != nil {
 			return nil, err
 		}
-		
+
 		return socialnetwork.NewWrk2APIServiceImpl(n.Context(), userService, composePostService, userTimelineService, homeTimelineService, socialGraphService)
 	})
-	
+
 	b.Define("wrk2api_service_sb_esrev2.http_server", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service ot.Wrk2APIService_OTServerWrapperInterface
 		if err := n.Get("wrk2api_service_sb_esrev2.server.ot", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var serverAddr string
 		if err := n.Get("wrk2api_service_sb_esrev2.http.bind_addr", &serverAddr); err != nil {
 			return nil, err
 		}
-		
+
 		return http.New_Wrk2APIService_HTTPServerHandler(n.Context(), service, serverAddr)
 	})
-	
+
 	b.Define("wrk2api_service_sb_esrev2.server.ot", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		var service socialnetwork.Wrk2APIService
 		if err := n.Get("wrk2api_service_sb_esrev2", &service); err != nil {
 			return nil, err
 		}
-		
+
 		var otCollectorClient backend.Tracer
 		if err := n.Get("otelcol_sb_esrev2.client", &otCollectorClient); err != nil {
 			return nil, err
 		}
-		
+
 		return ot.New_Wrk2APIService_OTServerWrapper(n.Context(), service, otCollectorClient)
 	})
-	
+
 	b.Define("wrk2api_service_sb_esrev2_proc.logger", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return slogger.NewSLogger(n.Context())
 	})
-	
+
 	b.Define("wrk2api_service_sb_esrev2_proc.stdoutmetriccollector", func(n *golang.Namespace) (any, error) {
 		// Auto-generated by the golang plugin gogen/namespacebuilder.go
 		return opentelemetry.NewStdoutMetricCollector(n.Context())
 	})
-	
+
 }

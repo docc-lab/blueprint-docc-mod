@@ -2,22 +2,21 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/wrk2api_service_sb_esrev2_proc/ot"
+	"context"
 )
 
 type ComposePostService_RetrierClient struct {
-	Client ot.ComposePostService_OTClientWrapperInterface
+	Client   ot.ComposePostService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_ComposePostService_RetrierClient (ctx context.Context, client ot.ComposePostService_OTClientWrapperInterface) (*ComposePostService_RetrierClient, error) {
+func New_ComposePostService_RetrierClient(ctx context.Context, client ot.ComposePostService_OTClientWrapperInterface) (*ComposePostService_RetrierClient, error) {
 	handler := &ComposePostService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *ComposePostService_RetrierClient) ComposePost(ctx context.Context, reqID int64, username string, userID int64, text string, mediaIDs []int64, mediaTypes []string, postType int64) (ret0 int64, ret1 []int64, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -28,4 +27,3 @@ func (client *ComposePostService_RetrierClient) ComposePost(ctx context.Context,
 	}
 	return
 }
-

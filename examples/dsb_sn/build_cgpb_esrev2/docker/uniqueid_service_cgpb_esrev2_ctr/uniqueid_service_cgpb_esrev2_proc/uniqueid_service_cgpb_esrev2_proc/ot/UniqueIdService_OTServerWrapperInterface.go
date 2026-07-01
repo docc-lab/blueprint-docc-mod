@@ -2,24 +2,24 @@
 package ot
 
 import (
+	"context"
+	"strconv"
 	"strings"
 	"sync/atomic"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
-	"context"
-	"go.opentelemetry.io/otel/trace"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strconv"
 	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UniqueIdService_OTServerWrapperInterface interface {
 	ComposeUniqueId(ctx context.Context, reqID int64, postType int64, traceCtx string) (int64, error)
-	
 }
 
 type UniqueIdService_OTServerWrapper struct {
-	Service socialnetwork.UniqueIdService
+	Service    socialnetwork.UniqueIdService
 	CollClient backend.Tracer
 }
 
@@ -30,14 +30,13 @@ func New_UniqueIdService_OTServerWrapper(ctx context.Context, service socialnetw
 	return handler, nil
 }
 
-
 func (handler *UniqueIdService_OTServerWrapper) ComposeUniqueId(ctx context.Context, reqID int64, postType int64, traceCtx string) (ret0 int64, err error) {
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -81,14 +80,13 @@ func (handler *UniqueIdService_OTServerWrapper) ComposeUniqueId(ctx context.Cont
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
-	
+
 	ret0, err = handler.Service.ComposeUniqueId(ctx, reqID, postType)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
+	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
 	return
 }
-

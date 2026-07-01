@@ -37,19 +37,52 @@ PLACEMENT = [
     ("node-9", [("jaeger", 20000), ("elasticsearch", 4000)]),
 ]
 
+# Anti-affinity placement: NO two TRACED (named *-service) services that have a
+# call edge between them share a node, so every traced service<->service hop
+# crosses a real network link (un-masking the bridges' propagation/serialization
+# overhead). Caches/DBs are UNTRACED -> they ride with their owning service.
+# wrk2api (frontend) MUST be a Deployment (not the per-node DaemonSet) for this to
+# hold for the gateway->backend hop too -> build with --wrk2api-deploy.
+#
+# Call graph (from the service constructors' client fields):
+#   wrk2api      -> composepost, hometimeline, socialgraph, user, usertimeline
+#   composepost  -> hometimeline, media, poststorage, text, uniqueid, user, usertimeline
+#   hometimeline -> poststorage, socialgraph ;  text -> urlshorten, usermention
+#   socialgraph  -> userid ;  user -> socialgraph ;  uniqueid -> usertimeline ;  usertimeline -> poststorage
+# Every co-located *-service pair below is a verified NON-edge.
+ANTI_AFFINITY_PLACEMENT = [
+    ("node-1", [("composepost-service", 12000), ("userid-service", 6000)]),
+    ("node-2", [("hometimeline-service", 5000), ("hometimeline-cache", 2000),
+                ("urlshorten-service", 5000), ("urlshorten-db", 2000)]),
+    ("node-3", [("usertimeline-service", 8000), ("usertimeline-cache", 2000),
+                ("usertimeline-db", 11000), ("usermention-service", 4000)]),
+    ("node-4", [("socialgraph-service", 6000), ("social-cache", 4000),
+                ("social-db", 25000), ("text-service", 8000)]),
+    ("node-5", [("post-storage-service", 5000), ("post-cache", 2000), ("post-db", 3000)]),
+    ("node-6", [("uniqueid-service", 3000), ("media-service", 2000)]),
+    ("node-7", [("wrk2api-service", 8000)]),
+    ("node-8", [("user-service", 3000), ("user-cache", 2000), ("user-db", 2000)]),
+    ("node-9", [("jaeger", 20000), ("elasticsearch", 4000)]),
+]
 
-def render(variant, no_requests=False):
-    n_svc = sum(len(s) for _, s in PLACEMENT)
+
+def render(variant, no_requests=False, placement=None, header=None):
+    placement = placement or PLACEMENT
+    n_svc = sum(len(s) for _, s in placement)
     mode = "PLACEMENT-ONLY (no requests)" if no_requests else "with CPU requests"
+    is_anti = placement is ANTI_AFFINITY_PLACEMENT
+    note = ("# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy)."
+            if is_anti else
+            "# Hot node = node-1: composepost+hometimeline+hometimeline-cache co-located\n"
+            "# for the asymmetric-pressure design. DaemonSets (otelcol, wrk2api) NOT pinned.")
     lines = [
-        f"# Auto-generated node-pinning for variant '{variant}' (canonical rev2 placement, {mode}).",
-        "# Hot node = node-1: composepost+hometimeline+hometimeline-cache co-located",
-        "# for the asymmetric-pressure design. DaemonSets (otelcol, wrk2api) NOT pinned.",
-        f"# {n_svc} services across {len(PLACEMENT)} nodes. Service names = <base>-{variant}-ctr.",
+        f"# Auto-generated node-pinning for variant '{variant}' ({header or 'canonical rev2 placement'}, {mode}).",
+        note,
+        f"# {n_svc} services across {len(placement)} nodes. Service names = <base>-{variant}-ctr.",
         "# Consumed by pin_nodes.py. Edit freely.",
         "",
     ]
-    for node, svcs in PLACEMENT:
+    for node, svcs in placement:
         lines.append(f"{node}:")
         for base, cpu in svcs:
             lines.append(f"  - {base}-{variant}-ctr:")
@@ -62,17 +95,21 @@ def render(variant, no_requests=False):
 def main():
     argv = sys.argv[1:]
     no_requests = "--no-requests" in argv          # placement-only: nodeSelector, no CPU requests
-    pos = [a for a in argv if a != "--no-requests"]
+    anti = "--anti-affinity" in argv               # traced services with a call edge never co-located
+    pos = [a for a in argv if a not in ("--no-requests", "--anti-affinity")]
     if not pos:
-        sys.exit("usage: gen_node_pinning.py <variant-dash-form> [outfile] [--no-requests]")
+        sys.exit("usage: gen_node_pinning.py <variant-dash-form> [outfile] [--no-requests] [--anti-affinity]")
     variant = pos[0]
-    out = render(variant, no_requests)
+    placement = ANTI_AFFINITY_PLACEMENT if anti else PLACEMENT
+    header = "anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment)" if anti else None
+    out = render(variant, no_requests, placement=placement, header=header)
     if len(pos) >= 2:
         with open(pos[1], "w") as f:
             f.write(out)
-        n_svc = sum(len(s) for _, s in PLACEMENT)
+        n_svc = sum(len(s) for _, s in placement)
         tag = " (placement-only, no requests)" if no_requests else ""
-        print(f"wrote {pos[1]} ({n_svc} services across {len(PLACEMENT)} nodes){tag}")
+        tag += " [anti-affinity]" if anti else ""
+        print(f"wrote {pos[1]} ({n_svc} services across {len(placement)} nodes){tag}")
     else:
         sys.stdout.write(out)
 

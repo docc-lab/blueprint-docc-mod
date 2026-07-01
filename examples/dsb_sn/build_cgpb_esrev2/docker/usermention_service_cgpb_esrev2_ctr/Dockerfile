@@ -15,7 +15,7 @@
 #  custom docker build commands provided by goproc.Process usermention_service_cgpb_esrev2_proc
 #
 
-FROM golang:1.26.3-bookworm AS usermention_service_cgpb_esrev2_proc
+FROM golang:1.26.4-bookworm AS usermention_service_cgpb_esrev2_proc
 
 COPY ./usermention_service_cgpb_esrev2_proc /src
 

@@ -3,22 +3,23 @@ package ot
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
-	"sync/atomic"
 	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type UserIDService_OTClientWrapperInterface interface {
 	GetUserId(ctx context.Context, reqID int64, username string) (int64, error)
-	
 }
 
 type UserIDService_OTClientWrapper struct {
-	Client UserIDService_OTServerWrapperInterface
+	Client     UserIDService_OTServerWrapperInterface
 	CollClient backend.Tracer
 }
 
@@ -29,7 +30,6 @@ func New_UserIDService_OTClientWrapper(ctx context.Context, client UserIDService
 	return handler, nil
 }
 
-
 func (handler *UserIDService_OTClientWrapper) GetUserId(ctx context.Context, reqID int64, username string) (ret0 int64, err error) {
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
@@ -39,17 +39,27 @@ func (handler *UserIDService_OTClientWrapper) GetUserId(ctx context.Context, req
 			baggage[k] = v
 		}
 	}
-	
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserIDService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-	
+	// childrenMutexPtr.Lock()
+
 	ctx, span := tr.Start(ctx, "UserIDServiceClient_GetUserId", trace.WithSpanKind(trace.SpanKindClient))
 
+	// childrenMutexPtr.Unlock()
+
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.(trace2.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -70,16 +80,24 @@ func (handler *UserIDService_OTClientWrapper) GetUserId(ctx context.Context, req
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	ret0, err = handler.Client.GetUserId(ctx, reqID, username, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
-

@@ -2,23 +2,23 @@
 package retries
 
 import (
-	"context"
 	"blueprint/goproc/usertimeline_service_cgpb_esrev2_proc/ot"
+	"context"
+
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 )
 
 type PostStorageService_RetrierClient struct {
-	Client ot.PostStorageService_OTClientWrapperInterface
+	Client   ot.PostStorageService_OTClientWrapperInterface
 	MaxTries int
 }
 
-func New_PostStorageService_RetrierClient (ctx context.Context, client ot.PostStorageService_OTClientWrapperInterface) (*PostStorageService_RetrierClient, error) {
+func New_PostStorageService_RetrierClient(ctx context.Context, client ot.PostStorageService_OTClientWrapperInterface) (*PostStorageService_RetrierClient, error) {
 	handler := &PostStorageService_RetrierClient{}
 	handler.Client = client
 	handler.MaxTries = 3
 	return handler, nil
 }
-
 
 func (client *PostStorageService_RetrierClient) ReadPost(ctx context.Context, reqID int64, postID int64) (ret0 socialnetwork.Post, err error) {
 	for i := 0; i < client.MaxTries; i++ {
@@ -49,4 +49,3 @@ func (client *PostStorageService_RetrierClient) StorePost(ctx context.Context, r
 	}
 	return
 }
-

@@ -2,13 +2,13 @@
 package ot
 
 import (
-	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
 	"sync/atomic"
+	"strconv"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -44,14 +44,24 @@ func (handler *Wrk2APIService_OTClientWrapper) ComposePost(ctx context.Context, 
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_ComposePost", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -84,7 +94,16 @@ func (handler *Wrk2APIService_OTClientWrapper) ComposePost(ctx context.Context, 
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -97,14 +116,24 @@ func (handler *Wrk2APIService_OTClientWrapper) Follow(ctx context.Context, usern
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_Follow", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -137,7 +166,16 @@ func (handler *Wrk2APIService_OTClientWrapper) Follow(ctx context.Context, usern
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -150,14 +188,24 @@ func (handler *Wrk2APIService_OTClientWrapper) ReadHomeTimeline(ctx context.Cont
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_ReadHomeTimeline", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -190,7 +238,16 @@ func (handler *Wrk2APIService_OTClientWrapper) ReadHomeTimeline(ctx context.Cont
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -203,14 +260,24 @@ func (handler *Wrk2APIService_OTClientWrapper) ReadUserTimeline(ctx context.Cont
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_ReadUserTimeline", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -243,7 +310,16 @@ func (handler *Wrk2APIService_OTClientWrapper) ReadUserTimeline(ctx context.Cont
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -256,14 +332,24 @@ func (handler *Wrk2APIService_OTClientWrapper) Register(ctx context.Context, fir
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_Register", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -296,7 +382,16 @@ func (handler *Wrk2APIService_OTClientWrapper) Register(ctx context.Context, fir
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 
@@ -309,14 +404,24 @@ func (handler *Wrk2APIService_OTClientWrapper) Unfollow(ctx context.Context, use
 			baggage[k] = v
 		}
 	}
+
+	// Server always sets these values, so we can skip ok checks to reduce overhead
+	// Cache pointers after first lookup to avoid repeated context.Value() calls
+	eventCountPtr := ctx.Value("eventCount").(*atomic.Uint64)
+	endEventsPtr := ctx.Value("endEvents").(*[]int)
+	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
+	seqNum := int(eventCountPtr.Add(1))
+
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	// childrenMutexPtr.Lock()
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_Unfollow", trace.WithSpanKind(trace.SpanKindClient))
+
+	// childrenMutexPtr.Unlock()
 
 	defer span.End()
 	
@@ -349,7 +454,16 @@ func (handler *Wrk2APIService_OTClientWrapper) Unfollow(ctx context.Context, use
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
+	// Match the bridges Go simulator: append the child's startSeq to the
+	// parent's per-(trace,parentSpan) accumulator in the order in which
+	// children END. No more "seqNum:endSeqNum" colon-pair string format;
+	// the simulator only tracks the start seqs.
+	_ = eventCountPtr.Add(1) // preserve eventCount monotonicity for downstream consumers
+	childrenMutexPtr.Lock()
+	*endEventsPtr = append(*endEventsPtr, seqNum)
+	childrenMutexPtr.Unlock()
+
 	return
 }
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -42,9 +41,6 @@ func (handler *UserMentionService_OTClientWrapper) ComposeUserMentions(ctx conte
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserMentionService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "UserMentionServiceClient_ComposeUserMentions", trace.WithSpanKind(trace.SpanKindClient))
 

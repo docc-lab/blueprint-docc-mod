@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -46,9 +45,6 @@ func (handler *UserService_OTClientWrapper) ComposeCreatorWithUserId(ctx context
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "UserServiceClient_ComposeCreatorWithUserId", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -100,9 +96,6 @@ func (handler *UserService_OTClientWrapper) ComposeCreatorWithUsername(ctx conte
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-
 	ctx, span := tr.Start(ctx, "UserServiceClient_ComposeCreatorWithUsername", trace.WithSpanKind(trace.SpanKindClient))
 
 	defer span.End()
@@ -152,9 +145,6 @@ func (handler *UserService_OTClientWrapper) Login(ctx context.Context, reqID int
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "UserServiceClient_Login", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -206,9 +196,6 @@ func (handler *UserService_OTClientWrapper) RegisterUser(ctx context.Context, re
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserService_OTServerWrapperInterface")
 
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
-
 	ctx, span := tr.Start(ctx, "UserServiceClient_RegisterUser", trace.WithSpanKind(trace.SpanKindClient))
 
 	defer span.End()
@@ -258,9 +245,6 @@ func (handler *UserService_OTClientWrapper) RegisterUserWithId(ctx context.Conte
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UserService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "UserServiceClient_RegisterUserWithId", trace.WithSpanKind(trace.SpanKindClient))
 

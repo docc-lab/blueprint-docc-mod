@@ -5,7 +5,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -43,9 +42,6 @@ func (handler *UrlShortenService_OTClientWrapper) ComposeUrls(ctx context.Contex
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UrlShortenService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "UrlShortenServiceClient_ComposeUrls", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -96,9 +92,6 @@ func (handler *UrlShortenService_OTClientWrapper) GetExtendedUrls(ctx context.Co
 
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("UrlShortenService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 
 	ctx, span := tr.Start(ctx, "UrlShortenServiceClient_GetExtendedUrls", trace.WithSpanKind(trace.SpanKindClient))
 

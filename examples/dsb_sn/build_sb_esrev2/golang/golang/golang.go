@@ -9,9 +9,9 @@
 package main
 
 import (
-	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/jaeger"
+	"github.com/blueprint-uservices/blueprint/runtime/plugins/otelcol"
 )
 
 // Initializes the golang namespace by defining all of the nodes that run

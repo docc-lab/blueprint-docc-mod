@@ -2,10 +2,11 @@
 package grpc
 
 import (
+	"blueprint/goproc/usermention_service_cgpb_esrev2_proc/ot"
 	"context"
 	"net"
+
 	"google.golang.org/grpc"
-	"blueprint/goproc/usermention_service_cgpb_esrev2_proc/ot"
 )
 
 type UserMentionService_GRPCServerHandler struct {
@@ -41,7 +42,6 @@ func (handler *UserMentionService_GRPCServerHandler) Run(ctx context.Context) er
 	return s.Serve(lis)
 }
 
-
 func (handler *UserMentionService_GRPCServerHandler) ComposeUserMentions(ctx context.Context, req *UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Request) (*UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response, error) {
 	reqID, usernames, traceCtx := req.unmarshall()
 	ret0, err := handler.Service.ComposeUserMentions(ctx, reqID, usernames, traceCtx)
@@ -53,4 +53,3 @@ func (handler *UserMentionService_GRPCServerHandler) ComposeUserMentions(ctx con
 	rsp.marshall(ret0)
 	return rsp, nil
 }
-

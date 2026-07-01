@@ -7,5 +7,4 @@ import (
 
 type ComposePostService_OTServerWrapperInterface interface {
 	ComposePost(ctx context.Context, reqID int64, username string, userID int64, text string, mediaIDs []int64, mediaTypes []string, postType int64, traceCtx string) (int64, []int64, error)
-	
 }

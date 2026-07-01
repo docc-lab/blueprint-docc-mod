@@ -7,5 +7,4 @@ import (
 
 type UniqueIdService_OTServerWrapperInterface interface {
 	ComposeUniqueId(ctx context.Context, reqID int64, postType int64, traceCtx string) (int64, error)
-	
 }

@@ -2,13 +2,13 @@
 package ot
 
 import (
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"strings"
 	"sync/atomic"
 	"strconv"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
-	"strings"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -47,9 +47,6 @@ func (handler *Wrk2APIService_OTClientWrapper) ComposePost(ctx context.Context, 
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_ComposePost", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -100,9 +97,6 @@ func (handler *Wrk2APIService_OTClientWrapper) Follow(ctx context.Context, usern
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_Follow", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -153,9 +147,6 @@ func (handler *Wrk2APIService_OTClientWrapper) ReadHomeTimeline(ctx context.Cont
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_ReadHomeTimeline", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -206,9 +197,6 @@ func (handler *Wrk2APIService_OTClientWrapper) ReadUserTimeline(ctx context.Cont
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_ReadUserTimeline", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -259,9 +247,6 @@ func (handler *Wrk2APIService_OTClientWrapper) Register(ctx context.Context, fir
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_Register", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -312,9 +297,6 @@ func (handler *Wrk2APIService_OTClientWrapper) Unfollow(ctx context.Context, use
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("Wrk2APIService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "Wrk2APIServiceClient_Unfollow", trace.WithSpanKind(trace.SpanKindClient))
 

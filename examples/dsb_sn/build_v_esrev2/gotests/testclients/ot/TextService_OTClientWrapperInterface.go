@@ -2,14 +2,14 @@
 package ot
 
 import (
+	"sync/atomic"
+	"strconv"
 	"github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow/socialnetwork"
 	"context"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"strings"
-	"sync/atomic"
-	"strconv"
 	trace2 "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -43,9 +43,6 @@ func (handler *TextService_OTClientWrapper) ComposeText(ctx context.Context, req
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("TextService_OTServerWrapperInterface")
-
-	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
 	
 	ctx, span := tr.Start(ctx, "TextServiceClient_ComposeText", trace.WithSpanKind(trace.SpanKindClient))
 
