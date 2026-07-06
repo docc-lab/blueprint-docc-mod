@@ -1,0 +1,47 @@
+# Auto-generated node-pinning for variant 'pb-esrev2c6' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-pb-esrev2c6-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-pb-esrev2c6-ctr:
+  - userid-service-pb-esrev2c6-ctr:
+
+node-2:
+  - hometimeline-service-pb-esrev2c6-ctr:
+  - hometimeline-cache-pb-esrev2c6-ctr:
+  - urlshorten-service-pb-esrev2c6-ctr:
+  - urlshorten-db-pb-esrev2c6-ctr:
+
+node-3:
+  - usertimeline-service-pb-esrev2c6-ctr:
+  - usertimeline-cache-pb-esrev2c6-ctr:
+  - usertimeline-db-pb-esrev2c6-ctr:
+  - usermention-service-pb-esrev2c6-ctr:
+
+node-4:
+  - socialgraph-service-pb-esrev2c6-ctr:
+  - social-cache-pb-esrev2c6-ctr:
+  - social-db-pb-esrev2c6-ctr:
+  - text-service-pb-esrev2c6-ctr:
+
+node-5:
+  - post-storage-service-pb-esrev2c6-ctr:
+  - post-cache-pb-esrev2c6-ctr:
+  - post-db-pb-esrev2c6-ctr:
+
+node-6:
+  - uniqueid-service-pb-esrev2c6-ctr:
+  - media-service-pb-esrev2c6-ctr:
+
+node-7:
+  - wrk2api-service-pb-esrev2c6-ctr:
+
+node-8:
+  - user-service-pb-esrev2c6-ctr:
+  - user-cache-pb-esrev2c6-ctr:
+  - user-db-pb-esrev2c6-ctr:
+
+node-9:
+  - jaeger-pb-esrev2c6-ctr:
+  - elasticsearch-pb-esrev2c6-ctr:
