@@ -164,14 +164,38 @@ for pod in data['items']:
 run_step() {
   local RPS=$1
   local C=$(( (RPS*RPS + 19999) / 20000 ))
+  # Optional cap: the C=RPS^2/20000 heuristic over-provisions massively at high
+  # rps (e.g. 20000 conns @ 20k rps) and can exhaust FDs/ephemeral ports on the
+  # wrk client. Set CMAX to cap it; still far above Little's-law concurrency.
+  if [ -n "${CMAX:-}" ] && [ "$C" -gt "$CMAX" ]; then C=$CMAX; fi
   local T=$(( (C + 9) / 10 ))
   local NP=$(kubectl get service "wrk2api-service-${VARIANT}-ctr" -o jsonpath='{.spec.ports[?(@.port==2000)].nodePort}')
   local URL="http://10.10.1.1:$NP"
 
   echo "" >> "$LOG"
   echo "=== rps=$RPS c=$C t=$T url=$URL ===" >> "$LOG"
+
+  # Mid-step ACTUAL-frequency sample (cycle normalization; see lab discussion:
+  # cycles = latency/cpu-time × actual frequency). At STEP_SECS/2, sample every
+  # node's mean /proc/cpuinfo MHz in parallel over ssh — the true in-load clock,
+  # robust to pin drift (e.g. intel_cpufreq running below its min=max target).
+  (
+    sleep $(( ${STEP_SECS:-60} / 2 ))
+    FT=$(date +%s)
+    for node in $(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+      (
+        m=$(ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no "$node" \
+              "awk '/cpu MHz/{s+=\$4;n++} END{if(n)printf \"%.0f\", s/n}' /proc/cpuinfo" 2>/dev/null)
+        [ -n "$m" ] && echo -e "$FT\tmid\t$RPS\tcpufreq\t$node\tcpu_mhz_mean\t$m" >> "$SNAP"
+      ) &
+    done
+    wait
+  ) &
+  local FREQ_PID=$!
+
   local OUT=$(wrk -t "$T" -c "$C" -d "${STEP_SECS:-60}s" -L -s "$LUA" "$URL" -R "$RPS" 2>&1)
   echo "$OUT" >> "$LOG"
+  wait "$FREQ_PID" 2>/dev/null || true
 
   local ACHIEVED=$(echo "$OUT" | grep "Requests/sec" | awk '{print $NF}')
   local MEAN=$(echo "$OUT" | grep -A 1 "Thread Stats" | tail -1 | awk '{print $2}')

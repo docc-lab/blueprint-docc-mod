@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_es_nw/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: otelcol-sb-es-nw-ctr
+  name: otelcol-sb-es-nw-ctr
+spec:
+  selector:
+    matchLabels:
+      io.kompose.service: otelcol-sb-es-nw-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_es_nw/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: otelcol-sb-es-nw-ctr
+    spec:
+      containers:
+      - env:
+        - name: BRIDGE_KIND
+          value: sb
+        - name: GC_INTERVAL_SEC
+          value: '0'
+        - name: JAEGER_SB_ES_NW_OTLP_DIAL_ADDR
+          value: jaeger-sb-es-nw-ctr:4317
+        - name: GOMEMLIMIT
+          value: 3276MiB
+        image: 10.10.1.1:30000/otelcol-sb-es-nw-ctr:latest
+        name: otelcol-sb-es-nw-ctr
+        ports:
+        - containerPort: 4317
+          protocol: TCP
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 4Gi
+          requests:
+            cpu: 500m
+            memory: 4Gi
+      hostname: otelcol-sb-es-nw-ctr
+      restartPolicy: Always

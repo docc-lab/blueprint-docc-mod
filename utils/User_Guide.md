@@ -13,8 +13,9 @@ crash-looping or silently producing an invalid run.
 
 ## First-time setup (fresh node)
 
-On a brand-new CloudLab node, run the one-shot bootstrap first — it installs every
-dependency the build/deploy pipeline needs:
+On a brand-new CloudLab head node, run the one-shot bootstrap first — it installs
+every dependency the build/deploy pipeline needs. Full built-in reference:
+`utils/setup_environment.sh --help`.
 
 ```bash
 cd /users/tomislav/blueprint-docc-mod
@@ -25,7 +26,9 @@ It runs 8 idempotent stages (safe to re-run):
 
 1. **Base apt** — git, curl, ca-certificates, python3-venv, python3-pip
 2. **Clone sibling repos** (next to `blueprint-docc-mod`) — docc-lab's
-   `opentelemetry-collector-contrib` and `DeathStarBench` (`--recurse-submodules`)
+   `opentelemetry-collector-contrib` and `DeathStarBench` (`--recurse-submodules`).
+   Skipped per-repo if already present — a restored copy with local changes is
+   never touched.
 3. **Build wrk2** — DeathStarBench's load generator: apt `build-essential libssl-dev
    libz-dev luarocks`, `luarocks install luasocket`, `make` in `DeathStarBench/wrk2`,
    install the `wrk` binary to `/usr/local/bin`
@@ -36,14 +39,24 @@ It runs 8 idempotent stages (safe to re-run):
 5. **Python venv** at `blueprint-docc-mod/.venv` — `pyyaml` (d2k8s + helpers) + `aiohttp` (seeder)
 6. **Docker group** — adds you to `docker` (re-login to take effect)
 7. **In-cluster registry** — creates the `registry` namespace + applies pvc/deployment/service (NodePort 30000)
-8. **CPU pin** — pins **all** nodes' CPUs to a fixed clock (default 2.2 GHz) for deterministic runs
+8. **CPU pin** — pins **every** k8s node's CPUs to a fixed clock (default 2.2 GHz).
+   Nodes are **auto-detected from `kubectl get nodes`** — no assumption about
+   cluster size; works identically on a 10- or 15-node experiment.
 
-**Overrides (env vars):**
+**Invocation examples:**
 ```bash
+utils/setup_environment.sh                        # standard fresh-cluster bootstrap
+utils/setup_environment.sh --help                 # complete built-in reference
 CPU_GHZ=2.0 utils/setup_environment.sh            # pin nodes to 2.0 GHz instead of 2.2
 DSB_REPO=https://github.com/docc-lab/DeathStarBench.git utils/setup_environment.sh
 COLLECTOR_REPO=<url> utils/setup_environment.sh   # use a different collector fork
+utils/setup_environment.sh                        # re-run after cluster rebuild: clones/toolchain
+                                                  # fast-skip; registry + pin get re-applied
 ```
+
+> **Restoring instead of cloning:** if you have existing working copies (e.g. from a
+> previous experiment) with uncommitted changes, copy them into place *before*
+> running setup — stage 2 will detect and keep them.
 
 **After it finishes:**
 1. Open a new shell (or `source ~/.bashrc`) to pick up the Go PATH.
@@ -148,12 +161,15 @@ The script assumes a working CloudLab kubespray cluster and these already in pla
 | `--hard <pct>` | Collector controller hard (force-GC) threshold %. | 70 |
 | `--cp-safety <f>` | CP-vs-LP shedding dial (higher = protect CP harder). | 1 |
 | `--no-pin-requests` | Node-pin places services on nodes (nodeSelector) but sets **no** CPU requests — avoids over-reserving cores. | off |
+| `--anti-affinity` | Placement: **no two traced services with a call edge share a node** (static 9-node layout) — un-masks per-hop bridge overhead. Use with `--wrk2api-deploy`. | off |
+| `--one-per-node` | Placement: **every named service on its own node**; nodes **auto-detected** from `kubectl get nodes` (tainted CP excluded, needs ≥14 schedulable). Caches/DBs ride along; near-idle userid+tracepressure share the CP node. Use with `--wrk2api-deploy`. | off |
+| `--wrk2api-deploy` | wrk2api as a single pinnable **Deployment** instead of a per-node DaemonSet — required for the isolation placements to cover the frontend hop. | off (DaemonSet) |
 | `--collector <mode>` | otelcol pipeline mode. `passthrough` = strip priority **and** memory_limiter → `receivers→batch→exporters` (use for **overhead** experiments so the collector imposes no shedding/limiting). Unset = wiring default (priority for bridges; for shedding studies). | unset |
 | `--build-collector` | Rebuild + push the `otelcontribcol` base image first. | off |
-| `--skip-build` | Skip d2k8s image builds (reuse existing images). | off |
+| `--skip-build` | Skip d2k8s image builds (reuse existing images — only valid if images for this exact suffix are already in the registry). | off |
 | `--apply` | Deploy: evict the live variant, apply, wait for Running. | off |
 | `--seed` | After apply, NodePort-patch wrk2api and seed the social graph. | off |
-| `-h`, `--help` | Print usage. | — |
+| `-h`, `--help` | Complete built-in reference (works everywhere — before the docker guard). | — |
 
 > `force_gc`, `gc_soft_interval`, `gc_ultrasoft_interval` for the collector
 > controller are script variables near the top of the file (defaults
@@ -166,12 +182,12 @@ The script assumes a working CloudLab kubespray cluster and these already in pla
 | Stage | Action | Auto-fix it applies |
 |---|---|---|
 | **[0]** | (`--build-collector`) build+push `otelcontribcol`. | — |
-| **[1]** | `go run wiring/main.go -w <spec> -o build_<name>`. | — |
+| **[1]** | Export `OT_BRIDGE` (derived from the spec: `docker_<kind>_es` → `<kind>`), then `go run wiring/main.go -w <spec> -o build_<name>`. | **selects the per-variant OT client/server wrapper template** at codegen time (vanilla gets a true no-bridge wrapper; pb/cgpb/sb get theirs) — without it every variant silently got the path-bridge wrapper |
 | **[1b]** | Detect the real kompose suffix from the generated compose. | prevents `--daemon-services` silently no-op'ing |
 | **[1c]** | `goimports -w` over generated Go. | **strips dead-import codegen** (unused `encoding/base64`/`binary`) that breaks `go build` |
 | **[2]** | Normalize the otelcol `priority` processor config + set `cpd`. | **rewrites the STALE `high/mid/low_percentage` schema** the wiring emits to the current `soft/hard/cp_safety_factor/...` the collector image expects (otherwise CrashLoopBackOff) |
 | **[3]** | Copy `.local.env` → `docker/.env` (address map for compose). | — |
-| **[4]** | d2k8s: build/push images, emit k8s; otelcol+wrk2api as DaemonSets, wrk2api **without** `InternalTrafficPolicy: Local`. | DaemonSet + traffic-policy wiring |
+| **[4]** | d2k8s: build/push images, emit k8s; otelcol as DaemonSet(+Local); wrk2api as DaemonSet **without** `InternalTrafficPolicy: Local` — or as a single pinnable **Deployment** with `--wrk2api-deploy`. | DaemonSet + traffic-policy wiring |
 | **[5]** | `inject_perf_env.py`. | **re-adds** Jaeger ES-bulk tuning (7 vars) + otelcol GOMEMLIMIT/resources + optional app GC mode |
 | **[6]** | Node pinning: **auto-generate** `node-pinning-<name>.yaml` if absent (`gen_node_pinning.py`), then `pin_nodes.py`. | **re-applies pinning** d2k8s strips |
 | **[7]** | **Auto-evict** the currently-live variant (detected from `otelcol-<v>-ctr` pods), then `kubectl apply` + wait for Running. | only one variant on the cluster at a time |
@@ -179,44 +195,50 @@ The script assumes a working CloudLab kubespray cluster and these already in pla
 
 ---
 
-## 6. Node pinning
+## 6. Node pinning — three placement modes
 
-The asymmetric-pressure experiment design requires the **hot triple**
-(`composepost` + `hometimeline` + `hometimeline-cache`) co-located on a single
-node so that node's otelcol absorbs the pressure; everything else is spread.
+Stage [6] auto-generates `node-pinning-<name>.yaml` (if absent) via
+`utils/gen_node_pinning.py`, in one of three modes:
 
-- **Auto-generation**: if no `node-pinning-<name>.yaml` exists, stage [6]
-  generates the canonical rev2 placement for the variant via
-  `utils/gen_node_pinning.py` (24 services across `node-1`…`node-9`, hot node =
-  `node-1`).
+| Mode | Flag | Design | Use for |
+|---|---|---|---|
+| **Canonical hot-triple** | (default) | `composepost`+`hometimeline`(+cache) co-located on one hot node so its otelcol absorbs the pressure; everything else spread across 9 nodes. | shedding/controller studies (asymmetric pressure) |
+| **Anti-affinity** | `--anti-affinity` | No two traced services with a **call edge** share a node (static 9-node layout); every traced hop crosses the network. | overhead studies (un-masks per-hop propagation cost) |
+| **One-per-node** | `--one-per-node` | Every named service on its **own node**. Nodes **auto-detected from `kubectl get nodes`** (schedulable only — tainted CP excluded); needs ≥14. Caches/DBs ride with their service; near-idle `userid`+`tracepressure` share the untainted CP node; wrk2api and jaeger+ES each get a node. | maximal isolation on ≥15-node clusters |
+
+Both isolation modes should be combined with **`--wrk2api-deploy`** so the
+frontend hop is isolated too (a DaemonSet can't be anti-affined).
+
 - **Custom pinning**: an existing `node-pinning-<name>.yaml` is **respected** —
   hand-edit it (or generate then tweak) and it won't be overwritten.
-- **Placement-only (`--no-pin-requests`)**: places services on their nodes
-  (nodeSelector) but emits/applies **no CPU requests**, so the scheduler co-locates
-  without reserving cores (the canonical requests reserve up to 25 cores for
-  social-db). Applies to both the generated file *and* the apply step, so even an
-  existing file's `requests_cpu` values are ignored:
+- **Placement-only (`--no-pin-requests`)**: places services (nodeSelector) but
+  emits/applies **no CPU requests**, so nothing over-reserves cores (the canonical
+  requests reserve up to 25 cores for social-db). Applies to both the generated
+  file *and* the apply step, so even an existing file's `requests_cpu` is ignored.
+- **Generate manually** to inspect/edit before deploying:
   ```bash
-  build_deploy_dsb.sh -s docker_pb_es -n pb_run --cpd 2 --no-pin-requests --apply
-  ```
-- **Generate manually** to inspect/edit before deploying (add `--no-requests` for
-  placement-only):
-  ```bash
-  utils/gen_node_pinning.py pb-estest2 examples/dsb_sn/node-pinning-pb_estest2.yaml [--no-requests]
+  utils/gen_node_pinning.py pb-estest2 examples/dsb_sn/node-pinning-pb_estest2.yaml            # canonical
+  utils/gen_node_pinning.py v-esrev2   examples/dsb_sn/node-pinning-v_esrev2.yaml --anti-affinity --no-requests
+  utils/gen_node_pinning.py sb-es15    examples/dsb_sn/node-pinning-sb_es15.yaml  --one-per-node --no-requests
   ```
 
-### ⚠ Cluster topology caveat
-This cluster has 10 nodes, `node-0`…`node-9`:
-- `node-0` — tainted control-plane (off-limits to app pods)
-- `node-1` — **untainted** control-plane (also runs an etcd member)
-- `node-2`…`node-9` — pure workers
+### ⚠ Cluster topology
+Node **names/counts are experiment-specific** — always check `kubectl get nodes`.
+The kubespray profiles used here produce:
+- `node-0` — **tainted** control-plane (off-limits to app pods; auto-excluded by `--one-per-node`)
+- `node-1` — **untainted** control-plane (schedulable, but runs an etcd member)
+- `node-2`…`node-N` — pure workers
 
-The canonical hot node is `node-1`, so the default places ~19 cores of app load
-(incl. the stressed `composepost`) on a control-plane/etcd node. That's fine for
-a test deploy + light seed, but **under a heavy load sweep it can contend with
-etcd** (the failure mode in `cloudlab_etcd_stall_rbac_playbook`). For a real
-sweep, edit the generated pinning file to move `node-1`'s services to a pure
-worker (e.g. `node-2`).
+(The original testbed had 10 nodes; the current `bridges-tb-04` has 15 → 14
+schedulable, which is exactly what `--one-per-node` needs.)
+
+The canonical hot-triple mode pins its hot node to `node-1`, i.e. ~19 cores of app
+load (incl. the stressed `composepost`) on a control-plane/etcd node. That's fine
+for a test deploy + light seed, but **under a heavy sweep it can contend with
+etcd** (the failure mode in `cloudlab_etcd_stall_rbac_playbook`) — for a real
+sweep, move `node-1`'s services to a pure worker in the generated file. The
+isolation modes already keep real load off the CP node (anti-affinity puts only
+composepost+userid there; one-per-node only userid+tracepressure).
 
 ---
 
@@ -247,17 +269,52 @@ kubectl get svc wrk2api-service-<variant>-ctr -o jsonpath='{.spec.ports[?(@.port
 
 ## 9. Common recipes
 
+`utils/build_deploy_dsb.sh --help` has the full flag reference; these are the
+proven configurations.
+
+**Overhead experiments** (passthrough collectors, isolation placement, no CPU
+reservations — the corrected-baseline fourway):
+```bash
+# vanilla baseline, anti-affinity, cpd=2 (suffix rev2 -> images *-v-esrev2-ctr):
+utils/build_deploy_dsb.sh -s docker_v_es -n v_esrev2 --extra rev2 --cpd 2 --gc natural \
+  --collector passthrough --anti-affinity --wrk2api-deploy --no-pin-requests --apply --seed
+
+# the three bridges, same config (build once each; the sweep driver re-applies them):
+for V in pb cgpb sb; do
+  utils/build_deploy_dsb.sh -s docker_${V}_es -n ${V}_esrev2 --extra rev2 --cpd 2 --gc natural \
+    --collector passthrough --anti-affinity --wrk2api-deploy --no-pin-requests
+done
+
+# same fourway at cpd=6 under a DISTINCT suffix (cpd is baked into the otelcol image,
+# so different cpd = different suffix = separate images; cpd2 data stays untouched):
+utils/build_deploy_dsb.sh -s docker_pb_es -n pb_esrev2c6 --extra rev2c6 --cpd 6 --gc natural \
+  --collector passthrough --anti-affinity --wrk2api-deploy --no-pin-requests
+
+# one-per-node variant on a >=15-node cluster (nodes auto-detected):
+utils/build_deploy_dsb.sh -s docker_v_es -n v_es15 --extra 15 --cpd 2 --gc natural \
+  --collector passthrough --one-per-node --wrk2api-deploy --no-pin-requests --apply --seed
+```
+
+**Shedding / controller studies** (priority processor active, hot-triple placement):
 ```bash
 # CGPB at cpd 6, forced GC, custom controller thresholds, deploy only (no seed):
 utils/build_deploy_dsb.sh -s docker_cgpb_es -n cgpb_run --cpd 6 --gc forced \
   --soft 50 --hard 70 --cp-safety 1 --apply
+```
 
-# Rebuild the collector base image too (after editing a bridge processor):
-utils/build_deploy_dsb.sh -s docker_pb_es -n pb_run --cpd 2 --gc natural \
+**Rebuild / iterate:**
+```bash
+# rebuild the collector base image too (after editing a bridge processor in contrib):
+utils/build_deploy_dsb.sh -s docker_pb_es -n pb_esrev2 --extra rev2 --cpd 2 --gc natural \
   --build-collector --apply --seed
 
-# Vanilla baseline:
-utils/build_deploy_dsb.sh -s docker_v_es -n v_run --gc natural --apply --seed
+# regenerate manifests only, reusing existing registry images (fast, no docker builds;
+# ONLY valid if images for this exact suffix were pushed before):
+utils/build_deploy_dsb.sh -s docker_v_es -n v_esrev2 --extra rev2 --skip-build \
+  --collector passthrough --anti-affinity --wrk2api-deploy --no-pin-requests
+
+# no-deploy build: just produce build_<name>/k8s to inspect:
+utils/build_deploy_dsb.sh -s docker_pb_es -n pb_estest --cpd 2
 ```
 
 ---

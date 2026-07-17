@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_cgpb_es_nw/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: usertimeline-db-cgpb-es-nw-ctr
+  name: usertimeline-db-cgpb-es-nw-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: usertimeline-db-cgpb-es-nw-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_cgpb_es_nw/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: usertimeline-db-cgpb-es-nw-ctr
+    spec:
+      containers:
+      - image: 10.10.1.1:30000/mongo:4.4
+        name: usertimeline-db-cgpb-es-nw-ctr
+        ports:
+        - containerPort: 27017
+          protocol: TCP
+      hostname: usertimeline-db-cgpb-es-nw-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-3

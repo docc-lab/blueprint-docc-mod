@@ -1,0 +1,47 @@
+# Auto-generated node-pinning for variant 'pb-es-dist' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-pb-es-dist-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-pb-es-dist-ctr:
+  - userid-service-pb-es-dist-ctr:
+
+node-2:
+  - hometimeline-service-pb-es-dist-ctr:
+  - hometimeline-cache-pb-es-dist-ctr:
+  - urlshorten-service-pb-es-dist-ctr:
+  - urlshorten-db-pb-es-dist-ctr:
+
+node-3:
+  - usertimeline-service-pb-es-dist-ctr:
+  - usertimeline-cache-pb-es-dist-ctr:
+  - usertimeline-db-pb-es-dist-ctr:
+  - usermention-service-pb-es-dist-ctr:
+
+node-4:
+  - socialgraph-service-pb-es-dist-ctr:
+  - social-cache-pb-es-dist-ctr:
+  - social-db-pb-es-dist-ctr:
+  - text-service-pb-es-dist-ctr:
+
+node-5:
+  - post-storage-service-pb-es-dist-ctr:
+  - post-cache-pb-es-dist-ctr:
+  - post-db-pb-es-dist-ctr:
+
+node-6:
+  - uniqueid-service-pb-es-dist-ctr:
+  - media-service-pb-es-dist-ctr:
+
+node-7:
+  - wrk2api-service-pb-es-dist-ctr:
+
+node-8:
+  - user-service-pb-es-dist-ctr:
+  - user-cache-pb-es-dist-ctr:
+  - user-db-pb-es-dist-ctr:
+
+node-9:
+  - jaeger-pb-es-dist-ctr:
+  - elasticsearch-pb-es-dist-ctr:

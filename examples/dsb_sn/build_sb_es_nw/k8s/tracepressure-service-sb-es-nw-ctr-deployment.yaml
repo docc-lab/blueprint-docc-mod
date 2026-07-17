@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_es_nw/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: tracepressure-service-sb-es-nw-ctr
+  name: tracepressure-service-sb-es-nw-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: tracepressure-service-sb-es-nw-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_es_nw/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: tracepressure-service-sb-es-nw-ctr
+    spec:
+      containers:
+      - env:
+        - name: BRIDGE_KIND
+          value: sb
+        - name: GC_INTERVAL_SEC
+          value: '0'
+        - name: GOGC
+          value: '100'
+        - name: OTELCOL_SB_ES_NW_DIAL_ADDR
+          value: otelcol-sb-es-nw-ctr:4317
+        - name: TRACEPRESSURE_SERVICE_SB_ES_NW_HTTP_BIND_ADDR
+          value: 0.0.0.0:2000
+        image: 10.10.1.1:30000/tracepressure-service-sb-es-nw-ctr:latest
+        name: tracepressure-service-sb-es-nw-ctr
+        ports:
+        - containerPort: 2000
+          protocol: TCP
+      hostname: tracepressure-service-sb-es-nw-ctr
+      restartPolicy: Always

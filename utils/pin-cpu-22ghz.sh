@@ -61,15 +61,24 @@ apply_pin() {  # <target_khz>
     for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
         echo performance > "$g"
     done
-    if [ "$drv" = intel_pstate ]; then
+    # intel_pstate exposes its knobs under /sys/.../intel_pstate/ in BOTH active
+    # (drv=intel_pstate) and passive (drv=intel_cpufreq) mode — gate on the sysfs
+    # dir, NOT the driver name, or passive mode silently skips all of this.
+    if [ -d /sys/devices/system/cpu/intel_pstate ]; then
         base_khz=$(cat /sys/devices/system/cpu/cpu0/cpufreq/base_frequency 2>/dev/null || echo 0)
         if [ "$target_khz" -gt "$base_khz" ]; then
-            echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo   # allow turbo up to target
+            echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true  # allow turbo up to target
         else
-            echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo   # cap at base / defeat turbo
+            echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true  # cap at base / defeat turbo
         fi
         [ -w /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost ] && \
-            echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
+            echo 0 > /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null || true
+        # CRITICAL: raise the HWP performance floor to 100%. Without this, HWP
+        # autonomously downclocks IDLE cores to the min P-state (~min_perf_pct% of
+        # max, e.g. 37% => ~1.2GHz) regardless of scaling_min_freq — so cores drop
+        # off the pin when idle. min_perf_pct=100 holds every core at the pin.
+        [ -w /sys/devices/system/cpu/intel_pstate/min_perf_pct ] && \
+            echo 100 > /sys/devices/system/cpu/intel_pstate/min_perf_pct 2>/dev/null || true
     fi
     # clamp every CPU to the target; drop min to floor first to avoid a
     # transient min>max rejection when lowering the ceiling.

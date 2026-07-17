@@ -389,6 +389,16 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
+	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
+	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
+		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
+		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
+		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
+		return
+	}
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
@@ -514,6 +524,16 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
+	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
+	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
+		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
+		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
+		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
+		return
+	}
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
@@ -634,12 +654,25 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: a compact "U:<traceid><spanid>" carrier means the
+	// trace was head-unsampled upstream. Skip the JSON deserialize, baggage, and
+	// span start entirely; just restore the (unsampled) remote span context so
+	// downstream hops stay consistent, then call the service.
+	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
+		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
+		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
+		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
+		return
+	}
+
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
 		span_ctx := trace.NewSpanContext(span_ctx_config)
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
-		
+
 		// Set baggage in context for span processor to read
 		if upstreamBaggage != nil {
 			baggage = upstreamBaggage
@@ -680,7 +713,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if baggage != nil {
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
-	
+
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)
@@ -719,6 +752,16 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
+	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
+	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
+		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
+		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
+		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
+		return
+	}
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
@@ -809,6 +852,16 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
+	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
+	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
+		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
+		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
+		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
+		return
+	}
 	var baggage map[string]string
 	if traceCtx != "" {
 		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)

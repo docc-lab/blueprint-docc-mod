@@ -1,0 +1,47 @@
+# Auto-generated node-pinning for variant 'nt-es' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-nt-es-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-nt-es-ctr:
+  - userid-service-nt-es-ctr:
+
+node-2:
+  - hometimeline-service-nt-es-ctr:
+  - hometimeline-cache-nt-es-ctr:
+  - urlshorten-service-nt-es-ctr:
+  - urlshorten-db-nt-es-ctr:
+
+node-3:
+  - usertimeline-service-nt-es-ctr:
+  - usertimeline-cache-nt-es-ctr:
+  - usertimeline-db-nt-es-ctr:
+  - usermention-service-nt-es-ctr:
+
+node-4:
+  - socialgraph-service-nt-es-ctr:
+  - social-cache-nt-es-ctr:
+  - social-db-nt-es-ctr:
+  - text-service-nt-es-ctr:
+
+node-5:
+  - post-storage-service-nt-es-ctr:
+  - post-cache-nt-es-ctr:
+  - post-db-nt-es-ctr:
+
+node-6:
+  - uniqueid-service-nt-es-ctr:
+  - media-service-nt-es-ctr:
+
+node-7:
+  - wrk2api-service-nt-es-ctr:
+
+node-8:
+  - user-service-nt-es-ctr:
+  - user-cache-nt-es-ctr:
+  - user-db-nt-es-ctr:
+
+node-9:
+  - jaeger-nt-es-ctr:
+  - elasticsearch-nt-es-ctr:

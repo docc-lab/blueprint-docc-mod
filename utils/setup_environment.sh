@@ -31,6 +31,58 @@
 if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 set -euo pipefail
 
+usage(){
+cat <<'EOHELP'
+setup_environment.sh — one-shot bootstrap of the DSB-SN bridges workflow on a fresh CloudLab head node
+
+USAGE
+  utils/setup_environment.sh            # run all 8 stages (idempotent, safe to re-run)
+  utils/setup_environment.sh -h|--help  # this help
+
+STAGES (all idempotent)
+  1/8  base apt packages       git curl ca-certificates python3-venv python3-pip
+  2/8  clone sibling repos     opentelemetry-collector-contrib + DeathStarBench
+                               (--recurse-submodules), NEXT TO blueprint-docc-mod.
+                               Skipped per-repo if already cloned — a restored copy
+                               with local changes is never touched.
+  3/8  build wrk2              DeathStarBench's load generator -> /usr/local/bin/wrk
+  4/8  toolchain               Go (go.dev tarball, PATH into ~/.bashrc + ~/.profile),
+                               protobuf compiler+lib, protoc-gen-go(-grpc), kompose
+  5/8  python venv             blueprint-docc-mod/.venv with pyyaml + aiohttp (seeder!)
+  6/8  docker group            adds $USER to 'docker' (newgrp docker / re-login after)
+  7/8  in-cluster registry     namespace+pvc+deployment+service at NodePort 30000
+                               (skipped with a notice if kubectl is unreachable)
+  8/8  CPU pin                 pins EVERY k8s node to a fixed clock via
+                               pin-cpu-22ghz.sh pin <ghz> --all. Nodes are
+                               AUTO-DETECTED from `kubectl get nodes` — works for
+                               any cluster size. NOT reboot-persistent.
+
+ENVIRONMENT OVERRIDES
+  CPU_GHZ=<ghz>         target clock for stage 8 (default 2.2 = c220g5 base clock)
+  COLLECTOR_REPO=<url>  collector fork to clone (default docc-lab/opentelemetry-collector-contrib)
+  DSB_REPO=<url>        DeathStarBench fork (default delimitrou/DeathStarBench)
+
+EXAMPLES
+  # standard fresh-cluster bootstrap:
+  utils/setup_environment.sh
+  # pin to 2.0 GHz instead of 2.2:
+  CPU_GHZ=2.0 utils/setup_environment.sh
+  # use the docc-lab DSB fork:
+  DSB_REPO=https://github.com/docc-lab/DeathStarBench.git utils/setup_environment.sh
+  # re-run later just to fix the registry + pin after a cluster rebuild (stages are
+  # idempotent — clones/toolchain will fast-skip):
+  utils/setup_environment.sh
+
+AFTER IT FINISHES
+  1. source ~/.bashrc              (pick up the Go PATH)
+  2. newgrp docker                 (or re-login, for docker without sudo)
+  3. source blueprint-docc-mod/.venv/bin/activate   (pyyaml + aiohttp for the build/seed scripts)
+  4. re-run 'utils/pin-cpu-22ghz.sh pin <ghz> --all' after ANY node reboot (pin is not persistent)
+EOHELP
+exit "${1:-0}"
+}
+case "${1:-}" in -h|--help) usage 0;; "") :;; *) echo "unknown argument: $1" >&2; usage 1;; esac
+
 log(){  printf '\n\033[1;32m=== %s ===\033[0m\n' "$*"; }
 warn(){ printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }
 

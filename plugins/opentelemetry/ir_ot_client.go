@@ -331,6 +331,13 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: unsampled parent -> skip all per-request work
+	// (baggage/critpath/span/JSON); forward only a compact "U:" carrier so the
+	// trace stays consistent. At ratio>=1 nothing is unsampled -> unchanged.
+	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
+		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		return
+	}
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
 	baggage := make(map[string]string)
@@ -447,6 +454,13 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: unsampled parent -> skip all per-request work
+	// (baggage/critpath/span/JSON); forward only a compact "U:" carrier so the
+	// trace stays consistent. At ratio>=1 nothing is unsampled -> unchanged.
+	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
+		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		return
+	}
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
 	baggage := make(map[string]string)
@@ -549,6 +563,16 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: when the enclosing span is head-unsampled, skip
+	// ALL per-request instrumentation (baggage copy, span start, JSON marshal)
+	// and forward only a compact "U:<traceid><spanid>" carrier so the trace stays
+	// consistent (downstream stays unsampled) at ~no cost. At ratio>=1 every span
+	// is sampled, so this branch is never taken and behavior is unchanged.
+	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
+		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		return
+	}
+
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
 	baggage := make(map[string]string)
@@ -557,14 +581,14 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			baggage[k] = v
 		}
 	}
-	
+
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
-	
+
 	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 
 	defer span.End()
-	
+
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
@@ -585,16 +609,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			}
 		}
 	}
-	
+
 	// Combine trace context with baggage
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
-	
+
 	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
 	}
-	
+
 	return
 }
 {{end}}
@@ -629,6 +653,13 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: unsampled parent -> skip all per-request work
+	// (baggage/critpath/span/JSON); forward only a compact "U:" carrier so the
+	// trace stays consistent. At ratio>=1 nothing is unsampled -> unchanged.
+	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
+		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		return
+	}
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
 	baggage := make(map[string]string)
@@ -712,6 +743,13 @@ func New_{{.Name}}(ctx context.Context, client {{.ServerIfaceName}}, coll_client
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Impl.Methods}}
 func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
+	// Sampling-aware fast path: unsampled parent -> skip all per-request work
+	// (baggage/critpath/span/JSON); forward only a compact "U:" carrier so the
+	// trace stays consistent. At ratio>=1 nothing is unsampled -> unchanged.
+	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
+		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		return
+	}
 	// Get baggage from context and create a copy to avoid mutating shared state
 	upstreamBaggage := backend.GetBaggageFromContext(ctx)
 	baggage := make(map[string]string)

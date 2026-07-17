@@ -32,5 +32,11 @@ func main() {
 		specs.DockerPBES,
 		specs.DockerCGPBES,
 		specs.DockerRCES,
+		specs.DockerVNW,
+		specs.DockerPBNW,
+		specs.DockerCGPBNW,
+		specs.DockerSBNW,
+		specs.DockerNTES,
+		specs.DockerNTESNW,
 	)
 }

@@ -1,0 +1,47 @@
+# Auto-generated node-pinning for variant 'sb-es-nw' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-sb-es-nw-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-sb-es-nw-ctr:
+  - userid-service-sb-es-nw-ctr:
+
+node-2:
+  - hometimeline-service-sb-es-nw-ctr:
+  - hometimeline-cache-sb-es-nw-ctr:
+  - urlshorten-service-sb-es-nw-ctr:
+  - urlshorten-db-sb-es-nw-ctr:
+
+node-3:
+  - usertimeline-service-sb-es-nw-ctr:
+  - usertimeline-cache-sb-es-nw-ctr:
+  - usertimeline-db-sb-es-nw-ctr:
+  - usermention-service-sb-es-nw-ctr:
+
+node-4:
+  - socialgraph-service-sb-es-nw-ctr:
+  - social-cache-sb-es-nw-ctr:
+  - social-db-sb-es-nw-ctr:
+  - text-service-sb-es-nw-ctr:
+
+node-5:
+  - post-storage-service-sb-es-nw-ctr:
+  - post-cache-sb-es-nw-ctr:
+  - post-db-sb-es-nw-ctr:
+
+node-6:
+  - uniqueid-service-sb-es-nw-ctr:
+  - media-service-sb-es-nw-ctr:
+
+node-7:
+  - wrk2api-service-sb-es-nw-ctr:
+
+node-8:
+  - user-service-sb-es-nw-ctr:
+  - user-cache-sb-es-nw-ctr:
+  - user-db-sb-es-nw-ctr:
+
+node-9:
+  - jaeger-sb-es-nw-ctr:
+  - elasticsearch-sb-es-nw-ctr:

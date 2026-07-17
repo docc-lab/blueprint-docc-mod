@@ -40,13 +40,100 @@ SEED_DIR=/users/tomislav/DeathStarBench/socialNetwork
 SEED_PY=$DSB/scripts/init_social_graph.py
 
 SPEC=""; NAME=""; CPD=""; GC=""; EXTRA=""; COLLECTOR=""
-BUILD_COLLECTOR=0; DO_APPLY=0; DO_SEED=0; SKIP_BUILD=0; NOPIN_REQ=0; WRK_DAEMON=1; ANTI=0
+BUILD_COLLECTOR=0; DO_APPLY=0; DO_SEED=0; DO_NOSEED=0; SKIP_BUILD=0; NOPIN_REQ=0; WRK_DAEMON=1; ANTI=0; ONEPER=0
 # priorityprocessor controller config (rev2-proven defaults; the wiring emits a
 # STALE legacy schema -> step [2] rewrites the block to these current-schema keys).
 SOFT_PCT=50; HARD_PCT=70; CP_SAFETY=1; FORCE_GC=true; GC_SOFT=1s; GC_ULTRA=0s
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
-usage(){ sed -n '2,20p' "$0"; exit 1; }
+usage(){
+cat <<'EOHELP'
+build_deploy_dsb.sh — turnkey compile (+optional deploy +seed) of a DSB-SN bridge variant
+
+USAGE
+  build_deploy_dsb.sh -s <wiring_spec> -n <build_name> [options]
+
+REQUIRED
+  -s <spec>            Wiring spec = bridge kind. One of:
+                         docker_pb_es    Path Bridge (PB)
+                         docker_cgpb_es  Call-Graph Path Bridge (CGPB)
+                         docker_sb_es    Sequence Bridge (SB)
+                         docker_v_es     vanilla (true no-bridge baseline)
+                         docker_rc_es    random-checkpoint control
+                       Also selects the per-variant OT wrapper template at codegen
+                       time (exported as OT_BRIDGE) and the runtime BRIDGE_KIND.
+  -n <name>            Build dir name -> examples/dsb_sn/build_<name>/
+
+BUILD OPTIONS
+  --cpd <N>            Checkpoint distance, baked into the otelcol image config.
+  --gc natural|forced  App-pod GC: natural = GOGC=100 + interval off;
+                       forced = GOGC=off + forced GC 10x/s (deterministic cadence).
+  --extra <str>        Append to the kompose suffix (e.g. --extra rev2 => v-esrev2).
+                       Distinct suffix = distinct image names in the registry.
+  --build-collector    Rebuild + push the otelcontribcol base image first.
+  --skip-build         Skip d2k8s image builds; reuse existing registry images
+                       (valid only if images for this exact suffix already exist).
+
+COLLECTOR PIPELINE
+  --collector passthrough
+                       Strip priority processor AND memory_limiter ->
+                       receivers -> batch -> exporters. USE FOR OVERHEAD RUNS
+                       (identical, non-interfering collectors for all variants).
+                       Unset = wiring default (priority processor; for shedding studies).
+  --soft <pct>         Priority controller soft threshold %        (default 50)
+  --hard <pct>         Priority controller hard (force-GC) %       (default 70)
+  --cp-safety <f>      CP-vs-LP shedding dial (higher=protect CP)  (default 1)
+
+PLACEMENT (stage [6]; generated only if node-pinning-<name>.yaml is absent)
+  (default)            Canonical rev2 hot-triple: composepost+hometimeline(+cache)
+                       co-located on the hot node (asymmetric-pressure design).
+  --anti-affinity      No two traced services with a call edge share a node
+                       (static 9-node layout). Un-masks per-hop bridge overhead.
+  --one-per-node       Every named service on its OWN node. Nodes AUTO-DETECTED
+                       from `kubectl get nodes` (tainted control-plane excluded);
+                       needs >= 14 schedulable nodes. Caches/DBs ride with their
+                       service; near-idle userid+tracepressure share the CP node.
+  --no-pin-requests    Placement-only: nodeSelector but NO CPU requests/limits
+                       (don't over-reserve cores). Applies to generated AND
+                       pre-existing pinning files.
+  --wrk2api-deploy     wrk2api as a single pinnable Deployment instead of the
+                       per-node DaemonSet. REQUIRED for --anti-affinity /
+                       --one-per-node to also isolate the frontend hop.
+
+DEPLOY
+  --apply              Evict whatever DSB-SN variant is live (auto-detected from
+                       otelcol-<v>-ctr pods), apply this build, wait for Running.
+  --seed               After apply: NodePort-patch wrk2api + seed the social graph
+  --noseed             After apply: NodePort-patch wrk2api only (skip DB seed; for zero-work variants)
+                       (needs DeathStarBench/socialNetwork + venv with aiohttp).
+
+MISC
+  -h, --help           This help.
+
+EXAMPLES
+  # overhead-experiment fourway builds (passthrough, anti-affinity, no requests):
+  build_deploy_dsb.sh -s docker_v_es  -n v_esrev2  --extra rev2 --cpd 2 --gc natural \
+      --collector passthrough --anti-affinity --wrk2api-deploy --no-pin-requests --apply --seed
+  # same at cpd=6 under a DISTINCT suffix (separate images, cpd baked in):
+  build_deploy_dsb.sh -s docker_pb_es -n pb_esrev2c6 --extra rev2c6 --cpd 6 --gc natural \
+      --collector passthrough --anti-affinity --wrk2api-deploy --no-pin-requests
+  # one-per-node isolation on a >=15-node cluster:
+  build_deploy_dsb.sh -s docker_sb_es -n sb_es15 --extra 15 --cpd 2 --gc natural \
+      --collector passthrough --one-per-node --wrk2api-deploy --no-pin-requests --apply --seed
+  # shedding study (priority processor active, custom thresholds), hot-triple placement:
+  build_deploy_dsb.sh -s docker_cgpb_es -n cgpb_shed --cpd 6 --gc forced \
+      --soft 50 --hard 70 --cp-safety 1 --apply
+  # regenerate manifests only, reuse existing images (fast; no docker builds):
+  build_deploy_dsb.sh -s docker_v_es -n v_esrev2 --extra rev2 --skip-build \
+      --collector passthrough --anti-affinity --wrk2api-deploy --no-pin-requests
+  # rebuild the collector base image too (after editing a processor in contrib):
+  build_deploy_dsb.sh -s docker_pb_es -n pb_esrev2 --extra rev2 --cpd 2 --build-collector --apply
+EOHELP
+exit "${1:-1}"
+}
+
+# Help must work before ANY environment checks (docker guard below re-execs).
+for a in "$@"; do case "$a" in -h|--help) usage 0;; esac; done
 
 # Docker access guard: d2k8s + image builds need the docker socket (root:docker).
 # On CloudLab a session can predate `usermod -aG docker` (group not active yet),
@@ -78,10 +165,12 @@ while [ $# -gt 0 ]; do
     --no-pin-requests) NOPIN_REQ=1; shift;;
     --wrk2api-deploy) WRK_DAEMON=0; shift;;       # wrk2api as a Deployment (pinnable), NOT a per-node DaemonSet
     --anti-affinity) ANTI=1; shift;;              # placement: no co-located traced call edges (implies pin wrk2api)
+    --one-per-node) ONEPER=1; shift;;             # placement: every named service on its own auto-detected node
     --skip-build) SKIP_BUILD=1; shift;;
     --apply) DO_APPLY=1; shift;;
     --seed) DO_SEED=1; shift;;
-    -h|--help) usage;;
+    --noseed) DO_NOSEED=1; shift;;
+    -h|--help) usage 0;;
     *) die "unknown arg: $1 (try -h)";;
   esac
 done
@@ -108,7 +197,7 @@ EXTRA_ARG=""; [ -n "$EXTRA" ] && EXTRA_ARG="-extra $EXTRA"
 # Select the OT client/server wrapper template per bridge kind (read by the
 # opentelemetry plugin's codegen). Derived from the spec: docker_<kind>_es -> <kind>.
 # vanilla => plain spans, no bridge data; pb/cgpb/sb => their bridge wrappers.
-OT_BRIDGE=$(echo "$SPEC" | sed -E 's/^docker_//; s/_es$//'); export OT_BRIDGE
+OT_BRIDGE=$(echo "$SPEC" | sed -E 's/^docker_//; s/_nw$//; s/_es$//'); export OT_BRIDGE
 echo "   OT_BRIDGE=$OT_BRIDGE (per-variant OT wrapper template)"
 go run wiring/main.go -w "$SPEC" $EXTRA_ARG -o "build_$NAME" || die "wiring failed (watch for dead-import codegen errors in generated golang/)"
 [ -d "$BUILD/docker" ] || die "wiring produced no build_$NAME/docker"
@@ -224,8 +313,9 @@ python3 "$UTILS/inject_perf_env.py" "$K8S" "$VARIANT" ${GC:+--gc "$GC"} || die "
 NODEPIN=$DSB/node-pinning-${NAME}.yaml
 NOREQ=""; [ "$NOPIN_REQ" = 1 ] && NOREQ="--no-requests"   # placement-only (no CPU requests)
 AAFLAG=""; [ "$ANTI" = 1 ] && AAFLAG="--anti-affinity"    # no co-located traced call edges (pins wrk2api too)
+[ "$ONEPER" = 1 ] && AAFLAG="--one-per-node"              # every named service isolated (auto-detected nodes)
 if [ ! -f "$NODEPIN" ]; then
-  echo "=== [6] no $NODEPIN -> generating ${ANTI:+anti-affinity }placement for '$VARIANT'${NOREQ:+ (placement-only)} ==="
+  echo "=== [6] no $NODEPIN -> generating placement (${AAFLAG:-canonical}) for '$VARIANT'${NOREQ:+ (placement-only)} ==="
   python3 "$UTILS/gen_node_pinning.py" "$VARIANT" "$NODEPIN" $NOREQ $AAFLAG || die "pinning generation failed"
 fi
 echo "=== [6] node pinning from $NODEPIN${NOREQ:+ (placement-only: strip requests)} ==="
@@ -272,9 +362,11 @@ for i in $(seq 1 120); do
   echo "[$i/120] $run/$total Running"; sleep 5
 done
 
-# 8. seed (NodePort-patch wrk2api, then init_social_graph from the DSB seed dir) -
-[ "$DO_SEED" = 1 ] || { echo "(skip seed; run with --seed)"; exit 0; }
-echo "=== [8] seed ==="
+# 8. NodePort-patch wrk2api (always, for --seed or --noseed), then init_social_graph
+#    ONLY for --seed. --noseed exists for zero-work variants that have no DBs to
+#    seed but still need the wrk2api NodePort for load generation.
+if [ "$DO_SEED" != 1 ] && [ "$DO_NOSEED" != 1 ]; then echo "(skip seed; run with --seed or --noseed)"; exit 0; fi
+echo "=== [8] wrk2api NodePort patch ==="
 kubectl patch service "$WRK_SVC" -p '{"spec":{"type":"NodePort"}}'  # NodePort works on a DaemonSet-backed svc
 NP=""
 for i in $(seq 1 15); do
@@ -283,7 +375,11 @@ for i in $(seq 1 15); do
 done
 [ -n "$NP" ] || die "could not get wrk2api NodePort"
 echo "   wrk2api NodePort: $NP"
-sleep 15
-( cd "$SEED_DIR" && python3 "$SEED_PY" --ip 10.10.1.1 --port "$NP" 2>&1 | tail -5 ) \
-  || die "seed failed (need: pip install aiohttp; CWD must be $SEED_DIR)"
-echo "=== DONE: $VARIANT deployed + seeded. Drive load via wrk2api NodePort $NP, or per-node wrk2api daemonset pods. ==="
+if [ "$DO_SEED" = 1 ]; then
+  sleep 15
+  ( cd "$SEED_DIR" && python3 "$SEED_PY" --ip 10.10.1.1 --port "$NP" 2>&1 | tail -5 ) \
+    || die "seed failed (need: pip install aiohttp; CWD must be $SEED_DIR)"
+  echo "=== DONE: $VARIANT deployed + seeded. Drive load via wrk2api NodePort $NP, or per-node wrk2api daemonset pods. ==="
+else
+  echo "=== DONE: $VARIANT deployed + NodePort ready (--noseed; DB init skipped). NodePort $NP ==="
+fi
