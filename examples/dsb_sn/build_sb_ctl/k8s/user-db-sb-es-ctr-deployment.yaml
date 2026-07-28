@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_ctl/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: user-db-sb-es-ctr
+  name: user-db-sb-es-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: user-db-sb-es-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_sb_ctl/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: user-db-sb-es-ctr
+    spec:
+      containers:
+      - image: 10.10.1.1:30000/mongo:4.4
+        name: user-db-sb-es-ctr
+        ports:
+        - containerPort: 27017
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 8000m
+          limits:
+            cpu: 8000m
+        env:
+        - name: GOMAXPROCS
+          value: '8'
+      hostname: user-db-sb-es-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-8

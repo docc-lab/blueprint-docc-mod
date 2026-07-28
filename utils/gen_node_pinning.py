@@ -62,19 +62,24 @@ PLACEMENT = [
 #   hometimeline -> poststorage, socialgraph ;  text -> urlshorten, usermention
 #   socialgraph  -> userid ;  user -> socialgraph ;  uniqueid -> usertimeline ;  usertimeline -> poststorage
 # Every co-located *-service pair below is a verified NON-edge.
+# Sizing (req == lim, emitted by render): every *-service = 8 cores; caches = 4;
+# light DBs (post/user/urlshorten) = 8; the two heavy DBs (usertimeline-db,
+# social-db) = 16 (2x a service). Tightest nodes are node-3 & node-4 (2 services
+# + cache + heavy DB = 36 cores); with the otelcol DaemonSet capped at 1 core
+# (~37 total) they fit the 40-core nodes. jaeger/ES isolated on node-9.
 ANTI_AFFINITY_PLACEMENT = [
-    ("node-1", [("composepost-service", 12000), ("userid-service", 6000)]),
-    ("node-2", [("hometimeline-service", 5000), ("hometimeline-cache", 2000),
-                ("urlshorten-service", 5000), ("urlshorten-db", 2000)]),
-    ("node-3", [("usertimeline-service", 8000), ("usertimeline-cache", 2000),
-                ("usertimeline-db", 11000), ("usermention-service", 4000)]),
-    ("node-4", [("socialgraph-service", 6000), ("social-cache", 4000),
-                ("social-db", 25000), ("text-service", 8000)]),
-    ("node-5", [("post-storage-service", 5000), ("post-cache", 2000), ("post-db", 3000)]),
-    ("node-6", [("uniqueid-service", 3000), ("media-service", 2000)]),
+    ("node-1", [("composepost-service", 8000), ("userid-service", 8000)]),
+    ("node-2", [("hometimeline-service", 8000), ("hometimeline-cache", 4000),
+                ("urlshorten-service", 8000), ("urlshorten-db", 8000)]),
+    ("node-3", [("usertimeline-service", 8000), ("usertimeline-cache", 4000),
+                ("usertimeline-db", 16000), ("usermention-service", 8000)]),
+    ("node-4", [("socialgraph-service", 8000), ("social-cache", 4000),
+                ("social-db", 16000), ("text-service", 8000)]),
+    ("node-5", [("post-storage-service", 8000), ("post-cache", 4000), ("post-db", 8000)]),
+    ("node-6", [("uniqueid-service", 8000), ("media-service", 8000)]),
     ("node-7", [("wrk2api-service", 8000)]),
-    ("node-8", [("user-service", 3000), ("user-cache", 2000), ("user-db", 2000)]),
-    ("node-9", [("jaeger", 20000), ("elasticsearch", 4000)]),
+    ("node-8", [("user-service", 8000), ("user-cache", 4000), ("user-db", 8000)]),
+    ("node-9", [("jaeger", 24000), ("elasticsearch", 8000)]),
 ]
 
 # --- one-per-node mode (auto-detected cluster size) --------------------------
@@ -167,6 +172,7 @@ def render(variant, no_requests=False, placement=None, header=None):
             lines.append(f"  - {base}-{variant}-ctr:")
             if not no_requests:          # placement-only mode: nodeSelector only, no resource requests
                 lines.append(f"      requests_cpu: {cpu}")
+                lines.append(f"      limits_cpu: {cpu}")   # req == lim (deterministic hard cap)
         lines.append("")
     return "\n".join(lines)
 

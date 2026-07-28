@@ -8,7 +8,7 @@ require (
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
-	google.golang.org/grpc v1.82.0
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -39,6 +39,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 )
 
-replace github.com/blueprint-uservices/blueprint/runtime => ../runtime
-
 replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
+
+replace github.com/blueprint-uservices/blueprint/runtime => ../runtime

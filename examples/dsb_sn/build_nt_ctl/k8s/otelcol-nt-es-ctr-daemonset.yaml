@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt_ctl/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: otelcol-nt-es-ctr
+  name: otelcol-nt-es-ctr
+spec:
+  selector:
+    matchLabels:
+      io.kompose.service: otelcol-nt-es-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_nt_ctl/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: otelcol-nt-es-ctr
+    spec:
+      containers:
+      - env:
+        - name: GC_INTERVAL_SEC
+          value: '0'
+        - name: JAEGER_NT_ES_OTLP_DIAL_ADDR
+          value: jaeger-nt-es-ctr:4317
+        - name: GOMEMLIMIT
+          value: 230MiB
+        image: 10.10.1.1:30000/otelcol-nt-es-ctr:latest
+        name: otelcol-nt-es-ctr
+        ports:
+        - containerPort: 4317
+          protocol: TCP
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 500m
+            memory: 256Mi
+      hostname: otelcol-nt-es-ctr
+      restartPolicy: Always

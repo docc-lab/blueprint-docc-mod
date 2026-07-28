@@ -15,16 +15,24 @@ exporters:
     tls:
       insecure: true
 processors:
-  batch: {}
+  priority:
+    check_interval: 100ms
+    soft_percentage: 50
+    hard_percentage: 70
+    cp_safety_factor: 1
+    force_gc: true
+    gc_soft_interval: 1s
+    gc_ultrasoft_interval: 0s
 receivers:
   configdiscovery:
     config_map:
-      cpd: 6
+      cpd: 2
     endpoint: :8080
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        include_metadata: true
   otlp/highprio:
     protocols:
       grpc:
@@ -46,7 +54,7 @@ service:
       exporters:
       - otlp
       processors:
-      - batch
+      - priority
       receivers:
       - otlp
   telemetry:

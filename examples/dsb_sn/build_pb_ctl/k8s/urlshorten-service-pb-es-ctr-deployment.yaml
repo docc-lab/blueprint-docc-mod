@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_pb_ctl/k8s
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: urlshorten-service-pb-es-ctr
+  name: urlshorten-service-pb-es-ctr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: urlshorten-service-pb-es-ctr
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o /users/tomislav/blueprint-docc-mod/examples/dsb_sn/build_pb_ctl/k8s
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: urlshorten-service-pb-es-ctr
+    spec:
+      containers:
+      - env:
+        - name: BRIDGE_KIND
+          value: pb
+        - name: GC_INTERVAL_SEC
+          value: '0'
+        - name: GOGC
+          value: '100'
+        - name: OTELCOL_PB_ES_DIAL_ADDR
+          value: otelcol-pb-es-ctr:4317
+        - name: URLSHORTEN_DB_PB_ES_DIAL_ADDR
+          value: urlshorten-db-pb-es-ctr:27017
+        - name: URLSHORTEN_SERVICE_PB_ES_GRPC_BIND_ADDR
+          value: 0.0.0.0:12345
+        - name: OTLP_RETRY
+          value: 'off'
+        - name: GOMAXPROCS
+          value: '8'
+        image: 10.10.1.1:30000/urlshorten-service-pb-es-ctr:latest
+        name: urlshorten-service-pb-es-ctr
+        ports:
+        - containerPort: 12345
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 8000m
+          limits:
+            cpu: 8000m
+      hostname: urlshorten-service-pb-es-ctr
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: node-2

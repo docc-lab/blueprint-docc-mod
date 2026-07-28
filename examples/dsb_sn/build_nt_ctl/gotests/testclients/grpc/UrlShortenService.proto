@@ -1,0 +1,33 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UrlShortenService_ComposeUrls_Request {
+    sint64 reqID = 1;
+    repeated string urls = 2;
+}
+
+message UrlShortenService_ComposeUrls_Response {
+    repeated UrlShortenService_URL ret0 = 1;
+}
+
+message UrlShortenService_GetExtendedUrls_Request {
+    sint64 reqID = 1;
+    repeated string shortenedUrls = 2;
+}
+
+message UrlShortenService_GetExtendedUrls_Response {
+    repeated string ret0 = 1;
+}
+
+message UrlShortenService_URL {
+    string ShortenedUrl = 1;
+    string ExpandedUrl = 2;
+}
+
+service UrlShortenService {
+    rpc ComposeUrls (UrlShortenService_ComposeUrls_Request) returns (UrlShortenService_ComposeUrls_Response) {}
+    rpc GetExtendedUrls (UrlShortenService_GetExtendedUrls_Request) returns (UrlShortenService_GetExtendedUrls_Response) {}
+}
+

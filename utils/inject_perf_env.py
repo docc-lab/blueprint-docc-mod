@@ -30,12 +30,12 @@ JAEGER_ENV = {
     "COLLECTOR_NUM_WORKERS":  "100",
 }
 OTELCOL_ENV = {
-    "GOMEMLIMIT":      "3276MiB",
+    "GOMEMLIMIT":      "3276MiB",  # ~0.8x the 4Gi cap (no-work passthrough campaign)
     "GC_INTERVAL_SEC": "0",
 }
 OTELCOL_RES = {
-    "limits":   {"cpu": "500m", "memory": "4Gi"},
-    "requests": {"cpu": "500m", "memory": "4Gi"},
+    "limits":   {"cpu": "1", "memory": "4Gi"},   # no-work passthrough: 1 core / 4Gi
+    "requests": {"cpu": "1", "memory": "4Gi"},
 }
 GC_MODES = {
     # GOGC=off + interval=0 would mean NO GC at all (node OOM) -- never emit that combo.
@@ -130,9 +130,26 @@ def main():
     o = find_workload(k8s, f"otelcol-{variant}-ctr")
     print(f"otelcol: {'patched' if (o and patch(o, OTELCOL_ENV, OTELCOL_RES)) else 'NOT FOUND'} {o or ''}")
 
+    # OTLP export retry MUST be off. The SDK's in-band gRPC retry blocks the
+    # request path when the collector refuses (priority/memory_limiter), which
+    # breaks the out-of-band export property and collapses app throughput. The
+    # bridges design bakes OTLP_RETRY=off into every deployment.
+    n = sum(1 for p in app_deployments(k8s) if patch(p, {"OTLP_RETRY": "off"}))
+    print(f"otlp_retry[off]: patched {n} app-service deployments")
+
     if gc:
         n = sum(1 for p in app_deployments(k8s) if patch(p, GC_MODES[gc], only_if_present=True))
         print(f"gc[{gc}]: patched {n} app-service deployments")
+
+    # Head-sampling ratio (OTel ParentBased(TraceIDRatioBased)), read from the
+    # environment so build_deploy needs no new flag: export OTEL_SAMPLE_RATIO=0.1.
+    # Baked into every app-service so --apply brings pods up at the ratio via
+    # clean Recreate (avoids the kubectl-set-env rolling-update surge on pinned
+    # full nodes). Unset/>=1 => AlwaysSample (default); trace.go reads this env.
+    sr = os.environ.get("OTEL_SAMPLE_RATIO")
+    if sr:
+        n = sum(1 for p in app_deployments(k8s) if patch(p, {"OTEL_SAMPLE_RATIO": sr}))
+        print(f"sample_ratio[{sr}]: patched {n} app-service deployments")
 
 
 if __name__ == "__main__":
