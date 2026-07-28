@@ -69,6 +69,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow
-
 replace blueprint/goproc/text_service_v_es_proc => ../text_service_v_es_proc
+
+replace github.com/blueprint-uservices/blueprint/examples/dsb_sn/workflow => ../workflow

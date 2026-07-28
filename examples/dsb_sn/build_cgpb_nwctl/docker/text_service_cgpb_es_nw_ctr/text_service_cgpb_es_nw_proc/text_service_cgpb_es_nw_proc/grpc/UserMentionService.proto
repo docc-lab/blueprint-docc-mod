@@ -1,0 +1,24 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Request {
+    sint64 reqID = 1;
+    repeated string usernames = 2;
+    string traceCtx = 3;
+}
+
+message UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response {
+    repeated UserMentionService_UserMention ret0 = 1;
+}
+
+message UserMentionService_UserMention {
+    sint64 UserID = 1;
+    string Username = 2;
+}
+
+service UserMentionService_OTServerWrapperInterface {
+    rpc ComposeUserMentions (UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Request) returns (UserMentionService_OTServerWrapperInterface_ComposeUserMentions_Response) {}
+}
+

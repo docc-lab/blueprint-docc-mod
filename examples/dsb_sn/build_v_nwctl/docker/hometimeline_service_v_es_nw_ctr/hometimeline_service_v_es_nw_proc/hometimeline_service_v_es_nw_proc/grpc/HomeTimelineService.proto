@@ -1,0 +1,34 @@
+syntax="proto3";
+option go_package="./;grpc";
+package grpc;
+
+
+message HomeTimelineService_OTServerWrapperInterface_ReadHomeTimeline_Request {
+    sint64 reqID = 1;
+    sint64 userID = 2;
+    sint64 start = 3;
+    sint64 stop = 4;
+    string traceCtx = 5;
+}
+
+message HomeTimelineService_OTServerWrapperInterface_ReadHomeTimeline_Response {
+    repeated sint64 ret0 = 1;
+}
+
+message HomeTimelineService_OTServerWrapperInterface_WriteHomeTimeline_Request {
+    sint64 reqID = 1;
+    sint64 postID = 2;
+    sint64 userID = 3;
+    sint64 timestamp = 4;
+    repeated sint64 userMentionIDs = 5;
+    string traceCtx = 6;
+}
+
+message HomeTimelineService_OTServerWrapperInterface_WriteHomeTimeline_Response {
+}
+
+service HomeTimelineService_OTServerWrapperInterface {
+    rpc ReadHomeTimeline (HomeTimelineService_OTServerWrapperInterface_ReadHomeTimeline_Request) returns (HomeTimelineService_OTServerWrapperInterface_ReadHomeTimeline_Response) {}
+    rpc WriteHomeTimeline (HomeTimelineService_OTServerWrapperInterface_WriteHomeTimeline_Request) returns (HomeTimelineService_OTServerWrapperInterface_WriteHomeTimeline_Response) {}
+}
+

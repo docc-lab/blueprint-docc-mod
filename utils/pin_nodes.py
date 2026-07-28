@@ -106,6 +106,13 @@ def apply_pinning_to_deployment(deployment_path, pin_map, dry_run=False):
     if limits_memory is not None:
         limits["memory"] = limits_memory
 
+    # GOMAXPROCS must track the CPU limit: with a limit set but GOMAXPROCS unset,
+    # the Go runtime defaults it to the node's core count (e.g. 40) and runs that
+    # many scheduler threads against the smaller CFS quota (e.g. 8) -> hard CFS
+    # throttling, latency spikes, and idle goroutines spinning the whole quota.
+    limits_cpu_m = pin.get("limits_cpu")
+    gomaxprocs = str(max(1, round(int(limits_cpu_m) / 1000))) if limits_cpu_m else None
+
     containers = pod_spec.get("containers", [])
     if not containers:
         return False
@@ -121,6 +128,12 @@ def apply_pinning_to_deployment(deployment_path, pin_map, dry_run=False):
             resources.pop("limits", None)
         if not resources:
             container.pop("resources", None)
+        # Pin GOMAXPROCS to the CPU-limit core count (Go ignores it on non-Go
+        # images like mongo/redis/es, so applying it uniformly is safe).
+        if gomaxprocs is not None:
+            env = container.setdefault("env", [])
+            env[:] = [e for e in env if e.get("name") != "GOMAXPROCS"]
+            env.append({"name": "GOMAXPROCS", "value": gomaxprocs})
 
     res_msg = ", ".join(
         x for x in [

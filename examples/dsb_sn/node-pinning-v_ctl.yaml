@@ -1,0 +1,97 @@
+# Auto-generated node-pinning for variant 'v-es' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), with CPU requests).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-v-es-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - userid-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-2:
+  - hometimeline-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - hometimeline-cache-v-es-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - urlshorten-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - urlshorten-db-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-3:
+  - usertimeline-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - usertimeline-cache-v-es-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - usertimeline-db-v-es-ctr:
+      requests_cpu: 16000
+      limits_cpu: 16000
+  - usermention-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-4:
+  - socialgraph-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - social-cache-v-es-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - social-db-v-es-ctr:
+      requests_cpu: 16000
+      limits_cpu: 16000
+  - text-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-5:
+  - post-storage-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - post-cache-v-es-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - post-db-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-6:
+  - uniqueid-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - media-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-7:
+  - wrk2api-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-8:
+  - user-service-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - user-cache-v-es-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - user-db-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-9:
+  - jaeger-v-es-ctr:
+      requests_cpu: 24000
+      limits_cpu: 24000
+  - elasticsearch-v-es-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000

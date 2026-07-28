@@ -1,0 +1,97 @@
+# Auto-generated node-pinning for variant 'pb-es-nw' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), with CPU requests).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-pb-es-nw-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - userid-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-2:
+  - hometimeline-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - hometimeline-cache-pb-es-nw-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - urlshorten-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - urlshorten-db-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-3:
+  - usertimeline-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - usertimeline-cache-pb-es-nw-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - usertimeline-db-pb-es-nw-ctr:
+      requests_cpu: 16000
+      limits_cpu: 16000
+  - usermention-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-4:
+  - socialgraph-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - social-cache-pb-es-nw-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - social-db-pb-es-nw-ctr:
+      requests_cpu: 16000
+      limits_cpu: 16000
+  - text-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-5:
+  - post-storage-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - post-cache-pb-es-nw-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - post-db-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-6:
+  - uniqueid-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - media-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-7:
+  - wrk2api-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-8:
+  - user-service-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+  - user-cache-pb-es-nw-ctr:
+      requests_cpu: 4000
+      limits_cpu: 4000
+  - user-db-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000
+
+node-9:
+  - jaeger-pb-es-nw-ctr:
+      requests_cpu: 24000
+      limits_cpu: 24000
+  - elasticsearch-pb-es-nw-ctr:
+      requests_cpu: 8000
+      limits_cpu: 8000

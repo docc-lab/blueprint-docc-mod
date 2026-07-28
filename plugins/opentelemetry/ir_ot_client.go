@@ -353,7 +353,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	openChildCountPtr := ctx.Value("openChildCount").(*atomic.Uint64)
 	childrenMutexPtr := ctx.Value("childrenMutex").(*sync.Mutex)
 
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	seqNum := int(childCountPtr.Add(1))
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+	baggage["__seq"] = strconv.Itoa(seqNum) // propagate child ordinal to the downstream (server) span
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
@@ -478,6 +480,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	seqNum := int(eventCountPtr.Add(1))
 
 	ctx = context.WithValue(ctx, "seqNum", seqNum)
+	baggage["__seq"] = strconv.Itoa(seqNum) // propagate child ordinal to the downstream (server) span
 	
 	tp, _ := handler.CollClient.GetTracerProvider(ctx)
 	tr := tp.Tracer("{{$service}}")
@@ -673,7 +676,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	tr := tp.Tracer("{{$service}}")
 
 	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	seqNum := int(childCountPtr.Add(1))
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+	baggage["__seq"] = strconv.Itoa(seqNum) // propagate child ordinal to the downstream (server) span
 	
 	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 
@@ -763,7 +768,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	tr := tp.Tracer("{{$service}}")
 
 	childCountPtr := ctx.Value("childCount").(*atomic.Uint64)
-	ctx = context.WithValue(ctx, "seqNum", int(childCountPtr.Add(1)))
+	seqNum := int(childCountPtr.Add(1))
+	ctx = context.WithValue(ctx, "seqNum", seqNum)
+	baggage["__seq"] = strconv.Itoa(seqNum) // propagate child ordinal to the downstream (server) span
 	
 	ctx, span := tr.Start(ctx, "{{$basename}}Client_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindClient))
 

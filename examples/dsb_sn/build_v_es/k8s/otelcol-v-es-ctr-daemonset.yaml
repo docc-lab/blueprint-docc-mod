@@ -28,7 +28,7 @@ spec:
         - name: JAEGER_V_ES_OTLP_DIAL_ADDR
           value: jaeger-v-es-ctr:4317
         - name: GOMEMLIMIT
-          value: 3276MiB
+          value: 230MiB
         image: 10.10.1.1:30000/otelcol-v-es-ctr:latest
         name: otelcol-v-es-ctr
         ports:
@@ -39,9 +39,9 @@ spec:
         resources:
           limits:
             cpu: 500m
-            memory: 4Gi
+            memory: 256Mi
           requests:
             cpu: 500m
-            memory: 4Gi
+            memory: 256Mi
       hostname: otelcol-v-es-ctr
       restartPolicy: Always
