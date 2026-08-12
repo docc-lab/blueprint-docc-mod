@@ -1,0 +1,21 @@
+MEASURED SERVICE TIME (rho~0.1, queueing-free)
+  bimodal   E[S]=0.681 ms   CV_S=0.432
+  exp       E[S]=0.646 ms   CV_S=0.317
+  fixed     E[S]=0.656 ms   CV_S=0.267
+
+RESPONSE TIME BY UTILISATION (n rounds, +- = between-round sd)
+  rho |    bimodal mean_ms     bimodal CV |        exp mean_ms         exp CV |      fixed mean_ms       fixed CV |    ΔCV%  E[W] ratio   vs P-K
+ 0.50 |      0.843±0.006     0.431±0.015  |      0.764±0.007     0.297±0.007  |      0.752±0.007     0.266±0.086  |
+ 0.70 |      1.125±0.002     0.430±0.005  |      0.948±0.004     0.325±0.006  |      0.909±0.001     0.254±0.012  |
+ 0.85 |      1.458±0.004     0.460±0.004  |      1.126±0.020     0.376±0.017  |      1.039±0.010     0.283±0.012  |
+ 0.95 |      1.886±0.025     0.510±0.023  |      1.375±0.039     0.471±0.030  |      1.205±0.025     0.450±0.099  |
+
+HOW TO READ THIS
+  * 'ΔCV%'      : response-time CV, variable arm vs fixed arm, at matched rho.
+                  Positive and growing with rho => hypothesis SUPPORTED.
+  * 'E[W] ratio': queueing delay ratio (response minus that arm's own service time).
+                  This is the quantity P-K makes a prediction about.
+  * 'vs P-K'    : measured ratio / predicted ratio. ~1.0 means the inflation is
+                  quantitatively what M/G/1 predicts from the measured CV_S.
+  * If ΔCV% ~ 0 at every rho while CV_S differs a lot between arms, the hypothesis
+    is falsified ON THIS SYSTEM, and the bound is what matters for the writeup.

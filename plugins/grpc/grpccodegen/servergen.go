@@ -29,7 +29,7 @@ func GenerateServerHandler(builder golang.ModuleBuilder, service *gocode.Service
 	}
 
 	server.Imports.AddPackages(
-		"context", "net",
+		"context", "net", "os", "strconv",
 		"google.golang.org/grpc",
 	)
 
@@ -73,7 +73,33 @@ func (handler *{{.Name}}) Run(ctx context.Context) error {
 		return err
 	}
 
-	s := grpc.NewServer()
+	// MaxConcurrentStreams MUST be set explicitly.
+	//
+	// grpc-go's client starts with streamQuota = defaultMaxStreamsClient = 100
+	// (internal/transport/defaults.go) and only raises it when it RECEIVES a
+	// SETTINGS_MAX_CONCURRENT_STREAMS frame. But the server only SENDS that
+	// setting when its value differs from math.MaxUint32 (internal/transport/
+	// http2_server.go), and MaxUint32 is the default. So a plain
+	// grpc.NewServer() advertises nothing and every client is silently pinned
+	// to 100 concurrent in-flight RPCs per connection; extra calls queue
+	// client-side (see https://grpc.io/docs/guides/performance/). That caps a
+	// service at 100/RTT rps. It does NOT bind a fast service (payloadbench
+	// needs only ~19 concurrent streams) but DOES bind slower ones: dsb_sn at
+	// ~30ms per call needs 150-300 streams at 5-10k rps.
+	//
+	// Override with GRPC_MAX_CONCURRENT_STREAMS; 0 restores grpc-go's
+	// (counter-intuitively limiting) default behaviour.
+	maxStreams := uint32(8192)
+	if v := os.Getenv("GRPC_MAX_CONCURRENT_STREAMS"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+			maxStreams = uint32(n)
+		}
+	}
+	var opts []grpc.ServerOption
+	if maxStreams > 0 {
+		opts = append(opts, grpc.MaxConcurrentStreams(maxStreams))
+	}
+	s := grpc.NewServer(opts...)
 	Register{{.Service.Name}}Server(s, handler)
 
 	go func() {

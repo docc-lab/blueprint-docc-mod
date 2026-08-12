@@ -1,0 +1,51 @@
+ACHIEVED THROUGHPUT (mean +- between-round sd)
+ offered |           fixed (CV=0) |           exp (CV=1.0) |      bimodal (CV=3.31)
+    4000 |          3990 ±6       |          3993 ±6       |          3992 ±5      
+    6000 |          5990 ±9       |          5980 ±15      |          5995 ±0      
+    8000 |          7996 ±0       |          7975 ±1       |          7990 ±12     
+   10000 |          9987 ±15      |          9996 ±0       |          9987 ±14     
+   12000 |         11987 ±18      |         11997 ±0       |         11976 ±18     
+   14000 |         13986 ±21      |         13986 ±20      |         13998 ±0      
+   16000 |         15983 ±23      |         15983 ±24      |         15983 ±24     
+   18000 |         17997 ±0       |         17982 ±26      |         17981 ±26     
+   20000 |         19978 ±30      |         19962 ±59      |         19978 ±30     
+   22000 |         21978 ±31      |         21979 ±32      |         21960 ±32     
+   24000 |         23997 ±0       |         23977 ±35      |         23956 ±69     
+   26000 |         25952 ±37      |         25996 ±1       |         25994 ±1      
+   28000 |         27973 ±41      |         27974 ±41      |         27971 ±43     
+   30000 |         29857 ±177     |         29570 ±742     |         29612 ±105    
+   32000 |         30989 ±957     |         30206 ±1367    |         29704 ±48     
+
+MEAN RESPONSE TIME ms (mean +- between-round sd)  and  bimodal penalty vs fixed
+ offered |              fixed |                exp |            bimodal |  penalty
+    4000 |      0.697 ±0.017 |      0.710 ±0.010 |      0.790 ±0.018 |   +13.3%
+    6000 |      0.692 ±0.009 |      0.705 ±0.011 |      0.774 ±0.006 |   +11.8%
+    8000 |      0.684 ±0.006 |      0.678 ±0.002 |      0.765 ±0.025 |   +11.7%
+   10000 |      0.688 ±0.015 |      0.683 ±0.008 |      0.765 ±0.008 |   +11.1%
+   12000 |      0.712 ±0.012 |      0.706 ±0.004 |      0.827 ±0.015 |   +16.2%
+   14000 |      0.751 ±0.002 |      0.754 ±0.002 |      0.892 ±0.006 |   +18.8%
+   16000 |      0.803 ±0.011 |      0.816 ±0.009 |      0.992 ±0.011 |   +23.5%
+   18000 |      0.858 ±0.009 |      0.878 ±0.006 |      1.125 ±0.018 |   +31.2%
+   20000 |      1.023 ±0.187 |      0.956 ±0.012 |      1.265 ±0.009 |   +23.7%
+   22000 |      0.972 ±0.014 |      1.037 ±0.014 |      1.472 ±0.014 |   +51.5%
+   24000 |      1.029 ±0.001 |      1.151 ±0.015 |      1.760 ±0.009 |   +71.1%
+   26000 |      1.122 ±0.035 |      1.299 ±0.074 |      2.249 ±0.023 |  +100.4%
+   28000 |      1.330 ±0.137 |      2.582 ±1.693 |      3.533 ±0.064 |  +165.5%
+   30000 |     72.685 ±123.110 |    259.279 ±445.260 |    213.880 ±74.062 |  +194.3%
+   32000 |    523.932 ±536.685 |    942.545 ±708.616 |   1250.790 ±70.335 |  +138.7%
+
+KNEE = peak of the round-averaged achieved curve (never mean-of-per-round-maxima)
+  fixed     (CV_size=   0) knee =    30989 rps ±957  at offered 32000 (n=3)
+  exp       (CV_size= 1.0) knee =    30206 rps ±1367  at offered 32000 (n=3)
+  bimodal   (CV_size=3.31) knee =    29704 rps ±48  at offered 32000 (n=3)
+  => exp knee is -2.5% vs fixed
+  => bimodal knee is -4.1% vs fixed
+
+total non-2xx across all runs: 0
+
+READING THIS vs the rho-matched experiment
+  At matched OFFERED RPS the penalty compounds capacity loss AND queueing amplification
+  -- the total effect an operator sees. The rho-matched table isolates the queueing
+  mechanism alone. Quote effect SIZE from the rho-matched points (the knee region is
+  near-vertical, so small rps offsets swing latency wildly) and use these curves for
+  shape and knee location.

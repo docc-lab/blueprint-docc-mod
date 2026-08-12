@@ -1,0 +1,14 @@
+# Generated build trees (regenerate: go run ./wiring -w docker_nt_es -o build_X)
+build_*/
+
+# Raw wrk output is large (~275MB) and the findings live in analysis.txt /
+# figures / notes. Exclude the per-step HdrHistograms by FILE pattern, not by
+# directory: git cannot re-include a file whose parent directory is excluded,
+# so `results/*/` + `!results/*/analysis.txt` would silently drop everything.
+results/**/step_*.txt
+results/**/warmup.txt
+results/**/round_*/summary.txt
+results/**/*_rho*_rd*.txt
+results/**/cap_*.txt
+results/**/svc_*.txt
+results/**/m_*.txt

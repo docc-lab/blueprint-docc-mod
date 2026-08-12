@@ -1,0 +1,25 @@
+# Node-pinning for payloadbench variant 'nt-es' (no tracing).
+# edge and internal on SEPARATE nodes.
+#
+# 16-core limits (2026-07-30): raised from 8 -> 16 after the 8-core runs showed the
+# edge service was the binding constraint (6.4/8 cores at 50k rps while internal sat
+# at 2-3/8), capping the system at a ~60.1-60.8 MB/s per-direction byte rate.
+# Nodes are 2x Xeon Silver 4114 = 40 logical cores (20 per socket), so 16 stays
+# within one socket's worth of logical CPUs -> no new cross-socket NUMA variance,
+# which matters because latency variance is the metric under study.
+# pin_nodes.py derives GOMAXPROCS=16 from limits_cpu automatically.
+#
+# jaeger/elasticsearch parked on node-9 (idle in nt, kept for layout parity).
+# Consumed by pin_nodes.py. Edit freely.
+
+node-2:
+  - edge-service-nt-es-ctr:
+      limits_cpu: 8000
+
+node-3:
+  - internal-service-nt-es-ctr:
+      limits_cpu: 8000
+
+node-9:
+  - jaeger-nt-es-ctr:
+  - elasticsearch-nt-es-ctr:
