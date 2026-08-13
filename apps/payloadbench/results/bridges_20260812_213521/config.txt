@@ -1,0 +1,14 @@
+bridges: none cgpb sb   (baggage on the REQUEST only, cpd 6)
+sizes (SOSP'23 Fig 6): p10=200/192B  p50=1536/320B  p90=12000/10000B
+ramp: start=2000 step=2000 max=72000 25s/step 8s break rounds=2 -t16 -c128
+saturation: achieved < 0.95 x offered OR mean > 20x first step, then 2 more
+paired within round; url=http://10.10.1.3:11011
+  p10  none  req=200      res=192    (mean +0 B on request, +0.00% round trip)
+  p10  cgpb  req=224.96   res=192    (mean +24.96 B on request, +6.37% round trip)
+  p10  sb    req=232.95   res=192    (mean +32.95 B on request, +8.41% round trip)
+  p50  none  req=1536     res=320    (mean +0 B on request, +0.00% round trip)
+  p50  cgpb  req=1560.96  res=320    (mean +24.96 B on request, +1.34% round trip)
+  p50  sb    req=1568.95  res=320    (mean +32.95 B on request, +1.78% round trip)
+  p90  none  req=12000    res=10000  (mean +0 B on request, +0.00% round trip)
+  p90  cgpb  req=12025    res=10000  (mean +24.96 B on request, +0.11% round trip)
+  p90  sb    req=12033    res=10000  (mean +32.95 B on request, +0.15% round trip)

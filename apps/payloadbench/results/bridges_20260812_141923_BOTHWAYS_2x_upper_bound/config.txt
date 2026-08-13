@@ -1,0 +1,11 @@
+bridges: pb none   (pb = +24 B constant, p-bridge cpd 6, both directions)
+sizes (SOSP'23 Fig 6): p10=200/192B  p50=1536/320B  p90=12000/10000B
+ramp: start=2000 step=2000 max=72000 25s/step 8s break rounds=3 -t16 -c128
+saturation: achieved < 0.95 x offered OR mean > 20x first step, then 2 more
+paired within round; url=http://10.10.1.3:11011
+  p10  pb    req=224    res=216    (+24 B, +12.24% round trip)
+  p10  none  req=200    res=192    (+0 B, +0.00% round trip)
+  p50  pb    req=1560   res=344    (+24 B, +2.59% round trip)
+  p50  none  req=1536   res=320    (+0 B, +0.00% round trip)
+  p90  pb    req=12024  res=10024  (+24 B, +0.22% round trip)
+  p90  none  req=12000  res=10000  (+0 B, +0.00% round trip)
