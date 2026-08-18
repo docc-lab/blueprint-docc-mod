@@ -66,6 +66,8 @@ func (node *OpenTelemetryServerWrapper) genInterface(ctx ir.BuildContext) (*goco
 	i := gocode.CopyServiceInterface(fmt.Sprintf("%v_OTServerWrapperInterface", iface.BaseName), module_ctx.Info().Name+"/"+node.outputPackage, iface)
 	for name, method := range i.Methods {
 		method.AddArgument(gocode.Variable{Name: "traceCtx", Type: &gocode.BasicType{Name: "string"}})
+		// Return Path: callee hands a reverse-truss string back to caller
+		method.AddRetVar(gocode.Variable{Name: "retCtx", Type: &gocode.BasicType{Name: "string"}})
 		i.Methods[name] = method
 	}
 	return i, nil
@@ -535,7 +537,7 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$receiver := .Name -}}
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
-func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "retCtx string" "err error"}}) {
 	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
 	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
 	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
@@ -621,6 +623,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	ctx = context.WithValue(ctx, "endEvents", &endEvents)
 	ctx = context.WithValue(ctx, "childrenMutex", &childrenMutex)
 
+	// reverse-truss fan-in accumulator
+	ctx = backend.WithRetMerge(ctx)
+
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)
@@ -645,6 +650,13 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.SetAttributes(attribute.String("remEndEvents", base64.RawURLEncoding.EncodeToString(buf)))
 	}
 
+	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
+	if backend.ReverseTrussEnabled() {
+		if backend.LeafReject() {
+			backend.CountLeafReject()
+		}
+		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+	}
 	return
 }
 {{end}}
@@ -677,7 +689,7 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$receiver := .Name -}}
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
-func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "retCtx string" "err error"}}) {
 	// Sampling-aware fast path: a compact "U:<traceid><spanid>" carrier means the
 	// trace was head-unsampled upstream. Skip the JSON deserialize, baggage, and
 	// span start entirely; just restore the (unsampled) remote span context so
@@ -750,11 +762,21 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
+	// reverse-truss fan-in accumulator
+	ctx = backend.WithRetMerge(ctx)
+
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
 		span.RecordError(err)
 	}
 
+	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
+	if backend.ReverseTrussEnabled() {
+		if backend.LeafReject() {
+			backend.CountLeafReject()
+		}
+		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+	}
 	return
 }
 {{end}}
@@ -787,7 +809,7 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$receiver := .Name -}}
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
-func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "retCtx string" "err error"}}) {
 	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
 	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
 	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
@@ -859,6 +881,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
+
+	// reverse-truss fan-in accumulator
+	ctx = backend.WithRetMerge(ctx)
 	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
@@ -867,6 +892,13 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
+	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
+	if backend.ReverseTrussEnabled() {
+		if backend.LeafReject() {
+			backend.CountLeafReject()
+		}
+		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+	}
 	return
 }
 {{end}}
@@ -899,7 +931,7 @@ func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserT
 {{$receiver := .Name -}}
 {{$sdktrace := "trace2" -}}
 {{range $_, $f := .Service.Methods}}
-func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "err error"}}) {
+func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}, traceCtx string) ({{RetVarsAndTypes $f "retCtx string" "err error"}}) {
 	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
 	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
 	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
@@ -971,6 +1003,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
+
+	// reverse-truss fan-in accumulator
+	ctx = backend.WithRetMerge(ctx)
 	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
@@ -979,6 +1014,13 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
+	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
+	if backend.ReverseTrussEnabled() {
+		if backend.LeafReject() {
+			backend.CountLeafReject()
+		}
+		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+	}
 	return
 }
 {{end}}
