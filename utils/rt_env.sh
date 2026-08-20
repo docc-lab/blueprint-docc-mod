@@ -3,7 +3,7 @@
 # ./rt_env.sh <policy> <depth> <parentid> <leaf-reject> [leaf-regex] [root-regex]
 set -euo pipefail
 POL="${1:-1}"; DEPTH="${2:-3}"; PAR="${3:-off}"; REJ="${4:-0.2}"
-LEAF="${5:-(mongodb|redis|memcached|social-graph|url-shorten)}"; ROOT="${6:-(wrk2api|frontend)}"
+LEAF="${5:-(poststorage|socialgraph|urlshorten|uniqueid|media|usertimeline)-service}"; ROOT="${6:-(wrk2api|frontend)}"
 kubectl set env deploy,daemonset --all --containers='*' \
   REVERSE_TRUSS=on RT_POLICY="$POL" RT_DEPTH="$DEPTH" RT_PARENTID="$PAR"
 kubectl get deploy,daemonset -o name | grep -E "$ROOT" | xargs -r -I{} kubectl set env {} RT_ROOT=on

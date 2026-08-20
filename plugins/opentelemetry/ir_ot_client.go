@@ -531,6 +531,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		backend.CountTrussReceived()
 		if backend.ReverseTrussCheckpoint() {
 			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
 			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
 		} else {
 			backend.AddToMerge(ctx, retCtx)
@@ -643,6 +644,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		backend.CountTrussReceived()
 		if backend.ReverseTrussCheckpoint() {
 			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
 			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
 		} else {
 			backend.AddToMerge(ctx, retCtx)
@@ -748,6 +750,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		backend.CountTrussReceived()
 		if backend.ReverseTrussCheckpoint() {
 			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
 			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
 		} else {
 			backend.AddToMerge(ctx, retCtx)
@@ -854,6 +857,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		backend.CountTrussReceived()
 		if backend.ReverseTrussCheckpoint() {
 			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
 			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
 		} else {
 			backend.AddToMerge(ctx, retCtx)

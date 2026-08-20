@@ -650,11 +650,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.SetAttributes(attribute.String("remEndEvents", base64.RawURLEncoding.EncodeToString(buf)))
 	}
 
-	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
-	if backend.ReverseTrussEnabled() {
-		if backend.LeafReject() {
-			backend.CountLeafReject()
-		}
+	// reverse-truss: only a rejecting leaf originates a truss (leaf_rejects == trusses_received)
+	if backend.ReverseTrussEnabled() && backend.LeafReject() {
+		backend.CountLeafReject()
 		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 	}
 	return
@@ -770,11 +768,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
-	if backend.ReverseTrussEnabled() {
-		if backend.LeafReject() {
-			backend.CountLeafReject()
-		}
+	// reverse-truss: only a rejecting leaf originates a truss (leaf_rejects == trusses_received)
+	if backend.ReverseTrussEnabled() && backend.LeafReject() {
+		backend.CountLeafReject()
 		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 	}
 	return
@@ -892,11 +888,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
-	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
-	if backend.ReverseTrussEnabled() {
-		if backend.LeafReject() {
-			backend.CountLeafReject()
-		}
+	// reverse-truss: only a rejecting leaf originates a truss (leaf_rejects == trusses_received)
+	if backend.ReverseTrussEnabled() && backend.LeafReject() {
+		backend.CountLeafReject()
 		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 	}
 	return
@@ -1014,11 +1008,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
-	// reverse-truss: ancestry (self+parent), fan-in concatenated, gated by REVERSE_TRUSS
-	if backend.ReverseTrussEnabled() {
-		if backend.LeafReject() {
-			backend.CountLeafReject()
-		}
+	// reverse-truss: only a rejecting leaf originates a truss (leaf_rejects == trusses_received)
+	if backend.ReverseTrussEnabled() && backend.LeafReject() {
+		backend.CountLeafReject()
 		retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 	}
 	return

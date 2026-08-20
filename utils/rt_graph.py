@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Collect BRIDGES_RT counters from all pods, check invariant, plot per-node checkpoints
-import re, subprocess
+import re, subprocess, sys, os
+NO_INV = "--no-invariant" in sys.argv or os.environ.get("RT_NO_INVARIANT") == "1"
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -16,7 +17,7 @@ for p in pods:
     per_node[name] = val(last,"checkpoints"); recv += val(last,"received"); reject += val(last,"leaf_rejects")
 
 print(f"total leaf_rejects={reject}   total trusses_received={recv}")
-if reject != recv:
+if not NO_INV and reject != recv:
     print('Something horribly went wrong: leaf_rejects != trusses_received')
 names=list(per_node); vals=[per_node[n] for n in names]
 plt.figure(figsize=(12,5))

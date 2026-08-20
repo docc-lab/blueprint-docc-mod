@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/bloom"
 	"go.opentelemetry.io/otel/trace"
@@ -162,19 +163,44 @@ var (
 
 func installCounterDump() {
 	rtDumpOnce.Do(func() {
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-		go func() {
-			<-ch
+		dump := func() {
 			slog.Info("BRIDGES_RT",
 				"checkpoints", rtCkpt.Load(),
 				"received", rtRecv.Load(),
 				"leaf_rejects", rtReject.Load())
-			os.Exit(0)
-		}()
+		}
+		// final dump on shutdown
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+		go func() { <-ch; dump(); os.Exit(0) }()
+		// periodic dump so counters are readable mid-run via kubectl logs (RT_DUMP_SEC, default 15; 0=off)
+		sec := 15
+		if n, err := strconv.Atoi(os.Getenv("RT_DUMP_SEC")); err == nil {
+			sec = n
+		}
+		if sec > 0 {
+			go func() {
+				t := time.NewTicker(time.Duration(sec) * time.Second)
+				for range t.C {
+					dump()
+				}
+			}()
+		}
 	})
 }
 
 func CountCheckpoint()    { installCounterDump(); rtCkpt.Add(1) }
 func CountTrussReceived() { installCounterDump(); rtRecv.Add(1) }
 func CountLeafReject()    { installCounterDump(); rtReject.Add(1) }
+
+var rtSample atomic.Uint64
+
+// SampleLogCheckpoint logs ~1/500 checkpoints in decoded form (fingerprints + AMQ
+// segment count) so ancestry can be looked at & raw retCtx can be fed to rt_verify.
+func SampleLogCheckpoint(retCtx string) {
+	if rtSample.Add(1)%500 != 0 {
+		return
+	}
+	fp, parent, amqs := DecodeRetCtx(retCtx)
+	slog.Info("BRIDGES_CKPT", "fp", fp, "parent", parent, "amq_segments", len(amqs), "retctx", retCtx)
+}
