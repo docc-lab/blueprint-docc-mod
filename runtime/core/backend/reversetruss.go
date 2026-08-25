@@ -21,7 +21,8 @@ import (
 
 // fixed AMQ shape so every node's ancestry filter is the same size
 const (
-	rtBloomN = 256
+	rtBloomN = 256 // TO-DO: Make it based on SDK parameters, source from SDK
+	// On reject, we can have something like "something_bag.something"
 	rtBloomP = 0.001
 )
 
@@ -32,7 +33,7 @@ var rtBloomM, rtBloomK = bloom.EstimateParameters(rtBloomN, rtBloomP)
 type reverseTruss struct {
 	FP     string   `json:"fp"`
 	Parent string   `json:"parent,omitempty"`
-	AMQs   [][]byte `json:"amqs,omitempty"`
+	AMQs   [][]byte `json:"amqs,omitempty"` // TO-DO: Change to be an arbitrary "trusses" as a collection of arbitrary trusses, like fan-out, ordinals, end events
 }
 
 // EncodeRetCtx builds the reverse-truss string returned to caller
