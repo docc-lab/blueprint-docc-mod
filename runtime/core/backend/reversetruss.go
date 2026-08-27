@@ -158,7 +158,7 @@ func rtDepth() int {
 
 // counters, dumped on Ctrl-C / SIGTERM
 var (
-	rtCkpt, rtRecv, rtReject atomic.Uint64
+	rtCkpt, rtRecv, rtReject, rtLocal atomic.Uint64
 	rtDumpOnce               sync.Once
 )
 
@@ -168,7 +168,8 @@ func installCounterDump() {
 			slog.Info("BRIDGES_RT",
 				"checkpoints", rtCkpt.Load(),
 				"received", rtRecv.Load(),
-				"leaf_rejects", rtReject.Load())
+				"leaf_rejects", rtReject.Load(),
+				"local_checkpoints", rtLocal.load())
 		}
 		// final dump on shutdown
 		ch := make(chan os.Signal, 1)
@@ -193,6 +194,14 @@ func installCounterDump() {
 func CountCheckpoint()    { installCounterDump(); rtCkpt.Add(1) }
 func CountTrussReceived() { installCounterDump(); rtRecv.Add(1) }
 func CountLeafReject()    { installCounterDump(); rtReject.Add(1) }
+
+// IsLeaf reports whether this node is a flagged reject-leaf (RT_LEAF_REJECT > 0).
+func IsLeaf() bool {
+	r, _ := strconv.ParseFloat(os.Getenv("RT_LEAF_REJECT"), 64)
+	return r > 0
+}
+
+func CountLocalCheckpoint() { installCounterDump(); rtLocal.Add(1) }
 
 var rtSample atomic.Uint64
 

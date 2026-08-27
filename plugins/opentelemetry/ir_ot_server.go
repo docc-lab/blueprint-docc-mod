@@ -653,11 +653,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
 	// received & pushed its children's trusses up re-emits the merged truss upward.
 	if backend.ReverseTrussEnabled() {
-		reject := backend.LeafReject()
-		if reject {
-			backend.CountLeafReject()
+		if backend.IsLeaf() {
+			if backend.LeafReject() {
+				backend.CountLeafReject()
+				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+			}
+			else {
+				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
+			}
 		}
-		if reject || backend.MergedChildren(ctx) != "" {
+		else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
@@ -777,11 +782,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
 	// received & pushed its children's trusses up re-emits the merged truss upward.
 	if backend.ReverseTrussEnabled() {
-		reject := backend.LeafReject()
-		if reject {
-			backend.CountLeafReject()
+		if backend.IsLeaf() {
+			if backend.LeafReject() {
+				backend.CountLeafReject()
+				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+			}
+			else {
+				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
+			}
 		}
-		if reject || backend.MergedChildren(ctx) != "" {
+		else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
@@ -903,11 +913,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
 	// received & pushed its children's trusses up re-emits the merged truss upward.
 	if backend.ReverseTrussEnabled() {
-		reject := backend.LeafReject()
-		if reject {
-			backend.CountLeafReject()
+		if backend.IsLeaf() {
+			if backend.LeafReject() {
+				backend.CountLeafReject()
+				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+			}
+			else {
+				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
+			}
 		}
-		if reject || backend.MergedChildren(ctx) != "" {
+		else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
@@ -1029,11 +1044,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
 	// received & pushed its children's trusses up re-emits the merged truss upward.
 	if backend.ReverseTrussEnabled() {
-		reject := backend.LeafReject()
-		if reject {
-			backend.CountLeafReject()
+		if backend.IsLeaf() {
+			if backend.LeafReject() {
+				backend.CountLeafReject()
+				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+			}
+			else {
+				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
+			}
 		}
-		if reject || backend.MergedChildren(ctx) != "" {
+		else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
