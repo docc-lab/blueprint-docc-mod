@@ -660,8 +660,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
-		}
-		else if backend.MergedChildren(ctx) != "" {
+		} else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
@@ -788,8 +787,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
-		}
-		else if backend.MergedChildren(ctx) != "" {
+		} else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
@@ -918,8 +916,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
-		}
-		else if backend.MergedChildren(ctx) != "" {
+		} else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
@@ -1048,8 +1045,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
-		}
-		else if backend.MergedChildren(ctx) != "" {
+		} else if backend.MergedChildren(ctx) != "" {
 			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
 		}
 	}
