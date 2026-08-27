@@ -657,8 +657,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			if backend.LeafReject() {
 				backend.CountLeafReject()
 				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			}
-			else {
+			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
 		}
@@ -786,8 +785,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			if backend.LeafReject() {
 				backend.CountLeafReject()
 				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			}
-			else {
+			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
 		}
@@ -917,8 +915,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			if backend.LeafReject() {
 				backend.CountLeafReject()
 				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			}
-			else {
+			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
 		}
@@ -1048,8 +1045,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 			if backend.LeafReject() {
 				backend.CountLeafReject()
 				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			}
-			else {
+			} else {
 				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
 			}
 		}
