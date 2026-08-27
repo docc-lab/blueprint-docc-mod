@@ -169,7 +169,7 @@ func installCounterDump() {
 				"checkpoints", rtCkpt.Load(),
 				"received", rtRecv.Load(),
 				"leaf_rejects", rtReject.Load(),
-				"local_checkpoints", rtLocal.load())
+				"local_checkpoints", rtLocal.Load())
 		}
 		// final dump on shutdown
 		ch := make(chan os.Signal, 1)
