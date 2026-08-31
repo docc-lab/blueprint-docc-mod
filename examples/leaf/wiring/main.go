@@ -34,5 +34,7 @@ func main() {
 		specs.Xtrace_Logger,
 		specs.OT_Logger,
 		specs.Govector,
+		specs.DockerCGPBTree4,
+		specs.DockerCGPBTree7,
 	)
 }

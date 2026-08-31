@@ -54,6 +54,8 @@ func (node *OpenTelemetryClientWrapper) genInterface(ctx ir.BuildContext) (*goco
 	i := gocode.CopyServiceInterface(fmt.Sprintf("%v_OTClientWrapperInterface", iface.BaseName), module_ctx.Info().Name+"/"+node.outputPackage, iface)
 	for name, method := range i.Methods {
 		method.Arguments = method.Arguments[:len(method.Arguments)-1]
+		// Hide retCtx from app-facing interface (internally consumed)
+		method.Returns = method.Returns[:len(method.Returns)-1]
 		i.Methods[name] = method
 	}
 	return i, nil
@@ -460,7 +462,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// (baggage/critpath/span/JSON); forward only a compact "U:" carrier so the
 	// trace stays consistent. At ratio>=1 nothing is unsampled -> unchanged.
 	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
-		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		{{RetVars $f "_" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
 		return
 	}
 	// Get baggage from context and create a copy to avoid mutating shared state
@@ -518,9 +520,23 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
 	
-	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
+	var retCtx string
+	{{RetVars $f "retCtx" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
+	}
+
+	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	if retCtx != "" {
+		backend.CountTrussReceived()
+		if backend.ReverseTrussCheckpoint() {
+			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
+			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
+		} else {
+			backend.AddToMerge(ctx, retCtx)
+			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		}
 	}
 
 	// Match the bridges Go simulator: append the child's startSeq to the
@@ -572,7 +588,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// consistent (downstream stays unsampled) at ~no cost. At ratio>=1 every span
 	// is sampled, so this branch is never taken and behavior is unchanged.
 	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
-		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		{{RetVars $f "_" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
 		return
 	}
 
@@ -617,9 +633,23 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
 
-	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
+	var retCtx string
+	{{RetVars $f "retCtx" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
+	}
+
+	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	if retCtx != "" {
+		backend.CountTrussReceived()
+		if backend.ReverseTrussCheckpoint() {
+			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
+			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
+		} else {
+			backend.AddToMerge(ctx, retCtx)
+			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		}
 	}
 
 	return
@@ -660,7 +690,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// (baggage/critpath/span/JSON); forward only a compact "U:" carrier so the
 	// trace stays consistent. At ratio>=1 nothing is unsampled -> unchanged.
 	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
-		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		{{RetVars $f "_" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
 		return
 	}
 	// Get baggage from context and create a copy to avoid mutating shared state
@@ -709,9 +739,23 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
 	
-	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
+	var retCtx string
+	{{RetVars $f "retCtx" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
+	}
+
+	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	if retCtx != "" {
+		backend.CountTrussReceived()
+		if backend.ReverseTrussCheckpoint() {
+			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
+			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
+		} else {
+			backend.AddToMerge(ctx, retCtx)
+			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		}
 	}
 	
 	return
@@ -752,7 +796,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// (baggage/critpath/span/JSON); forward only a compact "U:" carrier so the
 	// trace stays consistent. At ratio>=1 nothing is unsampled -> unchanged.
 	if psc := trace.SpanContextFromContext(ctx); psc.IsValid() && !psc.IsSampled() {
-		{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
+		{{RetVars $f "_" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, "U:"+psc.TraceID().String()+psc.SpanID().String())
 		return
 	}
 	// Get baggage from context and create a copy to avoid mutating shared state
@@ -801,9 +845,24 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	trace_ctx, _ := span.SpanContext().MarshalJSON()
 	trace_ctx_with_baggage, _ := backend.AddBaggageToTraceContext(string(trace_ctx), baggage)
 	
-	{{RetVars $f "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
+	// Capture reverse-truss that the callee returned
+	var retCtx string
+	{{RetVars $f "retCtx" "err"}} = handler.Client.{{$f.Name}}({{ArgVars $f "ctx"}}, trace_ctx_with_baggage)
 	if err != nil {
 		span.RecordError(err)
+	}
+
+	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	if retCtx != "" {
+		backend.CountTrussReceived()
+		if backend.ReverseTrussCheckpoint() {
+			backend.CountCheckpoint()
+			backend.SampleLogCheckpoint(retCtx)
+			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
+		} else {
+			backend.AddToMerge(ctx, retCtx)
+			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		}
 	}
 	
 	return

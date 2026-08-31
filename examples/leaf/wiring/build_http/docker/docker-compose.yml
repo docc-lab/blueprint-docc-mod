@@ -1,0 +1,22 @@
+
+version: '3'
+services:
+
+  leaf_db_ctr:
+    image: mongo:4.4
+    hostname: leaf_db_ctr
+    expose:
+     - "27017"
+    ports:
+     - "${LEAF_DB_BIND_ADDR?leaf_db.bind_addr must be set by the calling environment}:27017"
+    restart: always
+
+  zipkin_ctr:
+    image: openzipkin/zipkin
+    hostname: zipkin_ctr
+    expose:
+     - "9411"
+    ports:
+     - "${ZIPKIN_BIND_ADDR?zipkin.bind_addr must be set by the calling environment}:9411"
+    restart: always
+

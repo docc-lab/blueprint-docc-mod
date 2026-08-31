@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os
+import os, time
 import sys
 import yaml
 import subprocess
@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 import glob
 import argparse
+
+IMAGE_TAG = os.environ.get("IMAGE_TAG") or time.strftime("v%Y%m%d-%H%M%S")
 
 def parse_docker_compose(docker_compose_path):
     """Parse docker-compose file to get service definitions."""
@@ -76,7 +78,7 @@ def update_image_references(output_dir, registry_url):
                             else:
                                 # No tag specified, replace slashes and underscores with dashes, use latest
                                 image_name = original_image.replace('/', '-').replace('_', '-')
-                                new_image = f"{registry_url}/{image_name}:latest"
+                                new_image = f"{registry_url}/{image_name}:{IMAGE_TAG}"
                             
                             print(f"[DEBUG] Updating image {original_image} -> {new_image}")
                             container['image'] = new_image
@@ -118,7 +120,7 @@ def build_and_push_images(services, registry_url, docker_compose_dir, selected_s
                 image_name = service_config.get('image', service_name)
                 # Use only the last part after the last slash, replace underscores with dashes
                 image_name = image_name.split('/')[-1].replace('_', '-')
-                full_image_name = f"{registry_url}/{image_name}:latest"
+                full_image_name = f"{registry_url}/{image_name}:{IMAGE_TAG}"
 
                 print(f"[INFO] Building image for {service_name}")
                 print(f"[DEBUG] Build context: {context}")

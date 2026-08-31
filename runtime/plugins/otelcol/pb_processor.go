@@ -181,6 +181,7 @@ func NewPathBridgeProcessor(ctx context.Context, agentEndpoint string, configDis
 	calculatedM, calculatedK := bloom.EstimateParameters(expectedElements, DefaultBloomFPRate)
 	BloomFilterM = calculatedM
 	BloomFilterK = calculatedK
+	backend.SetRTBloomParams(calculatedM, calculatedK)
 
 	// Fetch full config from config discovery endpoint
 	slog.Info("🔵 About to fetch full config")
@@ -918,6 +919,7 @@ func (p *PathBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 	bm, bk := bloom.EstimateParameters(uint(pbBloomCapacity(int(cpd))), DefaultBloomFPRate)
 	BloomFilterM = bm
 	BloomFilterK = bk
+	backend.SetRTBloomParams(bm, bk)
 
 	slog.Info("Successfully discovered full config",
 		"config_keys", len(config),
