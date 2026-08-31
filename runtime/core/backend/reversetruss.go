@@ -19,49 +19,109 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// fixed AMQ shape so every node's ancestry filter is the same size
-const (
-	rtBloomN = 256 // TO-DO: Make it based on SDK parameters, source from SDK
-	// On reject, we can have something like "something_bag.something"
-	rtBloomP = 0.001
+// AMQ (Bloom) geometry, sourced from SDK:
+// Reverse-truss ancestry filter must use the same Bloom geometry (m,k) as
+// the forward bridge, so the two are inter-operable. The geometry is not a
+// fixed constant:
+//   1. SetRTBloomParams(m,k) is called by the otelcol bridge processor when it
+//      sizes its own Bloom for the discovered cpd (checkpoint distance) -> reverse == forward geometry
+//   2. Standalone fallback (synthetic trees, or any service without bridge
+//      processor) reads it from env at startup:
+//        RT_BLOOM_CAP expected #elements (default 8)
+//        RT_BLOOM_FPR target FP rate (default 0.0001 == otelcol.DefaultBloomFPRate)
+// Every truss records the (m,k) it was built with, so a verifier never has to guess.
+var (
+	rtBloomM atomic.Uint64
+	rtBloomK atomic.Uint32
 )
 
-var rtBloomM, rtBloomK = bloom.EstimateParameters(rtBloomN, rtBloomP)
-
-// reverseTruss carries a List of per-node ancestry filters (concatenated on fan-in)
-// plus concatenated fingerprints and an optional parent id
-type reverseTruss struct {
-	FP     string   `json:"fp"`
-	Parent string   `json:"parent,omitempty"`
-	AMQs   [][]byte `json:"amqs,omitempty"` // TO-DO: Change to be an arbitrary "trusses" as a collection of arbitrary trusses, like fan-out, ordinals, end events
+func init() {
+	capacity := 8
+	if n, err := strconv.Atoi(os.Getenv("RT_BLOOM_CAP")); err == nil && n > 0 {
+		capacity = n
+	}
+	fpr := 0.0001
+	if f, err := strconv.ParseFloat(os.Getenv("RT_BLOOM_FPR"), 64); err == nil && f > 0 {
+		fpr = f
+	}
+	m, k := bloom.EstimateParameters(uint(capacity), fpr)
+	rtBloomM.Store(m)
+	rtBloomK.Store(uint32(k))
 }
 
-// EncodeRetCtx builds the reverse-truss string returned to caller
-func EncodeRetCtx(fp, parent string, amqs [][]byte) string {
-	b, _ := json.Marshal(reverseTruss{FP: fp, Parent: parent, AMQs: amqs})
+// SetRTBloomParams lets the SDK source reverse-truss Bloom geometry from the
+// forward bridge's live geometry (called from runtime/plugins/otelcol).
+func SetRTBloomParams(m uint64, k uint) {
+	if m > 0 && k > 0 {
+		rtBloomM.Store(m)
+		rtBloomK.Store(uint32(k))
+	}
+}
+
+func rtBloom() (uint64, uint) { return rtBloomM.Load(), uint(rtBloomK.Load()) }
+
+// Generalized truss payload
+type TrussSegment struct {
+	Kind string `json:"k"` // amq | hash | ordinal | ee | dee | ...
+	Data []byte `json:"d,omitempty"`
+}
+
+const (
+	SegAMQ = "amq"
+	SegHash = "hash"
+	SegOrdinal = "ordinal"
+	SegEndEv = "ee"
+	SegDelayEE = "dee"
+)
+
+type trussData struct {
+	FP string `json:"fp"`
+	Par string `json:"parent,omitempty"`
+	M uint64 `json:"m,omitempty"`
+	K uint `json:"k,omitempty"`
+	Segs []TrussSegment `json:"segs,omitempty"`
+}
+
+func encodeTruss(t trussData) string {
+	b, _ := json.Marshal(t)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// DecodeRetCtx parses a reverse-truss string; empty/invalid -> zero vals
-func DecodeRetCtx(s string) (fp, parent string, amqs [][]byte) {
+func decodeTruss(s string) (trussData, bool) {
+	var t trussData
 	if s == "" {
-		return
+		return t, false
 	}
 	raw, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		return
+		return t, false
 	}
-	var rt reverseTruss
-	if json.Unmarshal(raw, &rt) != nil {
-		return
+	if json.Unmarshal(raw, &t) != nil {
+		return t, false
 	}
-	return rt.FP, rt.Parent, rt.AMQs
+	return t, true
 }
 
-// BuildRetCtx creates this node's reverse-truss: an ancestry Bloom (its own
-// fingerprint + its parent's fingerprint), concatenated with children's trusses
+// DecodeRetCtx exposes a truss's fingerprints, parent, Bloom geometry, and its
+// AMQ segments (used by ancestry verifier / sample logger).
+func DecodeRetCtx(s string) (fp, parent string, m uint64, k uint, amqs [][]byte) {
+	t, ok := decodeTruss(s)
+	if !ok {
+		return
+	}
+	for _, seg := range t.Segs {
+		if seg.Kind == SegAMQ {
+			amqs = append(amqs, seg.Data)
+		}
+	}
+	return t.FP, t.Par, t.M, t.K, amqs
+}
+
+// BuildRetCtx creates this node's truss: an ancestry Bloom (self + parent
+// fingerprints) as one AMQ segment, concatenated with the children's merged truss.
 func BuildRetCtx(ctx context.Context, traceCtx string, sc trace.SpanContext) string {
-	bf := bloom.New(rtBloomM, rtBloomK)
+	m, k := rtBloom()
+	bf := bloom.New(m, k)
 	sid := sc.SpanID()
 	bf.AddPrehashed(sid[:]) // this node's fingerprint
 	parent := ""
@@ -74,12 +134,18 @@ func BuildRetCtx(ctx context.Context, traceCtx string, sc trace.SpanContext) str
 			}
 		}
 	}
-	own := EncodeRetCtx(sid.String(), parent, [][]byte{bf.Bytes()})
+	own := encodeTruss(trussData{
+		FP: sid.String(),
+		Par: parent,
+		M: m,
+		K: k,
+		Segs: []TrussSegment{{Kind: SegAMQ, Data: bf.Bytes()}},
+	})
 	return MergeRetCtx(MergedChildren(ctx), own)
 }
 
-// MergeRetCtx concatenates two reverse-trusses ("merge" API): Appends their AMQ
-// lists and join fingerprints. Empty inputs can pass
+// MergeRetCtx concatenates two trusses on fan-in: append segment lists, join
+// fingerprints, keep geometry. Empty inputs can pass through.
 func MergeRetCtx(a, b string) string {
 	if a == "" {
 		return b
@@ -87,16 +153,38 @@ func MergeRetCtx(a, b string) string {
 	if b == "" {
 		return a
 	}
-	fpA, pA, amqsA := DecodeRetCtx(a)
-	fpB, _, amqsB := DecodeRetCtx(b)
-	return EncodeRetCtx(fpA+","+fpB, pA, append(amqsA, amqsB...))
+	ta, oka := decodeTruss(a)
+	tb, okb := decodeTruss(b)
+	if !oka {
+		return b
+	}
+	if !okb {
+		return a
+	}
+	m, k := ta.M, ta.K
+	if m == 0 {
+		m, k = tb.M, tb.K
+	}
+	fp := ta.FP
+	if tb.FP != "" {
+		if fp != "" {
+			fp += ","
+		}
+		fp += tb.FP
+	}
+	par := ta.Par
+	if par == "" {
+		par = tb.Par
+	}
+	segs := append(append([]TrussSegment{}, ta.Segs...), tb.Segs...) // fresh slice, no aliasing
+	return encodeTruss(trussData{FP: fp, Par: par, M: m, K: k, Segs: segs})
 }
 
-// per-request fan-in accumulator
+// Per-request fan-in accumulator
 type retMergeKey struct{}
 type retMerge struct {
 	mu sync.Mutex
-	s  string
+	s string
 }
 
 func WithRetMerge(ctx context.Context) context.Context {
@@ -122,8 +210,8 @@ func MergedChildren(ctx context.Context) string {
 
 // toggles (runtime env)
 func ReverseTrussEnabled() bool { return os.Getenv("REVERSE_TRUSS") == "on" }
-func ParentIDEnabled() bool     { return os.Getenv("RT_PARENTID") == "on" }
-func IsRoot() bool              { return os.Getenv("RT_ROOT") == "on" }
+func ParentIDEnabled() bool { return os.Getenv("RT_PARENTID") == "on" }
+func IsRoot() bool { return os.Getenv("RT_ROOT") == "on" }
 
 // LeafReject: flagged leaf declines to checkpoint and pushes up. RT_LEAF_REJECT = rate
 func LeafReject() bool {
@@ -134,9 +222,15 @@ func LeafReject() bool {
 	return rand.Float64() < r
 }
 
+// IsLeaf returns whether this node is a flagged reject-leaf (RT_LEAF_REJECT > 0).
+func IsLeaf() bool {
+	r, _ := strconv.ParseFloat(os.Getenv("RT_LEAF_REJECT"), 64)
+	return r > 0
+}
+
 var reverseTrussCount atomic.Uint64
 
-// ReverseTrussCheckpoint: root always checkpoints; else RT_POLICY "2" depth-random, default "1" round-robin
+// ReverseTrussCheckpoint: root always checkpoints; else RT_POLICY "2" depth-random, default round-robin
 func ReverseTrussCheckpoint() bool {
 	if IsRoot() {
 		return true
@@ -156,10 +250,10 @@ func rtDepth() int {
 	return 3
 }
 
-// counters, dumped on Ctrl-C / SIGTERM
+// Counters, dumped periodically + on Ctrl-C / SIGTERM
 var (
 	rtCkpt, rtRecv, rtReject, rtLocal atomic.Uint64
-	rtDumpOnce               sync.Once
+	rtDumpOnce sync.Once
 )
 
 func installCounterDump() {
@@ -171,11 +265,9 @@ func installCounterDump() {
 				"leaf_rejects", rtReject.Load(),
 				"local_checkpoints", rtLocal.Load())
 		}
-		// final dump on shutdown
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 		go func() { <-ch; dump(); os.Exit(0) }()
-		// periodic dump so counters are readable mid-run via kubectl logs (RT_DUMP_SEC, default 15; 0=off)
 		sec := 15
 		if n, err := strconv.Atoi(os.Getenv("RT_DUMP_SEC")); err == nil {
 			sec = n
@@ -191,26 +283,26 @@ func installCounterDump() {
 	})
 }
 
-func CountCheckpoint()    { installCounterDump(); rtCkpt.Add(1) }
-func CountTrussReceived() { installCounterDump(); rtRecv.Add(1) }
-func CountLeafReject()    { installCounterDump(); rtReject.Add(1) }
-
-// IsLeaf reports whether this node is a flagged reject-leaf (RT_LEAF_REJECT > 0).
-func IsLeaf() bool {
-	r, _ := strconv.ParseFloat(os.Getenv("RT_LEAF_REJECT"), 64)
-	return r > 0
-}
-
+func CountCheckpoint()      { installCounterDump(); rtCkpt.Add(1) }
+func CountTrussReceived()   { installCounterDump(); rtRecv.Add(1) }
+func CountLeafReject()      { installCounterDump(); rtReject.Add(1) }
 func CountLocalCheckpoint() { installCounterDump(); rtLocal.Add(1) }
 
 var rtSample atomic.Uint64
 
-// SampleLogCheckpoint logs ~1/500 checkpoints in decoded form (fingerprints + AMQ
-// segment count) so ancestry can be looked at & raw retCtx can be fed to rt_verify.
+func rtSampleN() uint64 {
+	if n, err := strconv.Atoi(os.Getenv("RT_SAMPLE")); err == nil && n > 0 {
+		return uint64(n)
+	}
+	return 500
+}
+
+// SampleLogCheckpoint logs ~1/RT_SAMPLE checkpoints in decoded form so ancestry
+// can be inspected and the raw retCtx fed to TestRTVerify.
 func SampleLogCheckpoint(retCtx string) {
-	if rtSample.Add(1)%500 != 0 {
+	if rtSample.Add(1)%rtSampleN() != 0 {
 		return
 	}
-	fp, parent, amqs := DecodeRetCtx(retCtx)
-	slog.Info("BRIDGES_CKPT", "fp", fp, "parent", parent, "amq_segments", len(amqs), "retctx", retCtx)
+	fp, parent, m, k, amqs := DecodeRetCtx(retCtx)
+	slog.Info("BRIDGES_CKPT", "fp", fp, "parent", parent, "m", m, "k", k, "amq_segments", len(amqs), "retctx", retCtx)
 }

@@ -10,17 +10,19 @@ import (
 )
 
 // Verify a retCtx holds real ancestry
-// In order to run: RTCTX="<retctx-base64>" go test ./core/backend/ -run TestRTVerify -v
+// To run: RTCTX="<retctx-base64>" go test ./core/backend/ -run TestRTVerify -v
 func TestRTVerify(t *testing.T) {
 	s := os.Getenv("RTCTX")
 	if s == "" {
 		t.Skip("set RTCTX=<retctx-base64> to verify")
 	}
-	fp, parent, amqs := DecodeRetCtx(s)
+	fp, parent, m, k, amqs := DecodeRetCtx(s)
 	t.Logf("fingerprints: %s", fp)
 	t.Logf("parentID: %q", parent)
-	t.Logf("AMQ segments: %d", len(amqs))
-	m, k := bloom.EstimateParameters(256, 0.001)
+	t.Logf("geometry: m=%d k=%d   AMQ segments: %d", m, k, len(amqs))
+	if m == 0 || k == 0 { // pre-geometry trusses / fallback
+		m, k = bloom.EstimateParameters(8, 0.0001)
+	}
 	for _, f := range strings.Split(fp, ",") {
 		b, err := hex.DecodeString(f)
 		if err != nil {
