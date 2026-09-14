@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=topology.schema.json
+version: 1
+root: frontend
+rpc_timeout: 5s
+nodes:
+  frontend:
+    pattern:
+      sequence:
+        - call: auth
+          timeout: 500ms
+        - parallel:
+            - call: catalog
+            - repeat:
+                count: 3
+                do:
+                  sequence:
+                    - sleep: 1ms
+                    - call: inventory
+          parallelism: 2
+        - call: audit
+  catalog:
+    children: [inventory, pricing]
+    parallelism: 0
+  auth: {}
+  inventory: {}
+  pricing: {}
+  audit: {}

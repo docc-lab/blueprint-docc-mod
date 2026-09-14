@@ -74,6 +74,13 @@ import (
 // By default, any other service running in any other container or namespace can now contact
 // this service.
 func Deploy(spec wiring.WiringSpec, serviceName string) {
+	DeployWithTimeout(spec, serviceName, "1s")
+}
+
+// Tomislav-RetCtx: DeployWithTimeout makes deep topology deadlines configurable;
+// Deploy retains its existing one-second default. An earlier deadline in the
+// caller's context still takes precedence over the configured call timeout.
+func DeployWithTimeout(spec wiring.WiringSpec, serviceName, requestTimeout string) {
 	// The nodes that we are defining
 	grpcClient := serviceName + ".grpc_client"
 	grpcServer := serviceName + ".grpc_server"
@@ -99,7 +106,7 @@ func Deploy(spec wiring.WiringSpec, serviceName string) {
 		if err != nil {
 			return nil, blueprint.Errorf("GRPC client %s expected %s to be an address, but encountered %s", grpcClient, clientNext, err)
 		}
-		return newGolangClient(grpcClient, addr)
+		return newGolangClient(grpcClient, addr, requestTimeout)
 	})
 
 	// Add the server-side modifier, which is an address that PointsTo the grpcServer

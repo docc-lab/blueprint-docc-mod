@@ -584,6 +584,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	}
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -623,7 +626,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	ctx = context.WithValue(ctx, "endEvents", &endEvents)
 	ctx = context.WithValue(ctx, "childrenMutex", &childrenMutex)
 
-	// reverse-truss fan-in accumulator
+	// Tomislav-RetCtx: each request owns a mutex-protected return accumulator.
 	ctx = backend.WithRetMerge(ctx)
 
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
@@ -650,18 +653,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.SetAttributes(attribute.String("remEndEvents", base64.RawURLEncoding.EncodeToString(buf)))
 	}
 
-	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
-	// received & pushed its children's trusses up re-emits the merged truss upward.
+	// Tomislav-RetCtx: finalize merged returns after child/event counts settle.
+	// This server spends one reverse hop; fan-in itself spends none.
+	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
-		if backend.IsLeaf() {
-			if backend.LeafReject() {
-				backend.CountLeafReject()
-				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			} else {
-				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
-			}
-		} else if backend.MergedChildren(ctx) != "" {
-			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+		retCtx = backend.MergedChildren(ctx)
+		if retCtx != "" {
+			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		}
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
 	}
 	return
@@ -746,6 +747,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	}
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -769,7 +773,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	// reverse-truss fan-in accumulator
+	// Tomislav-RetCtx: each request owns a mutex-protected return accumulator.
 	ctx = backend.WithRetMerge(ctx)
 
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
@@ -777,18 +781,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
-	// received & pushed its children's trusses up re-emits the merged truss upward.
+	// Tomislav-RetCtx: finalize merged returns after child/event counts settle.
+	// This server spends one reverse hop; fan-in itself spends none.
+	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
-		if backend.IsLeaf() {
-			if backend.LeafReject() {
-				backend.CountLeafReject()
-				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			} else {
-				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
-			}
-		} else if backend.MergedChildren(ctx) != "" {
-			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+		retCtx = backend.MergedChildren(ctx)
+		if retCtx != "" {
+			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		}
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
 	}
 	return
@@ -870,6 +872,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	}
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -896,7 +901,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
 
-	// reverse-truss fan-in accumulator
+	// Tomislav-RetCtx: each request owns a mutex-protected return accumulator.
 	ctx = backend.WithRetMerge(ctx)
 	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
@@ -906,18 +911,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	span.SetAttributes(attribute.Int("childCount", int(childCount.Load())))
 
-	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
-	// received & pushed its children's trusses up re-emits the merged truss upward.
+	// Tomislav-RetCtx: finalize merged returns after child/event counts settle.
+	// This server spends one reverse hop; fan-in itself spends none.
+	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
-		if backend.IsLeaf() {
-			if backend.LeafReject() {
-				backend.CountLeafReject()
-				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			} else {
-				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
-			}
-		} else if backend.MergedChildren(ctx) != "" {
-			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+		retCtx = backend.MergedChildren(ctx)
+		if retCtx != "" {
+			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		}
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
 	}
 	return
@@ -999,6 +1002,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	}
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -1025,7 +1031,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	childCount := atomic.Uint64{}
 	ctx = context.WithValue(ctx, "childCount", &childCount)
 
-	// reverse-truss fan-in accumulator
+	// Tomislav-RetCtx: each request owns a mutex-protected return accumulator.
 	ctx = backend.WithRetMerge(ctx)
 	
 	{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
@@ -1035,18 +1041,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	span.SetAttributes(attribute.Bool("hasChildren", int(childCount.Load()) > 0))
 
-	// reverse-truss: a rejecting leaf checkpoint originates a truss; an intermediate node that
-	// received & pushed its children's trusses up re-emits the merged truss upward.
+	// Tomislav-RetCtx: finalize merged returns after child/event counts settle.
+	// This server spends one reverse hop; fan-in itself spends none.
+	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
-		if backend.IsLeaf() {
-			if backend.LeafReject() {
-				backend.CountLeafReject()
-				retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
-			} else {
-				backend.CountLocalCheckpoint() // leaf checkpoints in place (didn't push up)
-			}
-		} else if backend.MergedChildren(ctx) != "" {
-			retCtx = backend.BuildRetCtx(ctx, traceCtx, span.SpanContext())
+		retCtx = backend.MergedChildren(ctx)
+		if retCtx != "" {
+			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		}
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
 	}
 	return

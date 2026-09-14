@@ -36,5 +36,6 @@ func main() {
 		specs.Govector,
 		specs.DockerCGPBTree4,
 		specs.DockerCGPBTree7,
+		specs.DockerFanout,
 	)
 }

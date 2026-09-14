@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -54,7 +55,7 @@ const BridgeKindEnv = "BRIDGE_KIND"
 // OTCollectorTracer implements the runtime backend instance that implements the backend/trace.Tracer interface.
 // REQUIRED: A functional backend running the OpenTelemetry collector.
 type OTCollectorTracer struct {
-	tp *tracesdk.TracerProvider
+	tp trace.TracerProvider
 }
 
 // NewOTCollectorTracer returns a new instance of OTCollectorTracer.
@@ -74,10 +75,15 @@ func NewOTCollectorTracer(ctx context.Context, addr string, additionalPort strin
 	}
 	slog.Info("✅ OTCollectorTracer initialized", "bridge_kind", resolvedKind, "addr", addr)
 
+	// Tomislav-RetCtx: expose SDK finalization to wrappers before Span.End.
+	spanProcessor = wrapReverseCheckpointProcessor(spanProcessor)
 	tp := tracesdk.NewTracerProvider(
 		tracesdk.WithSampler(headSampler()),
 		tracesdk.WithSpanProcessor(spanProcessor),
 	)
+	if preparer, ok := spanProcessor.(backend.CheckpointPreparer); ok {
+		return &OTCollectorTracer{&checkpointTracerProvider{tp, preparer}}, nil
+	}
 	return &OTCollectorTracer{tp}, nil
 }
 

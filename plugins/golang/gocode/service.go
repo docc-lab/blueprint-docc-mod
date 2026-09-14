@@ -89,6 +89,38 @@ func (f *Func) AddRetVar(variable Variable) {
 	f.Returns = append(f.Returns, variable)
 }
 
+// Tomislav-RetCtx: ArgumentsForCall binds a signature to a call's argument count. A variadic
+// parameter expands into individual element arguments with unique local names.
+// The original signature is unchanged, so constructors can be reused at
+// different arities in the same wiring spec.
+func (f Func) ArgumentsForCall(count int) ([]Variable, error) {
+	fixed := len(f.Arguments)
+	var variadic *Ellipsis
+	if fixed > 0 {
+		variadic, _ = f.Arguments[fixed-1].Type.(*Ellipsis)
+		if variadic != nil {
+			fixed--
+		}
+	}
+	if count < fixed || (variadic == nil && count != fixed) {
+		return nil, fmt.Errorf("mismatched arguments for %s: signature %s, got %d arguments", f.Name, f, count)
+	}
+	args := append([]Variable(nil), f.Arguments[:fixed]...)
+	used := make(map[string]bool, count)
+	for _, arg := range args {
+		used[arg.Name] = true
+	}
+	for i := fixed; i < count; i++ {
+		name := fmt.Sprintf("%s_%d", f.Arguments[fixed].Name, i-fixed)
+		for used[name] {
+			name += "_"
+		}
+		used[name] = true
+		args = append(args, Variable{Name: name, Type: variadic.EllipsisOf})
+	}
+	return args, nil
+}
+
 func (v *Variable) GetName() string {
 	return v.Name
 }

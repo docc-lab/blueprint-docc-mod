@@ -3,6 +3,7 @@ package hotelreservation
 import (
 	"context"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
@@ -204,7 +205,7 @@ func (r *ReservationServiceImpl) CheckAvailability(ctx context.Context, customer
 			newInDate = newInDate.AddDate(0, 0, 1)
 			outdate := newInDate.String()[0:10]
 			key := hotelId + "_" + newInDate.String()[0:10] + "_" + outdate
-			r.NumRequests += 1
+			atomic.AddInt64(&r.NumRequests, 1)
 			var count int64
 			exists, err := r.reserveCache.Get(ctx, key, &count)
 			if err != nil {
@@ -228,7 +229,7 @@ func (r *ReservationServiceImpl) CheckAvailability(ctx context.Context, customer
 					return []string{}, err
 				}
 			} else {
-				r.CacheHits += 1
+				atomic.AddInt64(&r.CacheHits, 1)
 			}
 
 			// Check capacity
@@ -236,7 +237,7 @@ func (r *ReservationServiceImpl) CheckAvailability(ctx context.Context, customer
 			var capacity int64
 			var hotelNumber HotelNumber
 			exists, err = r.reserveCache.Get(ctx, cap_key, &capacity)
-			r.NumRequests += 1
+			atomic.AddInt64(&r.NumRequests, 1)
 			if err != nil {
 				return []string{}, err
 			}
@@ -253,7 +254,7 @@ func (r *ReservationServiceImpl) CheckAvailability(ctx context.Context, customer
 					return []string{}, err
 				}
 			} else {
-				r.CacheHits += 1
+				atomic.AddInt64(&r.CacheHits, 1)
 			}
 			if count+roomNumber > capacity {
 				break

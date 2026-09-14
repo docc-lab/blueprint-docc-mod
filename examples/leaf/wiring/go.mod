@@ -10,6 +10,8 @@ require github.com/blueprint-uservices/blueprint/plugins v0.0.0-20240619221802-d
 
 require github.com/blueprint-uservices/blueprint/examples/leaf/workflow v0.0.0
 
+require gopkg.in/yaml.v3 v3.0.1
+
 require (
 	github.com/DistributedClocks/GoVector v0.0.0-20240117185643-ae07272d0ebd // indirect
 	github.com/blueprint-uservices/blueprint/runtime v0.0.0-20240619221802-d064c5861c1e // indirect

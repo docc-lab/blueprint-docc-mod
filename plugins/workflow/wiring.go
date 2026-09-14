@@ -63,6 +63,8 @@ var strtype = &gocode.BasicType{Name: "string"}
 // configuration arguments.  This determination is made by looking at the argument types of the constructor
 // within the workflow spec (string arguments are treated as configuration; everything else is treated as
 // a service instance).
+// Tomislav-RetCtx: a variadic constructor parameter accepts zero or more trailing serviceArgs;
+// each becomes a separate dependency (or configuration value for ...string).
 //
 // After calling [Service], serviceName is an application-level golang service.  Application-level modifiers
 // can be applied to it, or it can be further deployed into e.g. a goproc, a linuxcontainer, etc.
@@ -77,10 +79,11 @@ func Service[ServiceType any](spec wiring.WiringSpec, serviceName string, servic
 		}
 
 		// Check the serviceArgs provided match the constructorArgs from the actual code
-		constructorArgs := handler.ServiceInfo.Constructor.Arguments[1:]
-		if len(constructorArgs) != len(serviceArgs) {
-			return nil, blueprint.Errorf("mismatched constructor arguments for %s, expect %v, got %v", serviceName, handler.ServiceInfo.Constructor, serviceArgs)
+		boundArgs, err := handler.ServiceInfo.Constructor.ArgumentsForCall(len(serviceArgs) + 1)
+		if err != nil {
+			return nil, blueprint.Errorf("mismatched constructor arguments for %s: %v", serviceName, err)
 		}
+		constructorArgs := boundArgs[1:]
 
 		// Determine if any of the arguments are hard-coded values
 		handler.Args = make([]ir.IRNode, len(constructorArgs))

@@ -1,0 +1,374 @@
+package generated
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/blueprint-uservices/blueprint/examples/leaf/workflow/leaf"
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
+)
+
+type App interface {
+	Call(context.Context, int) (int, error)
+}
+type Wire interface {
+	Call(context.Context, int, string) (int, string, error)
+}
+type Collector interface {
+	GetTracerProvider(context.Context) (trace.TracerProvider, error)
+}
+type appFunc func(context.Context, int) (int, error)
+
+func (f appFunc) Call(ctx context.Context, n int) (int, error) { return f(ctx, n) }
+
+type collector struct{ provider trace.TracerProvider }
+
+func (c collector) GetTracerProvider(context.Context) (trace.TracerProvider, error) {
+	return c.provider, nil
+}
+
+type wrapperVariant struct {
+	name   string
+	server func(App, Collector) Wire
+	client func(Wire, Collector) App
+}
+
+// Runtime tests exercise the real SDK policy. Here a provider implementing its
+// contract verifies the timing and transport behavior of generated wrappers.
+type testProvider struct {
+	trace.TracerProvider
+	mu      sync.Mutex
+	t       *testing.T
+	reject  bool
+	consume bool
+	calls   int
+	retCtx  string
+	inputs  []string
+}
+
+func (p *testProvider) PrepareCheckpoint(span trace.Span) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls++
+	if !span.IsRecording() {
+		p.t.Fatal("wrapper ended span before SDK could write __bag.rev")
+	}
+	var returned string
+	s := span.(sdktrace.ReadWriteSpan)
+	for _, attr := range s.Attributes() {
+		if attr.Key == backend.ReverseTrussInputKey {
+			returned = attr.Value.AsString()
+		}
+	}
+	p.inputs = append(p.inputs, returned)
+	if s.SpanKind() == trace.SpanKindClient && p.consume {
+		s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, returned))
+		returned = ""
+	}
+	if s.SpanKind() == trace.SpanKindServer && p.reject {
+		p.retCtx = backend.EncodeCheckpointRetCtx(span.SpanContext().SpanID(), 130, backend.SegPathCheckpoint, []byte{9, 8, 7})
+		returned = backend.MergeRetCtx(returned, p.retCtx)
+	}
+	if returned != "" {
+		span.SetAttributes(attribute.String(backend.ReverseBaggageKey, returned))
+	}
+}
+func newProvider(t *testing.T, reject bool) (*testProvider, *tracetest.SpanRecorder) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	return &testProvider{TracerProvider: tp, t: t, reject: reject}, recorder
+}
+
+func TestServerReadsSDKCarrierAndMergesChildren(t *testing.T) {
+	t.Setenv("REVERSE_TRUSS", "on")
+	child := backend.EncodeCheckpointRetCtx(trace.SpanID{1, 2, 3, 4, 5, 6, 7, 8}, 16384, backend.SegStructuralCheckpoint, []byte{6, 5, 4})
+	appErr := errors.New("application error")
+	for _, variant := range wrapperVariants {
+		for _, tc := range []struct {
+			name          string
+			reject, child bool
+		}{
+			{"accept", false, false}, {"reject", true, false},
+			{"forward_child", false, true}, {"merge_child", true, true},
+		} {
+			t.Run(variant.name+"/"+tc.name, func(t *testing.T) {
+				provider, recorder := newProvider(t, tc.reject)
+				service := appFunc(func(ctx context.Context, n int) (int, error) {
+					if tc.child {
+						backend.AddToMerge(ctx, child)
+					}
+					return n + 1, appErr
+				})
+				server := variant.server(service, collector{provider})
+				result, retCtx, err := server.Call(context.Background(), 41, "")
+				if result != 42 || err != appErr || provider.calls != 1 {
+					t.Fatalf("application/SDK contract: result=%d err=%v calls=%d", result, err, provider.calls)
+				}
+				want := provider.retCtx
+				if tc.child {
+					want = backend.MergeRetCtx(child, want)
+					if len(provider.inputs) != 1 || provider.inputs[0] != child {
+						t.Fatal("server did not attach coalesced child returns before SDK preparation")
+					}
+				}
+				if retCtx != want {
+					t.Fatalf("return lost SDK or child payload: got %q want %q", retCtx, want)
+				}
+				ended := recorder.Ended()
+				if len(ended) != 1 {
+					t.Fatalf("expected one normal span end, got %d", len(ended))
+				}
+				if tc.reject {
+					cps, err := backend.DecodeReturnedCheckpoints(retCtx)
+					if err != nil || len(cps) == 0 {
+						t.Fatalf("invalid return: %v", err)
+					}
+					own := cps[len(cps)-1]
+					if own.SpanID != ended[0].SpanContext().SpanID() || own.Depth != 130 {
+						t.Fatalf("wrapper changed checkpoint location: %+v", own)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestClientForwardsOrCheckpointsReturnedLocation(t *testing.T) {
+	t.Setenv("REVERSE_TRUSS", "on")
+	t.Setenv("RT_POLICY", "1")
+	t.Setenv("RT_DEPTH", "1000000")
+	for _, variant := range wrapperVariants {
+		for _, consume := range []bool{false, true} {
+			name := "forward"
+			if consume {
+				name = "consume"
+			}
+			t.Run(variant.name+"/"+name, func(t *testing.T) {
+				// Deliberately oppose the provider's decision: the wrapper must
+				// obey the SDK even when the old wrapper policy would disagree.
+				t.Setenv("RT_ROOT", "on")
+				if consume {
+					t.Setenv("RT_ROOT", "off")
+				}
+				leafProvider, leafRecorder := newProvider(t, true)
+				parentProvider, parentRecorder := newProvider(t, false)
+				parentProvider.consume = consume
+				leaf := variant.server(appFunc(func(ctx context.Context, n int) (int, error) {
+					if backend.GetBaggageFromContext(ctx)["rev"] != "" {
+						t.Fatal("reverse carrier entered forward baggage")
+					}
+					return n + 1, nil
+				}), collector{leafProvider})
+				client := variant.client(leaf, collector{parentProvider})
+				parent := variant.server(client, collector{parentProvider})
+				result, retCtx, err := parent.Call(context.Background(), 41, "")
+				if result != 42 || err != nil {
+					t.Fatalf("call: %d, %v", result, err)
+				}
+				if len(leafRecorder.Ended()) != 1 || len(parentRecorder.Ended()) != 2 {
+					t.Fatal("lost span during reverse transport")
+				}
+				if parentProvider.calls != 2 || parentProvider.inputs[0] != leafProvider.retCtx {
+					t.Fatal("caller did not hand the received trusses to the live client span's SDK")
+				}
+				if !consume {
+					if retCtx != leafProvider.retCtx {
+						t.Fatal("forwarding rewrote the original checkpoint")
+					}
+					if parentProvider.inputs[1] != leafProvider.retCtx {
+						t.Fatal("forwarded trusses were not attached to the parent server span")
+					}
+				} else {
+					if retCtx != "" {
+						t.Fatal("consumed checkpoint also returned upstream")
+					}
+					var checkpoint string
+					for _, span := range parentRecorder.Ended() {
+						for _, attr := range span.Attributes() {
+							if attr.Key == backend.ReverseTrussCheckpointKey {
+								checkpoint = attr.Value.AsString()
+							}
+						}
+					}
+					if checkpoint != leafProvider.retCtx {
+						t.Fatal("caller did not checkpoint the SDK payload")
+					}
+					got, _ := backend.DecodeReturnedCheckpoints(checkpoint)
+					want, _ := backend.DecodeReturnedCheckpoints(leafProvider.retCtx)
+					if !reflect.DeepEqual(got, want) {
+						t.Fatal("caller changed original checkpoint locations")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestUnsampledServerSkipsCheckpointPreparation(t *testing.T) {
+	t.Setenv("REVERSE_TRUSS", "on")
+	for _, variant := range wrapperVariants {
+		t.Run(variant.name, func(t *testing.T) {
+			provider, recorder := newProvider(t, true)
+			server := variant.server(appFunc(func(ctx context.Context, n int) (int, error) {
+				if trace.SpanContextFromContext(ctx).IsSampled() {
+					t.Fatal("unsampled context was changed")
+				}
+				return n + 1, nil
+			}), collector{provider})
+			result, retCtx, err := server.Call(context.Background(), 41, "U:0102030405060708090a0b0c0d0e0f100102030405060708")
+			if result != 42 || err != nil || retCtx != "" || provider.calls != 0 || len(recorder.Ended()) != 0 {
+				t.Fatal("unsampled fast path started checkpointing or changed application result")
+			}
+		})
+	}
+}
+
+type treeChild struct{ App }
+
+func (c treeChild) Process(ctx context.Context, n int64) (int64, error) {
+	result, err := c.Call(ctx, int(n))
+	return int64(result), err
+}
+
+type fanoutApp struct{ node leaf.TreeNode }
+
+func (a fanoutApp) Call(ctx context.Context, n int) (int, error) {
+	result, err := a.node.Process(ctx, int64(n))
+	return int(result), err
+}
+
+func TestConcurrentFanoutThroughGeneratedWrappers(t *testing.T) {
+	t.Setenv("REVERSE_TRUSS", "on")
+	for _, variant := range wrapperVariants {
+		t.Run(variant.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			const width = 8
+			started := make(chan struct{}, width)
+			release := make(chan struct{})
+			parentProvider, parentRecorder := newProvider(t, false)
+			var children []leaf.TreeNode
+			var leafProviders []*testProvider
+			for i := 0; i < width; i++ {
+				provider, _ := newProvider(t, true)
+				leafProviders = append(leafProviders, provider)
+				server := variant.server(appFunc(func(ctx context.Context, n int) (int, error) {
+					started <- struct{}{}
+					select {
+					case <-release:
+						return n + 1, nil
+					case <-ctx.Done():
+						return 0, ctx.Err()
+					}
+				}), collector{provider})
+				children = append(children, treeChild{variant.client(server, collector{parentProvider})})
+			}
+			node, err := leaf.NewFanoutNodeImpl(ctx, "0", children...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parent := variant.server(fanoutApp{node}, collector{parentProvider})
+			type response struct {
+				value  int
+				retCtx string
+				err    error
+			}
+			done := make(chan response, 1)
+			go func() {
+				value, retCtx, err := parent.Call(ctx, 41, "")
+				done <- response{value, retCtx, err}
+			}()
+			for i := 0; i < width; i++ {
+				select {
+				case <-started:
+				case <-ctx.Done():
+					t.Fatal("generated child calls did not run concurrently")
+				}
+			}
+			close(release)
+			var got response
+			select {
+			case got = <-done:
+			case <-ctx.Done():
+				t.Fatal("parent did not finish")
+			}
+			if got.err != nil || got.value != width*42 {
+				t.Fatalf("fanout result: %+v", got)
+			}
+			checkpoints, err := backend.DecodeReturnedCheckpoints(got.retCtx)
+			if err != nil || len(checkpoints) != width {
+				t.Fatalf("lost sibling trusses: %+v, %v", checkpoints, err)
+			}
+			want := make(map[trace.SpanID]backend.ReturnedCheckpoint)
+			for _, provider := range leafProviders {
+				cps, err := backend.DecodeReturnedCheckpoints(provider.retCtx)
+				if err != nil || len(cps) != 1 {
+					t.Fatalf("leaf did not originate its truss: %v", err)
+				}
+				want[cps[0].SpanID] = cps[0]
+			}
+			for _, checkpoint := range checkpoints {
+				if !reflect.DeepEqual(checkpoint, want[checkpoint.SpanID]) {
+					t.Fatal("fan-in rewrote or duplicated a sibling checkpoint")
+				}
+				delete(want, checkpoint.SpanID)
+			}
+			if len(parentRecorder.Ended()) != width+1 || parentProvider.calls != width+1 {
+				t.Fatal("parent returned before all client spans and SDK decisions finished")
+			}
+			if parentProvider.inputs[width] != got.retCtx {
+				t.Fatal("server SDK did not receive the complete fan-in bundle")
+			}
+		})
+	}
+}
+
+func TestComposedPatternsThroughGeneratedWrappers(t *testing.T) {
+	t.Setenv("REVERSE_TRUSS", "on")
+	for _, variant := range wrapperVariants {
+		t.Run(variant.name, func(t *testing.T) {
+			leafProvider, leafRecorder := newProvider(t, true)
+			parentProvider, parentRecorder := newProvider(t, false)
+			server := variant.server(appFunc(func(_ context.Context, n int) (int, error) {
+				return n + 1, nil
+			}), collector{leafProvider})
+			child := treeChild{variant.client(server, collector{parentProvider})}
+			config := `{"dependencies":["child"],"pattern":{"sequence":[{"call":"child"},{"parallel":[{"repeat":{"count":3,"do":{"call":"child"}}},{"call":"child"}]},{"call":"child"}]}}`
+			node, err := leaf.NewPatternNodeImpl(context.Background(), config, child)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parent := variant.server(fanoutApp{node}, collector{parentProvider})
+			result, retCtx, err := parent.Call(context.Background(), 7, "")
+			if err != nil || result != 48 {
+				t.Fatalf("pattern result = %d, %v", result, err)
+			}
+			checkpoints, err := backend.DecodeReturnedCheckpoints(retCtx)
+			if err != nil || len(checkpoints) != 6 || len(leafRecorder.Ended()) != 6 || len(parentRecorder.Ended()) != 7 {
+				t.Fatalf("lost calls or checkpoints in composed pattern: %d, %v", len(checkpoints), err)
+			}
+			origins := make(map[trace.SpanID]bool)
+			for _, span := range leafRecorder.Ended() {
+				origins[span.SpanContext().SpanID()] = true
+			}
+			for _, checkpoint := range checkpoints {
+				if !origins[checkpoint.SpanID] || checkpoint.Depth != 130 || !reflect.DeepEqual(checkpoint.Truss, []byte{9, 8, 7}) {
+					t.Fatalf("pattern changed a returned location/truss: %+v", checkpoint)
+				}
+				delete(origins, checkpoint.SpanID)
+			}
+			if len(parentProvider.inputs) != 7 || parentProvider.inputs[6] != retCtx {
+				t.Fatal("server SDK did not receive returns from every completed pattern step")
+			}
+		})
+	}
+}

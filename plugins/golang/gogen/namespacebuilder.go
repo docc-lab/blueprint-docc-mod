@@ -160,7 +160,9 @@ var buildFuncTemplate = `func(n *golang.Namespace) (any, error) {
 
 // Implements [golang.NamespaceBuilder]
 func (namespace *NamespaceBuilderImpl) DeclareConstructor(name string, constructor *gocode.Constructor, args []ir.IRNode) error {
-	if len(constructor.Arguments) != len(args)+1 {
+	// Tomislav-RetCtx: bind variadic fanout dependencies separately per call.
+	boundArgs, err := constructor.ArgumentsForCall(len(args) + 1)
+	if err != nil {
 		argNames := []string{}
 		for _, arg := range args {
 			argNames = append(argNames, arg.Name())
@@ -174,7 +176,7 @@ func (namespace *NamespaceBuilderImpl) DeclareConstructor(name string, construct
 		InstanceName: ir.CleanName(name),
 		Constructor:  &gocode.UserType{Package: constructor.Package, Name: constructor.Name},
 	}
-	for i, Var := range constructor.Arguments[1:] {
+	for i, Var := range boundArgs[1:] {
 		if _, isMetadata := args[i].(ir.IRMetadata); isMetadata {
 			return blueprint.Errorf("invalid constructor argument %v; metadata nodes are not instantiable", args[i].Name())
 		}

@@ -40,6 +40,9 @@ SEED_DIR=/users/tomislav/DeathStarBench/socialNetwork
 SEED_PY=$DSB/scripts/init_social_graph.py
 
 SPEC=""; NAME=""; CPD=""; GC=""; EXTRA=""; COLLECTOR=""
+# Tomislav-RetCtx: optional collector-discovered CPD bounds; both are required.
+CPD_MIN=""; CPD_MAX=""
+REVERSE_POLICY=""; REVERSE_PROBABILITY=""
 BUILD_COLLECTOR=0; DO_APPLY=0; DO_SEED=0; DO_NOSEED=0; SKIP_BUILD=0; NOPIN_REQ=0; WRK_DAEMON=1; ANTI=0; ONEPER=0
 # priorityprocessor controller config (rev2-proven defaults; the wiring emits a
 # STALE legacy schema -> step [2] rewrites the block to these current-schema keys).
@@ -66,6 +69,15 @@ REQUIRED
 
 BUILD OPTIONS
   --cpd <N>            Checkpoint distance, baked into the otelcol image config.
+  --cpd-min <N>        Random distance minimum (inclusive; PB/CGPB/SB).
+  --cpd-max <N>        Random distance maximum (inclusive; requires --cpd-min).
+                       Use both instead of --cpd; 1 <= min <= max <= 256.
+  --reverse-policy <P> Reverse routing: ttl (default), probability,
+                       inverse_depth, or depth_linear (PB/CGPB/SB).
+  --reverse-probability <p>
+                       Per-truss probability in [0,1]; requires probability policy.
+                       These configure routing; enable REVERSE_TRUSS and leaf
+                       rejection separately on the application processes.
   --gc natural|forced  App-pod GC: natural = GOGC=100 + interval off;
                        forced = GOGC=off + forced GC 10x/s (deterministic cadence).
   --extra <str>        Append to the kompose suffix (e.g. --extra rev2 => v-esrev2).
@@ -155,6 +167,10 @@ while [ $# -gt 0 ]; do
     -s) SPEC=$2; shift 2;;
     -n) NAME=$2; shift 2;;
     --cpd) CPD=$2; shift 2;;
+    --cpd-min) CPD_MIN=$2; shift 2;;
+    --cpd-max) CPD_MAX=$2; shift 2;;
+    --reverse-policy) REVERSE_POLICY=$2; shift 2;;
+    --reverse-probability) REVERSE_PROBABILITY=$2; shift 2;;
     --gc) GC=$2; shift 2;;
     --extra) EXTRA=$2; shift 2;;
     --collector) COLLECTOR=$2; shift 2;;
@@ -177,6 +193,23 @@ done
 [ -n "$SPEC" ] && [ -n "$NAME" ] || usage
 [ -n "$GC" ] && [ "$GC" != natural ] && [ "$GC" != forced ] && die "--gc must be natural|forced"
 [ -n "$COLLECTOR" ] && [ "$COLLECTOR" != passthrough ] && die "--collector must be: passthrough (more modes TBD)"
+PYTHONPATH="$UTILS${PYTHONPATH:+:$PYTHONPATH}" python3 - "$CPD" "$CPD_MIN" "$CPD_MAX" "$SPEC" "$REVERSE_POLICY" "$REVERSE_PROBABILITY" <<'PY' || die "invalid checkpoint options"
+import sys
+from checkpoint_distance import validate
+import reverse_policy
+try:
+    cpd, low, high = [int(v) if v else None for v in sys.argv[1:4]]
+    validate(cpd, low, high)
+    if low is not None and not sys.argv[4].startswith(('docker_pb', 'docker_cgpb', 'docker_sb')):
+        raise ValueError('random checkpoint distance requires PB, CGPB, or SB')
+    policy = sys.argv[5] or None
+    probability = float(sys.argv[6]) if sys.argv[6] else None
+    reverse_policy.validate(policy, probability)
+    if policy is not None and not sys.argv[4].startswith(('docker_pb', 'docker_cgpb', 'docker_sb')):
+        raise ValueError('reverse routing policies require PB, CGPB, or SB')
+except ValueError as error:
+    sys.exit(str(error))
+PY
 
 VARIANT=${NAME//_/-}                       # provisional; re-derived from generated compose below
 BUILD=$DSB/build_$NAME
@@ -241,9 +274,14 @@ GOIMPORTS="$(go env GOPATH)/bin/goimports"
 OTELCFG=$BUILD/docker/otelcol_${SUF}_ctr/config.yaml
 [ -f "$OTELCFG" ] || die "otelcol config.yaml not found at $OTELCFG"
 echo "=== [2] collector=${COLLECTOR:-default} (priority-normalize) + cpd=${CPD:-unchanged} ==="
-python3 - "$OTELCFG" "${CPD:-}" "$SOFT_PCT" "$HARD_PCT" "$CP_SAFETY" "$FORCE_GC" "$GC_SOFT" "$GC_ULTRA" "${COLLECTOR:-}" <<'PY' || die "collector config failed"
+PYTHONPATH="$UTILS${PYTHONPATH:+:$PYTHONPATH}" python3 - "$OTELCFG" "${CPD:-}" "$SOFT_PCT" "$HARD_PCT" "$CP_SAFETY" "$FORCE_GC" "$GC_SOFT" "$GC_ULTRA" "${COLLECTOR:-}" "$CPD_MIN" "$CPD_MAX" "$REVERSE_POLICY" "$REVERSE_PROBABILITY" <<'PY' || die "collector config failed"
 import sys, yaml
+from checkpoint_distance import configure
+import reverse_policy
 path, cpd, soft, hard, safety, force_gc, gc_soft, gc_ultra, collector = sys.argv[1:10]
+cpd_min, cpd_max = [int(v) if v else None for v in sys.argv[10:12]]
+policy = sys.argv[12] or None
+probability = float(sys.argv[13]) if sys.argv[13] else None
 with open(path) as f: cfg = yaml.safe_load(f)
 procs = cfg.setdefault('processors', {})
 if collector == 'passthrough':
@@ -268,13 +306,14 @@ else:
         print("  priority ->", procs['priority'])
     else:
         print("  WARN: no 'priority' processor in config; left untouched")
-if cpd:
-    cm = ((cfg.get('receivers') or {}).get('configdiscovery') or {}).get('config_map')
-    if isinstance(cm, dict) and 'cpd' in cm:
-        cm['cpd'] = int(cpd); print("  cpd ->", cm['cpd'])
-    else:
-        print("  note: --cpd given but no receivers.configdiscovery.config_map.cpd "
-              "in this config (e.g. vanilla / no-bridge variant) — skipping cpd set")
+discovery = (cfg.get('receivers') or {}).get('configdiscovery')
+if isinstance(discovery, dict):
+    cm = discovery.setdefault('config_map', {})
+    configure(cm, int(cpd) if cpd else None, cpd_min, cpd_max)
+    reverse_policy.configure(cm, policy, probability)
+    print("  checkpoint config ->", {key: cm[key] for key in ('cpd', 'cpd_min', 'cpd_max', 'reverse_policy', 'reverse_probability') if key in cm})
+elif cpd_min is not None or policy is not None:
+    raise ValueError('checkpoint options require receivers.configdiscovery')
 with open(path, 'w') as f: yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=False)
 PY
 

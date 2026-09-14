@@ -4,6 +4,7 @@ package otelcol
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -95,6 +96,8 @@ type CallGraphBridgeProcessor struct {
 
 	// Checkpoint distance (parsed from config, default: 1)
 	checkpointDistance int64
+	checkpointRange    checkpointRange
+	reversePolicy      reversePolicy
 }
 
 // Darby: this gets run once per service (when initialized)
@@ -177,6 +180,10 @@ func NewCallGraphBridgeProcessor(ctx context.Context, agentEndpoint string, conf
 	// Fetch full config from config discovery endpoint
 	slog.Info("🔵 About to fetch full config")
 	if err := processor.fetchFullConfig(ctx); err != nil {
+		if errors.Is(err, errInvalidCheckpointRange) || errors.Is(err, errInvalidReversePolicy) {
+			_ = client.Stop(ctx)
+			return nil, err
+		}
 		slog.Error("❌ Failed to fetch full config", "error", err)
 		slog.Warn("⚠️ Continuing with empty config map")
 	} else {
@@ -400,6 +407,11 @@ func (p *CallGraphBridgeProcessor) sendData(events []*tracepb.ResourceSpans, isH
 
 // OnStart implements SpanProcessor.OnStart
 func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
+	// Tomislav-RetCtx: ranged windows preserve Bloom and trailing HA boundaries.
+	if p.checkpointRange.enabled() {
+		onStartCheckpointWindow(parent, s, p.checkpointRange, true)
+		return
+	}
 	// Canonical call-graph path bridge (CGPRB = full-width-ckpt-anchored PCRB + a window-
 	// local hash array). Decode inbound baggage `_br` =
 	// varint(absolute depth) || ckpt(8) || propagated bloom (fixed ceil(m/8)) || HA.
@@ -407,7 +419,7 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 	var (
 		hasParent        bool
 		parentDepth      int
-		parentCkpt      [8]byte
+		parentCkpt       [8]byte
 		parentBloomBytes []byte
 		parentHA         []byte
 	)
@@ -503,38 +515,8 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 
 // OnEnd implements SpanProcessor.OnEnd
 func (p *CallGraphBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
-	// Extract priority from span attributes
-	var priority int
-	var hasPriority bool
-	var hasChildren bool
-
-	for _, attr := range s.Attributes() {
-		switch attr.Key {
-		case "__bag.prio":
-			val := attr.Value.AsInt64()
-			priority = int(val)
-			hasPriority = true
-		case "childCount":
-			hasChildren = attr.Value.AsInt64() > 0
-		}
-	}
-
-	if s.SpanKind() == trace.SpanKindServer {
-		if hasChildren {
-			// Non-leaf server span - force to low priority (priority = 0)
-			priority += 0
-		} else {
-			// Leaf server span - always checkpoint (priority = 1)
-			priority = 1
-		}
-	}
-
-	if !hasPriority {
-		priority = 0
-	}
-
-	// Route span to pipeline
-	p.routeToPipeline(s, priority == 1)
+	// Tomislav-RetCtx: honor SDK rejection/receipt decisions at export.
+	p.routeToPipeline(s, isPathCheckpoint(s))
 }
 
 // routeToPipeline classifies and buffers the span, capturing the shared
@@ -905,6 +887,18 @@ func (p *CallGraphBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 	}
 
 	cpd := p.parseCheckpointDistance(config)
+	// Tomislav-RetCtx: validate reverse routing before publishing SDK config.
+	policy, err := parseReversePolicy(config)
+	if err != nil {
+		return err
+	}
+	rangeConfig, err := parseCheckpointRange(config)
+	if err != nil {
+		return err
+	}
+	if rangeConfig.enabled() {
+		cpd = 0 // No single fixed distance or global Bloom geometry in range mode.
+	}
 
 	configJSON, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -916,18 +910,23 @@ func (p *CallGraphBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 	p.configLock.Lock()
 	p.configMap = config
 	p.checkpointDistance = cpd
+	p.checkpointRange = rangeConfig
+	p.reversePolicy = policy
 	p.configLock.Unlock()
 
-	// Re-size the bloom for the discovered cpd (CGPRB/PCRB capacity = cpd-1).
-	// Runs at startup before traffic, so the global is settled before OnStart.
-	bm, bk := bloom.EstimateParameters(uint(pbBloomCapacity(int(cpd))), DefaultBloomFPRate)
-	BloomFilterM = bm
-	BloomFilterK = bk
-	backend.SetRTBloomParams(bm, bk)
+	if !rangeConfig.enabled() {
+		// Legacy fixed mode retains its original geometry and wire format.
+		bm, bk := bloom.EstimateParameters(uint(pbBloomCapacity(int(cpd))), DefaultBloomFPRate)
+		BloomFilterM = bm
+		BloomFilterK = bk
+		backend.SetRTBloomParams(bm, bk)
+	}
 
 	slog.Info("Successfully discovered full config",
 		"config_keys", len(config),
-		"checkpoint_distance", cpd)
+		"checkpoint_distance", cpd,
+		"cpd_min", rangeConfig.min, "cpd_max", rangeConfig.max,
+		"reverse_policy", policy.mode, "reverse_probability", policy.probability)
 	return nil
 }
 

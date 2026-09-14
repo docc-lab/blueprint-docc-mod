@@ -1,0 +1,41 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  configdiscovery:
+    endpoint: 0.0.0.0:8080
+    config_map:
+      cpd: 3
+processors:
+  memory_limiter:
+    check_interval: 100ms
+    limit_percentage: 70
+    spike_limit_percentage: 20
+  batch: {}
+exporters:
+  otlp:
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+      block_on_overflow: false
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 0
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp]
+    logs/configdiscovery:
+      receivers: [configdiscovery]
+      exporters: [debug]

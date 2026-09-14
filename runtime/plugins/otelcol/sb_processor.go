@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -181,6 +182,8 @@ type StructuralBridgeProcessor struct {
 
 	// Checkpoint distance (parsed from config, default: 1)
 	checkpointDistance int64
+	checkpointRange    checkpointRange
+	reversePolicy      reversePolicy
 }
 
 // Darby: this gets run once per service (when initialized)
@@ -260,6 +263,10 @@ func NewStructuralBridgeProcessor(ctx context.Context, agentEndpoint string, con
 	// Fetch full config from config discovery endpoint
 	slog.Info("🔵 About to fetch full config")
 	if err := processor.fetchFullConfig(ctx); err != nil {
+		if errors.Is(err, errInvalidCheckpointRange) || errors.Is(err, errInvalidReversePolicy) {
+			_ = client.Stop(ctx)
+			return nil, err
+		}
 		slog.Error("❌ Failed to fetch full config", "error", err)
 		// Don't fail initialization if config fetch fails - continue with empty config
 		slog.Warn("⚠️ Continuing with empty config map")
@@ -540,6 +547,7 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	// depthMod==1 entry's fp (or, for a checkpoint, its own native span_id).
 	var (
 		hasParent     bool
+		parentTTL     byte
 		parentDepth   int
 		ordinalGroups map[int][]ordEntry
 		endEvents     []int
@@ -548,6 +556,7 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	if baggage := backend.GetBaggageFromContext(parent); baggage != nil {
 		if br, ok := baggage[BaggageBRKey]; ok && br != "" {
 			if raw, okB := decodeBR(br); okB {
+				parentTTL, raw = p.checkpointRange.unwrap(raw)
 				if d, og, ee, dee, okU := unpackSBridgeBR(raw); okU {
 					hasParent = true
 					parentDepth = d
@@ -570,6 +579,18 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 		depthMod = (parentDepth + 1) % cpd
 	} else {
 		depthMod = 0
+	}
+	var outgoingTTL byte
+	if p.checkpointRange.enabled() {
+		checkpoint, ttl := p.checkpointRange.next(parentTTL, hasParent)
+		outgoingTTL = ttl
+		// Tomislav-RetCtx: this field is a window-relative position. Only a TTL checkpoint
+		// resets it; a global modulo cannot describe variable-length windows.
+		if checkpoint {
+			depthMod = 0
+		} else {
+			depthMod = parentDepth + 1
+		}
 	}
 
 	// Append this span's (ordinal, parent-fingerprint) entry to
@@ -641,6 +662,7 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	}
 
 	propagationPacked := packSBridgeBR(depthMod, ordinalGroups, endEvents, deeBytes)
+	propagationPacked = p.checkpointRange.wrap(outgoingTTL, propagationPacked)
 
 	// Two attributes are written here — that's the entire SB-processor
 	// wire+intra-process surface. The first becomes outgoing baggage
@@ -694,31 +716,13 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 // breadcrumb's wire-presence ends up matching the priority decision.
 func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	var preResetEncoded, remEndEvents string
-	var hasChildren, forceLP bool
-
+	for _, attr := range s.Attributes() {
+		if attr.Key == AttrBREmit {
+			preResetEncoded = attr.Value.AsString()
+		}
+	}
 	for _, attr := range s.Attributes() {
 		switch attr.Key {
-		case AttrBREmit:
-			preResetEncoded = attr.Value.AsString()
-		case "childCount", "eventCount":
-			// Int variants — set by older Blueprint server templates
-			// (serverTemplate, serverTemplateCGPB) which record the
-			// raw child/event count as int.
-			if attr.Value.AsInt64() > 0 {
-				hasChildren = true
-			}
-		case "hasChildren":
-			// Bool variant — set by the CURRENT active server template
-			// (serverTemplatePath in plugins/opentelemetry/ir_ot_server.go).
-			// Reads as `attribute.Bool("hasChildren", childCount > 0)`.
-			// Without this case, the leaf-server override fires for
-			// every server span and the classification collapses to
-			// 100% CP. (Found 2026-06-05 after composepost reported
-			// 100% CP / 33% drop, which is structurally impossible at
-			// cpd=3 for a depth-2 server with depth-3 client children.)
-			if attr.Value.AsBool() {
-				hasChildren = true
-			}
 		case "remEndEvents":
 			// remEndEvents is now a base64-encoded varint payload:
 			//   varint(count) || count*varint(seq)
@@ -754,45 +758,10 @@ func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 					}
 				}
 			}
-		case AttrForceLP:
-			// Synthetic pressure spans (e.g. TracePressureService)
-			// set this to force LP classification regardless of depth.
-			// Without this escape hatch, manually-created spans inside
-			// a request handler all classify identically to the root
-			// (no inter-process baggage hop → same depthMod), which
-			// makes it impossible to generate pure-LP volume for
-			// stress-testing the collector's priority-aware shedding.
-			if attr.Value.AsBool() {
-				forceLP = true
-			}
 		}
 	}
-
-	// Step 1: recover OnStart's depth decision from the breadcrumb's
-	// leading varint.
-	isCheckpoint := false
-	if depth, ok := decodeBRDepth(preResetEncoded); ok {
-		cpd := int(p.checkpointDistance)
-		if cpd < 1 {
-			cpd = 1
-		}
-		isCheckpoint = depth%cpd == 0
-	}
-
-	// Step 2: leaf-server override. A server span with no children is
-	// always a checkpoint, regardless of where it lands modulo cpd.
-	if s.SpanKind() == trace.SpanKindServer && !hasChildren {
-		isCheckpoint = true
-	}
-
-	// Step 3: force-LP escape hatch for synthetic pressure spans.
-	// Applied LAST so it overrides both the depth-based decision and
-	// the leaf-server CP override.
-	if forceLP {
-		isCheckpoint = false
-	}
-
-	p.routeToPipeline(s, isCheckpoint)
+	// Tomislav-RetCtx: apply reverse decisions without changing the DEE queue.
+	p.routeToPipeline(s, p.isCheckpoint(s))
 }
 
 // routeToPipeline builds the ResourceSpans envelope and appends it to
@@ -1218,6 +1187,18 @@ func (p *StructuralBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 
 	// Parse checkpoint distance from config
 	cpd := p.parseCheckpointDistance(config)
+	// Tomislav-RetCtx: validate reverse routing before publishing SDK config.
+	policy, err := parseReversePolicy(config)
+	if err != nil {
+		return err
+	}
+	rangeConfig, err := parseCheckpointRange(config)
+	if err != nil {
+		return err
+	}
+	if rangeConfig.enabled() {
+		cpd = int64(rangeConfig.max)
+	}
 
 	// Log the full config as JSON
 	configJSON, err := json.MarshalIndent(config, "", "  ")
@@ -1230,11 +1211,15 @@ func (p *StructuralBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 	p.configLock.Lock()
 	p.configMap = config
 	p.checkpointDistance = cpd
+	p.checkpointRange = rangeConfig
+	p.reversePolicy = policy
 	p.configLock.Unlock()
 
 	slog.Info("Successfully discovered full config",
 		"config_keys", len(config),
-		"checkpoint_distance", cpd)
+		"checkpoint_distance", cpd,
+		"cpd_min", rangeConfig.min, "cpd_max", rangeConfig.max,
+		"reverse_policy", policy.mode, "reverse_probability", policy.probability)
 	return nil
 }
 

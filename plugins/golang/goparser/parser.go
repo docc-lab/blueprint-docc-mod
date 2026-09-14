@@ -174,7 +174,10 @@ func (mod *ParsedModule) Load() error {
 			return nil
 		}
 
-		pkgs, err := parser.ParseDir(&fset, path, nil, parser.ParseComments)
+		// Tomislav-RetCtx: test-only constructors must not enter generated wiring.
+		pkgs, err := parser.ParseDir(&fset, path, func(info os.FileInfo) bool {
+			return !strings.HasSuffix(info.Name(), "_test.go")
+		}, parser.ParseComments)
 		if err != nil {
 			return blueprint.Errorf("unable to parse package %v due to %s", path, err.Error())
 		}

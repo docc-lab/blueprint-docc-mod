@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=topology.schema.json
+# Eight service-to-service RPC hops: root -> hop1 -> ... -> hop8.
+# Fan-outs at depths 1, 3, and 6; the root is depth 0.
+# 15 services, 14 RPCs and 7 leaf calls per successful root request.
+version: 1
+root: root
+rpc_timeout: 10s
+nodes:
+  root:
+    children: [hop1]
+  hop1:
+    children: [hop2, side1a, side1b]
+    parallelism: 0 # All three calls may run concurrently.
+  hop2:
+    children: [hop3]
+  hop3:
+    children: [hop4, side3a, side3b]
+    parallelism: 2 # At most two calls active within this request.
+  hop4:
+    children: [hop5]
+  hop5:
+    children: [hop6]
+  hop6:
+    children: [hop7, side6a, side6b]
+    parallelism: 1 # Sequential calls, in the listed order.
+  hop7:
+    children: [hop8]
+  hop8: {}
+  side1a: {}
+  side1b: {}
+  side3a: {}
+  side3b: {}
+  side6a: {}
+  side6b: {}

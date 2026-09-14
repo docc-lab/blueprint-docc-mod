@@ -1,0 +1,47 @@
+# Auto-generated node-pinning for variant 'cgpb-es-sn20260910' (anti-affinity placement (no co-located traced call edges; wrk2api pinned as Deployment), PLACEMENT-ONLY (no requests)).
+# No two traced *-services with a call edge share a node; wrk2api pinned (build --wrk2api-deploy).
+# 25 services across 9 nodes. Service names = <base>-cgpb-es-sn20260910-ctr.
+# Consumed by pin_nodes.py. Edit freely.
+
+node-1:
+  - composepost-service-cgpb-es-sn20260910-ctr:
+  - userid-service-cgpb-es-sn20260910-ctr:
+
+node-2:
+  - hometimeline-service-cgpb-es-sn20260910-ctr:
+  - hometimeline-cache-cgpb-es-sn20260910-ctr:
+  - urlshorten-service-cgpb-es-sn20260910-ctr:
+  - urlshorten-db-cgpb-es-sn20260910-ctr:
+
+node-3:
+  - usertimeline-service-cgpb-es-sn20260910-ctr:
+  - usertimeline-cache-cgpb-es-sn20260910-ctr:
+  - usertimeline-db-cgpb-es-sn20260910-ctr:
+  - usermention-service-cgpb-es-sn20260910-ctr:
+
+node-4:
+  - socialgraph-service-cgpb-es-sn20260910-ctr:
+  - social-cache-cgpb-es-sn20260910-ctr:
+  - social-db-cgpb-es-sn20260910-ctr:
+  - text-service-cgpb-es-sn20260910-ctr:
+
+node-5:
+  - post-storage-service-cgpb-es-sn20260910-ctr:
+  - post-cache-cgpb-es-sn20260910-ctr:
+  - post-db-cgpb-es-sn20260910-ctr:
+
+node-6:
+  - uniqueid-service-cgpb-es-sn20260910-ctr:
+  - media-service-cgpb-es-sn20260910-ctr:
+
+node-7:
+  - wrk2api-service-cgpb-es-sn20260910-ctr:
+
+node-8:
+  - user-service-cgpb-es-sn20260910-ctr:
+  - user-cache-cgpb-es-sn20260910-ctr:
+  - user-db-cgpb-es-sn20260910-ctr:
+
+node-9:
+  - jaeger-cgpb-es-sn20260910-ctr:
+  - elasticsearch-cgpb-es-sn20260910-ctr:

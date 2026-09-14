@@ -2,12 +2,39 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/blueprint-uservices/blueprint/examples/dsb_hotel/workflow/hotelreservation"
 	"github.com/blueprint-uservices/blueprint/runtime/core/registry"
 	"github.com/stretchr/testify/assert"
 )
+
+type unavailableReservationService struct {
+	hotelreservation.ReservationService
+	err error
+}
+
+func (r unavailableReservationService) CheckAvailability(context.Context, string, []string, string, string, int64) ([]string, error) {
+	return nil, r.err
+}
+
+func TestSearchHandlerPropagatesAvailabilityError(t *testing.T) {
+	ctx := context.Background()
+	search, err := searchServiceRegistry.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unavailable := errors.New("reservation backend unavailable")
+	frontend, err := hotelreservation.NewFrontEndServiceImpl(ctx, search, nil, nil, nil, unavailableReservationService{err: unavailable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = frontend.SearchHandler(ctx, "customer", "2015-04-09", "2015-04-10", 37.7835, -122.41, "en")
+	if !errors.Is(err, unavailable) {
+		t.Fatalf("search returned %v, want the availability error", err)
+	}
+}
 
 var frontendServiceRegistry = registry.NewServiceRegistry[hotelreservation.FrontEndService]("frontend_service")
 

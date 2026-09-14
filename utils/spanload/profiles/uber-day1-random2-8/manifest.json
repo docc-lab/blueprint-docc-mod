@@ -1,0 +1,69 @@
+{
+  "schema": "spanload.simulator_distributions.v1",
+  "annotation": "Tomislav-RetCtx: simulator count histograms converted to _br byte-value distributions.",
+  "input_file": "payload_percentages.json",
+  "input_sha256": "93da3fa499435d4e5f0588a28d59badd97d5acdb2c25472c52a8e2d8568f0618",
+  "input_schema": "bridges.payload_size_percentages.v1",
+  "input_metric": "emitted_bridge_payload_bytes",
+  "input_byte_accounting": "Includes the 3-byte _br key and 1-byte type tag; excludes the separate _d attribute and the rest of the span.",
+  "subtracted_key_and_type_bytes": 4,
+  "output_metric": "_br OTLP bytes_value length; excludes key, type, protobuf framing, and separate depth metadata",
+  "corpus": {
+    "name": "Uber day 1",
+    "traces": 521305,
+    "spans": 475488643
+  },
+  "configuration": {
+    "checkpoint_distance_min": 2,
+    "checkpoint_distance_max": 8,
+    "checkpoint_seed": 42,
+    "prime_mode": "no-prime",
+    "sb3": {
+      "lehmer": true,
+      "service_instance_queues": true,
+      "single_pop": true
+    }
+  },
+  "sampling": "Exact bin counts are relative weights; all tail bins are retained. Checkpoint cadence is configured separately in spanload.",
+  "bridges": {
+    "pb": {
+      "simulator_bridge": "PB0",
+      "source_histogram_sha256": "c2b8fae0643a0688f85e0b55be32eee88d47ed9775ddb105c3795b4ad1fa2790",
+      "file": "pb.json",
+      "file_sha256": "77deac919f61b72a5c74245a56326915c51982dd4e7fb0b29b2d6aa077378fa4",
+      "payload_count": 249659504,
+      "distinct_sizes": 7,
+      "simulator_mean_bytes": 24.091819648892677,
+      "min_value_bytes": 12,
+      "max_value_bytes": 26,
+      "mean_value_bytes": 20.091819648892677,
+      "variance_value_bytes": 20.919598385044058
+    },
+    "cgpb": {
+      "simulator_bridge": "CGP0",
+      "source_histogram_sha256": "0dcd6cd573f10e979f5315471362b25f40f3feb5e17b2f6d4d66c3684adf5795",
+      "file": "cgpb.json",
+      "file_sha256": "d5f51fe7a90ea6ca6364051c96170735a22c064f8089f968785fbf6ef828dfd1",
+      "payload_count": 249659504,
+      "distinct_sizes": 12,
+      "simulator_mean_bytes": 25.16148266080029,
+      "min_value_bytes": 12,
+      "max_value_bytes": 35,
+      "mean_value_bytes": 21.16148266080029,
+      "variance_value_bytes": 31.004410212879954
+    },
+    "sb": {
+      "simulator_bridge": "SB3",
+      "source_histogram_sha256": "469f6b6212fe79ad0d9d97724ecd92a8ae037d3b67c9e78bd5635b5a8c5e53fd",
+      "file": "sb.json",
+      "file_sha256": "23862ae9af17d45ff0bae0d224f4b07127051817e1b4e2f1808239603b7a9262",
+      "payload_count": 249659504,
+      "distinct_sizes": 1675,
+      "simulator_mean_bytes": 33.42263093256806,
+      "min_value_bytes": 14,
+      "max_value_bytes": 7522,
+      "mean_value_bytes": 29.42263093256806,
+      "variance_value_bytes": 196.3683085385405
+    }
+  }
+}

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/address"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/service"
@@ -23,14 +24,20 @@ type golangClient struct {
 
 	InstanceName string
 	ServerAddr   *address.Address[*golangServer]
+	// Tomislav-RetCtx: carry the validated wiring deadline into client generation.
+	RequestTimeout string
 
 	outputPackage string
 }
 
-func newGolangClient(name string, addr *address.Address[*golangServer]) (*golangClient, error) {
+func newGolangClient(name string, addr *address.Address[*golangServer], requestTimeout string) (*golangClient, error) {
+	if duration, err := time.ParseDuration(requestTimeout); err != nil || duration <= 0 {
+		return nil, fmt.Errorf("gRPC timeout must be a positive duration, got %q", requestTimeout)
+	}
 	node := &golangClient{}
 	node.InstanceName = name
 	node.ServerAddr = addr
+	node.RequestTimeout = requestTimeout
 	node.outputPackage = "grpc"
 
 	return node, nil
@@ -112,12 +119,13 @@ func (node *golangClient) AddInstantiation(builder golang.NamespaceBuilder) erro
 			Arguments: []gocode.Variable{
 				{Name: "ctx", Type: &gocode.UserType{Package: "context", Name: "Context"}},
 				{Name: "addr", Type: &gocode.BasicType{Name: "string"}},
+				{Name: "timeout", Type: &gocode.Ellipsis{EllipsisOf: &gocode.BasicType{Name: "string"}}},
 			},
 		},
 	}
 
 	slog.Info(fmt.Sprintf("Instantiating GRPCClient %v in %v/%v", node.InstanceName, builder.Info().Package.PackageName, builder.Info().FileName))
-	return builder.DeclareConstructor(node.InstanceName, constructor, []ir.IRNode{node.ServerAddr.Dial})
+	return builder.DeclareConstructor(node.InstanceName, constructor, []ir.IRNode{node.ServerAddr.Dial, &ir.IRValue{Value: node.RequestTimeout}})
 }
 
 func (node *golangClient) ImplementsGolangNode()    {}

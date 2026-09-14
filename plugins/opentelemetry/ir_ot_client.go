@@ -498,6 +498,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -526,17 +529,14 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
+	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		backend.CountTrussReceived()
-		if backend.ReverseTrussCheckpoint() {
-			backend.CountCheckpoint()
-			backend.SampleLogCheckpoint(retCtx)
-			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
-		} else {
-			backend.AddToMerge(ctx, retCtx)
-			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
+		backend.AddToMerge(ctx, retCtx)
 	}
 
 	// Match the bridges Go simulator: append the child's startSeq to the
@@ -611,6 +611,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -639,17 +642,14 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
+	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		backend.CountTrussReceived()
-		if backend.ReverseTrussCheckpoint() {
-			backend.CountCheckpoint()
-			backend.SampleLogCheckpoint(retCtx)
-			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
-		} else {
-			backend.AddToMerge(ctx, retCtx)
-			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
+		backend.AddToMerge(ctx, retCtx)
 	}
 
 	return
@@ -717,6 +717,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -745,17 +748,14 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
+	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		backend.CountTrussReceived()
-		if backend.ReverseTrussCheckpoint() {
-			backend.CountCheckpoint()
-			backend.SampleLogCheckpoint(retCtx)
-			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
-		} else {
-			backend.AddToMerge(ctx, retCtx)
-			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
+		backend.AddToMerge(ctx, retCtx)
 	}
 	
 	return
@@ -823,6 +823,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Extract baggage from span attributes by casting to ReadWriteSpan
 	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
+			if backend.IsReverseBaggageKey(attr.Key) {
+				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
+			}
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
 				// Convert value to string for baggage based on attribute type
@@ -852,17 +855,14 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	// reverse-truss: count receipt, then policy decides checkpoint-here vs. push-up
+	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
+	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		backend.CountTrussReceived()
-		if backend.ReverseTrussCheckpoint() {
-			backend.CountCheckpoint()
-			backend.SampleLogCheckpoint(retCtx)
-			span.SetAttributes(attribute.String("bridges.checkpoint", retCtx))
-		} else {
-			backend.AddToMerge(ctx, retCtx)
-			span.SetAttributes(attribute.Bool("bridges.forward_up", true))
+		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
+		if backend.PrepareCheckpoint(tp, span) {
+			retCtx = backend.ReadReverseBaggage(span)
 		}
+		backend.AddToMerge(ctx, retCtx)
 	}
 	
 	return

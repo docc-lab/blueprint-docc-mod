@@ -1,0 +1,34 @@
+# Tomislav-RetCtx: collector-only benchmark fixture. Ports are isolated from
+# the app deployment. The launch command must enforce CPU/memory limits.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:14317
+      http:
+        endpoint: 127.0.0.1:14318
+processors:
+  batch:
+    send_batch_size: 512
+    send_batch_max_size: 512
+    timeout: 200ms
+exporters:
+  file:
+    path: /dev/null
+    format: proto
+    flush_interval: 200ms
+service:
+  telemetry:
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 18888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file]

@@ -4,12 +4,14 @@ package backend
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"log/slog"
-	"math/rand"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -19,17 +21,20 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// AMQ (Bloom) geometry, sourced from SDK:
-// Reverse-truss ancestry filter must use the same Bloom geometry (m,k) as
-// the forward bridge, so the two are inter-operable. The geometry is not a
-// fixed constant:
-//   1. SetRTBloomParams(m,k) is called by the otelcol bridge processor when it
-//      sizes its own Bloom for the discovered cpd (checkpoint distance) -> reverse == forward geometry
-//   2. Standalone fallback (synthetic trees, or any service without bridge
-//      processor) reads it from env at startup:
-//        RT_BLOOM_CAP expected #elements (default 8)
-//        RT_BLOOM_FPR target FP rate (default 0.0001 == otelcol.DefaultBloomFPRate)
-// Every truss records the (m,k) it was built with, so a verifier never has to guess.
+// Legacy ancestry-only AMQ geometry, sourced from the fixed-distance SDK or
+// environment. These parameters describe SegAMQ payloads, not complete SDK
+// checkpoint segments. Ranged PB/CGPB checkpoints carry their own immutable
+// window distance inside each truss, so mixed window sizes survive fan-in.
+// The legacy AMQ geometry is not a fixed constant:
+//  1. SetRTBloomParams(m,k) is called by the otelcol bridge processor when it
+//     sizes its own Bloom for the discovered cpd (checkpoint distance) -> reverse == forward geometry
+//  2. Standalone fallback (synthetic trees, or any service without bridge
+//     processor) reads it from env at startup:
+//     RT_BLOOM_CAP expected #elements (default 8)
+//     RT_BLOOM_FPR target FP rate (default 0.0001 == otelcol.DefaultBloomFPRate)
+//
+// Legacy AMQ envelopes record (m,k); windowed checkpoint consumers instead
+// derive geometry from the descriptor in each embedded SDK truss.
 var (
 	rtBloomM atomic.Uint64
 	rtBloomK atomic.Uint32
@@ -64,21 +69,32 @@ func rtBloom() (uint64, uint) { return rtBloomM.Load(), uint(rtBloomK.Load()) }
 type TrussSegment struct {
 	Kind string `json:"k"` // amq | hash | ordinal | ee | dee | ...
 	Data []byte `json:"d,omitempty"`
+	// Tomislav-RetCtx: each returned truss counts down independently. A nil
+	// TTL uses the receiving SDK's probability policy, or waits for an original
+	// checkpoint when that SDK uses the default TTL policy.
+	ReverseTTL *byte `json:"ttl,omitempty"`
 }
 
 const (
-	SegAMQ = "amq"
-	SegHash = "hash"
+	SegAMQ     = "amq"
+	SegHash    = "hash"
 	SegOrdinal = "ordinal"
-	SegEndEv = "ee"
+	SegEndEv   = "ee"
 	SegDelayEE = "dee"
+
+	// Checkpoint segments preserve a complete SDK truss and its intended
+	// location: spanID(8 bytes) || uvarint(absolute depth) || truss bytes.
+	SegPathCheckpoint       = "checkpoint.pb"
+	SegCallGraphCheckpoint  = "checkpoint.cgpb"
+	SegStructuralCheckpoint = "checkpoint.sb"
+	SegVanillaCheckpoint    = "checkpoint.v"
 )
 
 type trussData struct {
-	FP string `json:"fp"`
-	Par string `json:"parent,omitempty"`
-	M uint64 `json:"m,omitempty"`
-	K uint `json:"k,omitempty"`
+	FP   string         `json:"fp"`
+	Par  string         `json:"parent,omitempty"`
+	M    uint64         `json:"m,omitempty"`
+	K    uint           `json:"k,omitempty"`
 	Segs []TrussSegment `json:"segs,omitempty"`
 }
 
@@ -100,6 +116,155 @@ func decodeTruss(s string) (trussData, bool) {
 		return t, false
 	}
 	return t, true
+}
+
+// ReturnedCheckpoint describes where a truss was meant to be checkpointed.
+// Forwarding and fan-in preserve this origin, even when a different span later
+// checkpoints the truss. Truss contains the SDK's exact pre-reset _br bytes.
+type ReturnedCheckpoint struct {
+	Kind       string
+	SpanID     trace.SpanID
+	Depth      uint64
+	Truss      []byte
+	ReverseTTL *byte
+}
+
+// EncodeCheckpointRetCtx packs the original span ID and a binary varint depth
+// with the truss. The existing string retCtx envelope carries the segment.
+func EncodeCheckpointRetCtx(spanID trace.SpanID, depth uint64, kind string, truss []byte) string {
+	return encodeCheckpointRetCtx(spanID, depth, kind, truss, nil)
+}
+
+// Tomislav-RetCtx: the mutable reverse TTL is separate from the immutable
+// spanID || depth || truss payload. Distance D starts with TTL D-1; the next
+// upstream span consumes zero or forwards a decremented copy.
+func EncodeCheckpointRetCtxWithTTL(spanID trace.SpanID, depth uint64, kind string, truss []byte, ttl byte) string {
+	return encodeCheckpointRetCtx(spanID, depth, kind, truss, &ttl)
+}
+
+func encodeCheckpointRetCtx(spanID trace.SpanID, depth uint64, kind string, truss []byte, ttl *byte) string {
+	data := append([]byte(nil), spanID[:]...)
+	data = binary.AppendUvarint(data, depth)
+	data = append(data, truss...)
+	m, k := rtBloom()
+	return encodeTruss(trussData{
+		FP: spanID.String(), M: m, K: k,
+		Segs: []TrussSegment{{Kind: kind, Data: data, ReverseTTL: ttl}},
+	})
+}
+
+// DecodeReturnedCheckpoints decodes checkpoint locations and trusses. Legacy
+// ancestry-only segments can coexist in the envelope and are skipped here.
+func DecodeReturnedCheckpoints(retCtx string) ([]ReturnedCheckpoint, error) {
+	t, ok := decodeTruss(retCtx)
+	if !ok {
+		return nil, fmt.Errorf("invalid reverse-context envelope")
+	}
+	var checkpoints []ReturnedCheckpoint
+	for _, segment := range t.Segs {
+		checkpoint, known, err := decodeCheckpointSegment(segment)
+		if err != nil {
+			return nil, err
+		}
+		if known {
+			checkpoints = append(checkpoints, checkpoint)
+		}
+	}
+	return checkpoints, nil
+}
+
+func decodeCheckpointSegment(segment TrussSegment) (ReturnedCheckpoint, bool, error) {
+	switch segment.Kind {
+	case SegPathCheckpoint, SegCallGraphCheckpoint, SegStructuralCheckpoint, SegVanillaCheckpoint:
+	default:
+		return ReturnedCheckpoint{}, false, nil
+	}
+	if len(segment.Data) < 9 {
+		return ReturnedCheckpoint{}, true, fmt.Errorf("truncated %s checkpoint location", segment.Kind)
+	}
+	var spanID trace.SpanID
+	copy(spanID[:], segment.Data[:8])
+	depth, n := binary.Uvarint(segment.Data[8:])
+	if !spanID.IsValid() || n <= 0 {
+		return ReturnedCheckpoint{}, true, fmt.Errorf("invalid %s checkpoint location", segment.Kind)
+	}
+	return ReturnedCheckpoint{
+		Kind: segment.Kind, SpanID: spanID, Depth: depth,
+		Truss: segment.Data[8+n:], ReverseTTL: segment.ReverseTTL,
+	}, true, nil
+}
+
+// RouteRetCtx partitions one upstream hop into checkpointed and forwarded
+// segments. Tomislav-RetCtx: only an original checkpoint consumes the whole
+// bundle. A TTL-created checkpoint consumes just the expired segments, leaving
+// other TTLs independent. Merging siblings itself never spends a hop.
+func RouteRetCtx(retCtx string, originalCheckpoint bool) (checkpointed, forwarded string) {
+	return RouteRetCtxWithDecision(retCtx, originalCheckpoint, nil)
+}
+
+// Tomislav-RetCtx: the SDK may independently accept each valid TTL-free truss.
+// Existing TTL segments keep their countdown, including in mixed bundles.
+// Nil accept retains the default TTL/legacy behavior; malformed or unknown
+// TTL-free segments wait for an original checkpoint to absorb the whole bundle.
+func RouteRetCtxWithDecision(retCtx string, originalCheckpoint bool, accept func(ReturnedCheckpoint) bool) (checkpointed, forwarded string) {
+	if retCtx == "" || originalCheckpoint {
+		return retCtx, ""
+	}
+	t, ok := decodeTruss(retCtx)
+	if !ok || len(t.Segs) == 0 {
+		return "", retCtx // Preserve opaque/legacy context until a checkpoint.
+	}
+	var emitted, pending []TrussSegment
+	changedTTL := false
+	for _, segment := range t.Segs {
+		if segment.ReverseTTL != nil && *segment.ReverseTTL == 0 {
+			emitted = append(emitted, segment)
+			continue
+		}
+		if segment.ReverseTTL != nil {
+			ttl := *segment.ReverseTTL - 1
+			segment.ReverseTTL = &ttl
+			changedTTL = true
+		} else if accept != nil {
+			checkpoint, known, err := decodeCheckpointSegment(segment)
+			if known && err == nil && accept(checkpoint) {
+				emitted = append(emitted, segment)
+				continue
+			}
+		}
+		pending = append(pending, segment)
+	}
+	// Tomislav-RetCtx: failed probability trials leave the carrier untouched;
+	// avoid reserializing a potentially large fan-in bundle at every such hop.
+	if len(emitted) == 0 && !changedTTL {
+		return "", retCtx
+	}
+	return encodeTrussSubset(t, emitted), encodeTrussSubset(t, pending)
+}
+
+func encodeTrussSubset(envelope trussData, segments []TrussSegment) string {
+	if len(segments) == 0 {
+		return ""
+	}
+	envelope.Segs = segments
+	// Checkpoint origins belong only to their partition. Older ancestry-only
+	// segments have envelope-level fingerprints, so retain those when present.
+	var fingerprints []string
+	for _, segment := range segments {
+		switch segment.Kind {
+		case SegPathCheckpoint, SegCallGraphCheckpoint, SegStructuralCheckpoint, SegVanillaCheckpoint:
+		default:
+			return encodeTruss(envelope)
+		}
+		if len(segment.Data) < 9 {
+			return encodeTruss(envelope)
+		}
+		var id trace.SpanID
+		copy(id[:], segment.Data[:8])
+		fingerprints = append(fingerprints, id.String())
+	}
+	envelope.FP = strings.Join(fingerprints, ",")
+	return encodeTruss(envelope)
 }
 
 // DecodeRetCtx exposes a truss's fingerprints, parent, Bloom geometry, and its
@@ -135,10 +300,10 @@ func BuildRetCtx(ctx context.Context, traceCtx string, sc trace.SpanContext) str
 		}
 	}
 	own := encodeTruss(trussData{
-		FP: sid.String(),
-		Par: parent,
-		M: m,
-		K: k,
+		FP:   sid.String(),
+		Par:  parent,
+		M:    m,
+		K:    k,
 		Segs: []TrussSegment{{Kind: SegAMQ, Data: bf.Bytes()}},
 	})
 	return MergeRetCtx(MergedChildren(ctx), own)
@@ -184,7 +349,7 @@ func MergeRetCtx(a, b string) string {
 type retMergeKey struct{}
 type retMerge struct {
 	mu sync.Mutex
-	s string
+	s  string
 }
 
 func WithRetMerge(ctx context.Context) context.Context {
@@ -210,50 +375,17 @@ func MergedChildren(ctx context.Context) string {
 
 // toggles (runtime env)
 func ReverseTrussEnabled() bool { return os.Getenv("REVERSE_TRUSS") == "on" }
-func ParentIDEnabled() bool { return os.Getenv("RT_PARENTID") == "on" }
-func IsRoot() bool { return os.Getenv("RT_ROOT") == "on" }
+func ParentIDEnabled() bool     { return os.Getenv("RT_PARENTID") == "on" }
+func IsRoot() bool              { return os.Getenv("RT_ROOT") == "on" }
 
-// LeafReject: flagged leaf declines to checkpoint and pushes up. RT_LEAF_REJECT = rate
-func LeafReject() bool {
-	r, _ := strconv.ParseFloat(os.Getenv("RT_LEAF_REJECT"), 64)
-	if r <= 0 {
-		return false
-	}
-	return rand.Float64() < r
-}
-
-// IsLeaf returns whether this node is a flagged reject-leaf (RT_LEAF_REJECT > 0).
-func IsLeaf() bool {
-	r, _ := strconv.ParseFloat(os.Getenv("RT_LEAF_REJECT"), 64)
-	return r > 0
-}
-
-var reverseTrussCount atomic.Uint64
-
-// ReverseTrussCheckpoint: root always checkpoints; else RT_POLICY "2" depth-random, default round-robin
-func ReverseTrussCheckpoint() bool {
-	if IsRoot() {
-		return true
-	}
-	switch os.Getenv("RT_POLICY") {
-	case "2":
-		return rand.Intn(rtDepth()) == 0
-	default:
-		return reverseTrussCount.Add(1)%uint64(rtDepth()) == 0
-	}
-}
-
-func rtDepth() int {
-	if n, err := strconv.Atoi(os.Getenv("RT_DEPTH")); err == nil && n > 0 {
-		return n
-	}
-	return 3
-}
+// ReverseTrussCheckpointKey marks a span carrying a consumed reverse truss.
+// Bridge processors give these spans checkpoint priority at export.
+const ReverseTrussCheckpointKey = "bridges.checkpoint"
 
 // Counters, dumped periodically + on Ctrl-C / SIGTERM
 var (
 	rtCkpt, rtRecv, rtReject, rtLocal atomic.Uint64
-	rtDumpOnce sync.Once
+	rtDumpOnce                        sync.Once
 )
 
 func installCounterDump() {
@@ -297,12 +429,18 @@ func rtSampleN() uint64 {
 	return 500
 }
 
-// SampleLogCheckpoint logs ~1/RT_SAMPLE checkpoints in decoded form so ancestry
-// can be inspected and the raw retCtx fed to TestRTVerify.
+// SampleLogCheckpoint logs ~1/RT_SAMPLE checkpoints with their original
+// locations so the raw retCtx can be inspected using TestRTVerify.
 func SampleLogCheckpoint(retCtx string) {
 	if rtSample.Add(1)%rtSampleN() != 0 {
 		return
 	}
 	fp, parent, m, k, amqs := DecodeRetCtx(retCtx)
-	slog.Info("BRIDGES_CKPT", "fp", fp, "parent", parent, "m", m, "k", k, "amq_segments", len(amqs), "retctx", retCtx)
+	checkpoints, err := DecodeReturnedCheckpoints(retCtx)
+	locations := make([]string, 0, len(checkpoints))
+	for _, cp := range checkpoints {
+		locations = append(locations, fmt.Sprintf("%s:%s@%d", cp.Kind, cp.SpanID, cp.Depth))
+	}
+	slog.Info("BRIDGES_CKPT", "fp", fp, "parent", parent, "m", m, "k", k,
+		"amq_segments", len(amqs), "locations", locations, "decode_error", err, "retctx", retCtx)
 }

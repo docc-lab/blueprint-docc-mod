@@ -1,0 +1,49 @@
+# Same admission controller and exporter settings as the social network script.
+# Use the current priorityprocessor schema from the custom collector.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        include_metadata: true
+      http:
+        endpoint: 0.0.0.0:4318
+        include_metadata: true
+  configdiscovery:
+    endpoint: 0.0.0.0:8080
+    config_map:
+      cpd: 3
+processors:
+  priority:
+    check_interval: 100ms
+    soft_percentage: 50
+    hard_percentage: 70
+    cp_safety_factor: 1
+    force_gc: true
+    gc_soft_interval: 1s
+    gc_ultrasoft_interval: 0s
+exporters:
+  otlp:
+    # Blueprint inserts the selected Jaeger instance's OTLP address.
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 0
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [priority]
+      exporters: [otlp]
+    logs/configdiscovery:
+      receivers: [configdiscovery]
+      exporters: [debug]

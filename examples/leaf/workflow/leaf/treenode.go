@@ -2,17 +2,17 @@ package leaf
 
 import "context"
 
-// TreeNode is a synthetic reverse-truss test node. It forwards a call to each of
-// its children. Topology (leaf/unary/binary) is chosen per instance in the wiring
-// spec. Leaves are terminal, so flag them with RT_LEAF_REJECT.
+// TreeNode is a synthetic reverse-truss test service. FanoutNodeImpl supports
+// any number of children and configurable concurrency; the original fixed-arity
+// implementations remain available for existing wiring specs.
 type TreeNode interface {
 	Process(ctx context.Context, n int64) (int64, error)
 }
 
-// Leaf: 0 children (terminal). LeafReject runs here.
+// Leaf: 0 children (terminal). The tracing SDK decides checkpoint refusal.
 type LeafNodeImpl struct{ TreeNode }
 
-func NewLeafNodeImpl(ctx context.Context) (*LeafNodeImpl, error) { return &LeafNodeImpl{}, nil }
+func NewLeafNodeImpl(ctx context.Context) (*LeafNodeImpl, error)            { return &LeafNodeImpl{}, nil }
 func (s *LeafNodeImpl) Process(ctx context.Context, n int64) (int64, error) { return n + 1, nil }
 
 // Unary: 1 child

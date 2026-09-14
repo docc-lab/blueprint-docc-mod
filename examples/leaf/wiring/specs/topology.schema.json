@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Blueprint synthetic application topology",
+  "description": "A rooted acyclic service graph. The compiler also validates reachability, references, cycles, and Go duration values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["root", "nodes"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": 1},
+    "root": {"$ref": "#/$defs/name"},
+    "rpc_timeout": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Positive Go duration for the gRPC transport deadline; default 1s. Per-call timeouts can shorten this deadline."
+    },
+    "nodes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/name"},
+      "additionalProperties": {"$ref": "#/$defs/node"}
+    }
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "parallelism": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum active immediate branches per request; 0 means all branches, 1 means sequential."
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "children": {"type": "array", "items": {"$ref": "#/$defs/name"}},
+        "parallelism": {"$ref": "#/$defs/parallelism"},
+        "pattern": {"$ref": "#/$defs/pattern"}
+      },
+      "if": {"required": ["pattern"]},
+      "then": {
+        "not": {"anyOf": [{"required": ["children"]}, {"required": ["parallelism"]}]}
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "call": {"$ref": "#/$defs/name"},
+        "timeout": {"type": "string", "minLength": 1, "description": "Positive Go duration for this RPC."},
+        "sequence": {"type": "array", "items": {"$ref": "#/$defs/pattern"}},
+        "parallel": {"type": "array", "items": {"$ref": "#/$defs/pattern"}},
+        "parallelism": {"$ref": "#/$defs/parallelism"},
+        "repeat": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "do"],
+          "properties": {
+            "count": {"type": "integer", "minimum": 0},
+            "do": {"$ref": "#/$defs/pattern"}
+          }
+        },
+        "sleep": {"type": "string", "minLength": 1, "description": "Nonnegative Go duration; contributes zero to the result."}
+      },
+      "oneOf": [
+        {"required": ["call"]},
+        {"required": ["sequence"]},
+        {"required": ["parallel"]},
+        {"required": ["repeat"]},
+        {"required": ["sleep"]}
+      ],
+      "dependentRequired": {
+        "timeout": ["call"],
+        "parallelism": ["parallel"]
+      }
+    }
+  }
+}

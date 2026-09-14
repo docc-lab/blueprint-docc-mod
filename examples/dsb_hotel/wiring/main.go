@@ -20,5 +20,14 @@ func main() {
 	cmdbuilder.MakeAndExecute(
 		name,
 		specs.Original,
+		specs.DockerPB,
+		specs.DockerCGPB,
+		specs.DockerSB,
+		specs.DockerV,
+		specs.DockerPBES,
+		specs.DockerCGPBES,
+		specs.DockerSBES,
+		specs.DockerVES,
+		specs.DockerRCES,
 	)
 }

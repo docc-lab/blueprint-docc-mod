@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -603,6 +604,9 @@ func (p *VanillaProcessor) convertAttributes(attrs []attribute.KeyValue) []*comm
 
 	protoAttrs := make([]*commonpb.KeyValue, 0, len(attrs))
 	for _, attr := range attrs {
+		if backend.IsReverseBaggageKey(attr.Key) || attr.Key == reverseDepthAttribute {
+			continue // Tomislav-RetCtx: keep reverse carriers out of exported data.
+		}
 		protoAttrs = append(protoAttrs, p.convertAttribute(attr))
 	}
 	return protoAttrs

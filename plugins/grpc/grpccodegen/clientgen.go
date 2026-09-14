@@ -25,7 +25,7 @@ func GenerateClient(builder golang.ModuleBuilder, service *gocode.ServiceInterfa
 	}
 
 	client.Imports.AddPackages(
-		"context", "time",
+		"context", "fmt", "time",
 		"google.golang.org/grpc",
 		"google.golang.org/grpc/credentials/insecure",
 	)
@@ -56,12 +56,23 @@ type {{.Name}} struct {
 	Timeout time.Duration
 }
 
-func New_{{.Name}}(ctx context.Context, serverAddress string) (*{{.Name}}, error) {
+// Tomislav-RetCtx: optional wiring timeout; existing two-argument calls keep 1s.
+func New_{{.Name}}(ctx context.Context, serverAddress string, timeout ...string) (*{{.Name}}, error) {
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	duration, err := time.ParseDuration("1s")
+	if len(timeout) > 1 {
+		return nil, fmt.Errorf("expected at most one gRPC timeout")
+	}
+	timeoutValue := "1s"
+	if len(timeout) == 1 {
+		timeoutValue = timeout[0]
+	}
+	duration, err := time.ParseDuration(timeoutValue)
 	if err != nil {
 		return nil, err
+	}
+	if duration <= 0 {
+		return nil, fmt.Errorf("gRPC timeout must be positive")
 	}
 	opts = append(opts, grpc.WithTimeout(duration))
 	conn, err := grpc.Dial(serverAddress, opts...)

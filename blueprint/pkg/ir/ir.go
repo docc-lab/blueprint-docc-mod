@@ -5,6 +5,8 @@
 // spec using methods from the wiring package and from wiring extensions provided by plugins.
 package ir
 
+import "strconv"
+
 // All nodes implement the IRNode interface
 type IRNode interface {
 	Name() string
@@ -44,8 +46,9 @@ func (v *IRValue) Name() string {
 	return v.String()
 }
 
+// Tomislav-RetCtx: quote topology/pattern literals safely in generated Go.
 func (v *IRValue) String() string {
-	return "\"" + v.Value + "\""
+	return strconv.Quote(v.Value)
 }
 
 // Most IRNodes can generate code artifacts but they do so in the context of some

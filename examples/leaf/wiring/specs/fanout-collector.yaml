@@ -1,0 +1,34 @@
+# Config discovery is provided by the project's custom collector build.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+  configdiscovery:
+    endpoint: 0.0.0.0:8080
+    config_map:
+      cpd: 1
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+exporters:
+  # Blueprint injects Jaeger's OTLP address into this exporter.
+  otlp:
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+    # The discovery receiver is activated through a logs pipeline.
+    logs/config:
+      receivers: [configdiscovery]
+      exporters: [debug]
