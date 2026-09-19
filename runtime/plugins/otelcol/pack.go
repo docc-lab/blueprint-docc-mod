@@ -152,21 +152,21 @@ func varintLen(n int) int {
 		n = 0
 	}
 	switch {
-	case n < 1 << 7:
+	case n < 1<<7:
 		return 1
-	case n < 1 << 14:
+	case n < 1<<14:
 		return 2
-	case n < 1 << 21:
+	case n < 1<<21:
 		return 3
-	case n < 1 << 28:
+	case n < 1<<28:
 		return 4
-	case n < 1 << 35:
+	case n < 1<<35:
 		return 5
-	case n < 1 << 42:
+	case n < 1<<42:
 		return 6
-	case n < 1 << 49:
+	case n < 1<<49:
 		return 7
-	case n < 1 << 56:
+	case n < 1<<56:
 		return 8
 	}
 	return 9
@@ -371,199 +371,9 @@ func traceIDHexTo16Bytes(s string) [16]byte {
 	return out
 }
 
-// ordEntry is one ordinal-chain entry: a span's sibling ordinal plus the
-// FINGERPRINT of its immediate parent — the leading bytes of the parent's
-// span ID. fp is 4 bytes when the parent is a checkpoint (entry depthMod==1),
-// else 2 bytes. Each span fills fp locally from its native parent span ID in
-// OnStart; nothing extra is propagated for it.
-type ordEntry struct {
-	ord int
-	fp  []byte
-}
-
-// fpLenForDepthMod returns the parent-fingerprint byte width for an ordinal
-// entry at the given depthMod: 4 if the parent is a checkpoint (the entry sits
-// at depthMod==1, so its parent is at depthMod 0), else 2. The decoder recovers
-// this purely from the group key — no per-entry length flag on the wire.
-// fpLenForDepthMod is the parent-fingerprint width for an ordinal-chain entry.
-// FULL-WIDTH: every entry carries the complete 8-byte big-endian parent span ID
-// (checkpoint-root anchors included), eliminating fingerprint collisions in
-// reconstruction. (Historic truncated widths: 4B for depthMod==1, 2B otherwise.)
-func fpLenForDepthMod(depthMod int) int {
-	return 8
-}
-
-// packSBridgeBR packs the S-Bridge baggage payload. Wire format (shared
-// contract with the bridges reconstruction decoder):
-//
-//	varint(depth) || varint(numGroups) ||
-//	  per group: varint(depthMod) || varint(numEntries) ||
-//	    numEntries * ( varint(ordinal) || fp )      # fp = FULL 8B parent span ID
-//	  varint(numEnd) || numEnd * varint(seq) || deeBytes (tail)
-//
-// There is NO explicit checkpoint anchor: it's redundant. A non-checkpoint
-// span's nearest-checkpoint anchor is the fp of its depthMod==1 entry (the FULL
-// 8 bytes of the checkpoint's span ID); a checkpoint span IS its own anchor via
-// its native span_id. An all-zero parent fp marks the root (no parent). fp
-// lengths are NOT length-prefixed — the decoder derives each from the group's
-// depthMod via fpLenForDepthMod. depth is clamped to >= 0.
-func packSBridgeBR(
-	depth int,
-	ordinalGroups map[int][]ordEntry,
-	endEvents []int,
-	deeBytes []byte,
-) []byte {
-	depths := make([]int, 0, len(ordinalGroups))
-	for d := range ordinalGroups {
-		depths = append(depths, d)
-	}
-	sortInts(depths)
-
-	size := varintLen(depth) + varintLen(len(depths))
-	for _, d := range depths {
-		entries := ordinalGroups[d]
-		size += varintLen(d) + varintLen(len(entries))
-		for _, e := range entries {
-			size += varintLen(e.ord) + len(e.fp)
-		}
-	}
-	size += varintLen(len(endEvents))
-	for _, s := range endEvents {
-		size += varintLen(s)
-	}
-	size += len(deeBytes)
-
-	out := make([]byte, 0, size)
-	out = binary.AppendUvarint(out, uint64(maxInt(depth, 0)))
-	out = binary.AppendUvarint(out, uint64(len(depths)))
-	for _, d := range depths {
-		entries := ordinalGroups[d]
-		out = binary.AppendUvarint(out, uint64(d))
-		out = binary.AppendUvarint(out, uint64(len(entries)))
-		for _, e := range entries {
-			out = binary.AppendUvarint(out, uint64(maxInt(e.ord, 0)))
-			out = append(out, e.fp...)
-		}
-	}
-	out = binary.AppendUvarint(out, uint64(len(endEvents)))
-	for _, s := range endEvents {
-		out = binary.AppendUvarint(out, uint64(maxInt(s, 0)))
-	}
-	out = append(out, deeBytes...)
-	return out
-}
-
-// unpackSBridgeBR reverses packSBridgeBR. deeBytes is the trailing blob
-// (sub-slice of buf — copy if you need to retain it past buf's lifetime).
-// ok=false on a malformed payload.
-func unpackSBridgeBR(buf []byte) (
-	depth int,
-	ordinalGroups map[int][]ordEntry,
-	endEvents []int,
-	deeBytes []byte,
-	ok bool,
-) {
-	v, n := binary.Uvarint(buf)
-	if n <= 0 {
-		return
-	}
-	depth = int(v)
-	buf = buf[n:]
-
-	numDepths, n := binary.Uvarint(buf)
-	if n <= 0 {
-		return
-	}
-	buf = buf[n:]
-	if numDepths > 0 {
-		ordinalGroups = make(map[int][]ordEntry, numDepths)
-	}
-	for i := uint64(0); i < numDepths; i++ {
-		dv, dn := binary.Uvarint(buf)
-		if dn <= 0 {
-			return
-		}
-		buf = buf[dn:]
-		ns, nsn := binary.Uvarint(buf)
-		if nsn <= 0 {
-			return
-		}
-		buf = buf[nsn:]
-		fpLen := fpLenForDepthMod(int(dv))
-		entries := make([]ordEntry, 0, ns)
-		for j := uint64(0); j < ns; j++ {
-			sv, sn := binary.Uvarint(buf)
-			if sn <= 0 {
-				return
-			}
-			buf = buf[sn:]
-			if len(buf) < fpLen {
-				return
-			}
-			fp := append([]byte(nil), buf[:fpLen]...)
-			buf = buf[fpLen:]
-			entries = append(entries, ordEntry{ord: int(sv), fp: fp})
-		}
-		ordinalGroups[int(dv)] = entries
-	}
-
-	numEnds, n := binary.Uvarint(buf)
-	if n <= 0 {
-		return
-	}
-	buf = buf[n:]
-	if numEnds > 0 {
-		endEvents = make([]int, 0, numEnds)
-	}
-	for i := uint64(0); i < numEnds; i++ {
-		sv, sn := binary.Uvarint(buf)
-		if sn <= 0 {
-			return
-		}
-		buf = buf[sn:]
-		endEvents = append(endEvents, int(sv))
-	}
-
-	deeBytes = buf
-	ok = true
-	return
-}
-
-// encodeDEETriple encodes one delayed-end-event triple:
-//
-//	16-byte trace_id || varint(depth) || varint(n) || n * varint(start_seq)
-func encodeDEETriple(traceID16 [16]byte, depth int, seqs []int) []byte {
-	size := 16 + varintLen(depth) + varintLen(len(seqs))
-	for _, s := range seqs {
-		size += varintLen(s)
-	}
-	out := make([]byte, 0, size)
-	out = append(out, traceID16[:]...)
-	out = binary.AppendUvarint(out, uint64(maxInt(depth, 0)))
-	out = binary.AppendUvarint(out, uint64(len(seqs)))
-	for _, s := range seqs {
-		out = binary.AppendUvarint(out, uint64(maxInt(s, 0)))
-	}
-	return out
-}
-
 func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
-}
-
-// sortInts is a tiny in-place insertion sort to avoid an "import sort" for
-// the small depth-group slices (typically O(few)).
-func sortInts(s []int) {
-	for i := 1; i < len(s); i++ {
-		v := s[i]
-		j := i - 1
-		for j >= 0 && s[j] > v {
-			s[j+1] = s[j]
-			j--
-		}
-		s[j+1] = v
-	}
 }

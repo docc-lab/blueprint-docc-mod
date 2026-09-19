@@ -5,6 +5,10 @@ an alternative to reverse TTLs. Each ordinary receiving span makes an independen
 decision for **each truss**. Accepted trusses share that span's checkpoint export;
 unaccepted trusses continue upstream. The existing TTL policy remains the default.
 
+Tomislav-RetCtx: the [simulator primer](reverse_probability_simulator_primer.md)
+adds worked emission distributions, receiver pseudocode, byte accounting, and the
+proposed increasing-upstream-pressure mode, clearly separated from implemented modes.
+
 ## Policies
 
 Let `n` be the rejected leaf's absolute span depth and `d` the receiving span's

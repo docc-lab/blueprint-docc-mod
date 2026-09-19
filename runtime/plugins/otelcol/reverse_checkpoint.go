@@ -51,7 +51,7 @@ func wrapReverseCheckpointProcessor(next sdktrace.SpanProcessor) sdktrace.SpanPr
 		p.reverseRange, distance = next.checkpointRange, next.checkpointDistance
 		p.reversePolicy = next.reversePolicy
 	case *StructuralBridgeProcessor:
-		p.kind, p.scheduled = backend.SegStructuralCheckpoint, next.isScheduledCheckpoint
+		p.kind, p.scheduled = backend.SegStructuralCheckpoint, isScheduledPathCheckpoint
 		p.reverseRange, distance = next.checkpointRange, next.checkpointDistance
 		p.reversePolicy = next.reversePolicy
 	case *VanillaProcessor:
@@ -81,7 +81,7 @@ func (p *reverseCheckpointProcessor) OnStart(parent context.Context, span sdktra
 			depth = n + 1
 		}
 	}
-	if p.kind == backend.SegPathCheckpoint || p.kind == backend.SegCallGraphCheckpoint {
+	if p.kind == backend.SegPathCheckpoint || p.kind == backend.SegCallGraphCheckpoint || p.kind == backend.SegStructuralCheckpoint {
 		// These bridge formats already contain absolute depth. Use the SDK's
 		// value even when the parent did not send the auxiliary reverse depth.
 		for _, attr := range span.Attributes() {
@@ -92,8 +92,7 @@ func (p *reverseCheckpointProcessor) OnStart(parent context.Context, span sdktra
 			}
 		}
 	}
-	// SB's _br contains depth modulo cpd. Keep its format intact and carry
-	// absolute span depth separately while reverse checkpointing is enabled.
+	// Vanilla has no truss depth; the auxiliary reverse depth carries it.
 	// Tomislav-RetCtx: preserve the OnStart role before reverse arrivals can
 	// create an additional checkpoint at OnEnd. Reverse emission must not change
 	// that role or reset its forward window.
@@ -168,7 +167,7 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span) {
 		}
 	}
 	if returned != "" {
-		s.SetAttributes(attribute.String(backend.ReverseBaggageKey, returned), attribute.Bool("bridges.forward_up", true))
+		s.SetAttributes(attribute.String(backend.ReverseBaggageKey, returned))
 	}
 }
 
@@ -220,24 +219,6 @@ func spanHasChildren(s sdktrace.ReadOnlySpan) bool {
 	return false
 }
 
-func (p *StructuralBridgeProcessor) isScheduledCheckpoint(s sdktrace.ReadOnlySpan) bool {
-	var depth int
-	var hasDepth bool
-	for _, attr := range s.Attributes() {
-		if attr.Key == AttrBREmit {
-			depth, hasDepth = decodeBRDepth(attr.Value.AsString())
-		}
-	}
-	cpd := int(p.checkpointDistance)
-	if cpd < 1 {
-		cpd = 1
-	}
-	if p.checkpointRange.enabled() {
-		return hasDepth && depth == 0
-	}
-	return hasDepth && depth%cpd == 0
-}
-
 func (p *StructuralBridgeProcessor) isCheckpoint(s sdktrace.ReadOnlySpan) bool {
 	var forceLP, rejected, reverseCheckpoint bool
 	for _, attr := range s.Attributes() {
@@ -250,5 +231,8 @@ func (p *StructuralBridgeProcessor) isCheckpoint(s sdktrace.ReadOnlySpan) bool {
 			forceLP = attr.Value.AsBool()
 		}
 	}
-	return !forceLP && (reverseCheckpoint || (!rejected && (p.isScheduledCheckpoint(s) || (s.SpanKind() == trace.SpanKindServer && !spanHasChildren(s)))))
+	// Tomislav-RetCtx: SB shares the PB/CGPB window classification; force_lp
+	// keeps synthetic pressure spans ordinary.
+	_, _, _ = rejected, reverseCheckpoint, forceLP
+	return !forceLP && isPathCheckpoint(s)
 }

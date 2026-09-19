@@ -99,6 +99,12 @@ type trussData struct {
 }
 
 func encodeTruss(t trussData) string {
+	// Tomislav-RetCtx: checkpoint-only envelopes pack like the forward path.
+	// Anything carrying a legacy ancestry segment or a parent fingerprint keeps
+	// the JSON envelope, which stays readable by older peers.
+	if packableRetCtx(t) {
+		return encodePackedRetCtx(t.Segs)
+	}
 	b, _ := json.Marshal(t)
 	return base64.StdEncoding.EncodeToString(b)
 }
@@ -107,6 +113,12 @@ func decodeTruss(s string) (trussData, bool) {
 	var t trussData
 	if s == "" {
 		return t, false
+	}
+	// Packed envelopes are RawURLEncoding and start with a version byte; JSON
+	// envelopes are StdEncoding and start with '{'. Neither can be mistaken for
+	// the other, so both wire formats decode without sniffing.
+	if packed, ok := decodePackedRetCtx(s); ok {
+		return packed, true
 	}
 	raw, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
@@ -247,6 +259,11 @@ func encodeTrussSubset(envelope trussData, segments []TrussSegment) string {
 		return ""
 	}
 	envelope.Segs = segments
+	// Tomislav-RetCtx: a checkpoint-only partition packs, and its fingerprints are
+	// derived from each segment's own span ID on decode rather than transmitted.
+	if packableRetCtx(envelope) {
+		return encodePackedRetCtx(segments)
+	}
 	// Checkpoint origins belong only to their partition. Older ancestry-only
 	// segments have envelope-level fingerprints, so retain those when present.
 	var fingerprints []string
@@ -318,6 +335,11 @@ func MergeRetCtx(a, b string) string {
 	if b == "" {
 		return a
 	}
+	// Tomislav-RetCtx: two packed envelopes concatenate as byte regions. This is
+	// the fan-in path, and it must not cost a decode-and-reserialize per hop.
+	if merged, ok := mergePackedRetCtx(a, b); ok {
+		return merged
+	}
 	ta, oka := decodeTruss(a)
 	tb, okb := decodeTruss(b)
 	if !oka {
@@ -380,7 +402,18 @@ func IsRoot() bool              { return os.Getenv("RT_ROOT") == "on" }
 
 // ReverseTrussCheckpointKey marks a span carrying a consumed reverse truss.
 // Bridge processors give these spans checkpoint priority at export.
-const ReverseTrussCheckpointKey = "bridges.checkpoint"
+//
+// Tomislav-RetCtx: this is a WIRE key, written on every reverse checkpoint, so it
+// is named like the forward path's `_br`/`_o`/`_d` rather than spelled out. The
+// old "bridges.checkpoint" cost 18 bytes of key text per checkpoint span -- more
+// than the whole packed payload now costs -- for a name no consumer parses.
+const ReverseTrussCheckpointKey = "_rc"
+
+// Tomislav-RetCtx: a "bridges.forward_up" marker used to be written beside the
+// carrier on every span that passed a truss upward. Nothing ever read it -- not
+// the audit, which checks the BRIDGES_RT counters instead -- so it was removed
+// rather than shortened. Captures taken before 2026-09-19 still carry it;
+// utils/retctx_wire.py knows the key so those traces stay interpretable.
 
 // Counters, dumped periodically + on Ctrl-C / SIGTERM
 var (

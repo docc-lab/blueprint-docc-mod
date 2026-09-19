@@ -610,8 +610,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		ctx = backend.SetBaggageInContext(ctx, baggage)
 	}
 
-	eventCount := atomic.Uint64{}
-	ctx = context.WithValue(ctx, "eventCount", &eventCount)
+	childCount := atomic.Uint64{}
+	ctx = context.WithValue(ctx, "childCount", &childCount)
 
 	// End events tracking structures. Matches the bridges Go simulator's
 	// parentEEAcc: a []int slice of sibling start-seqs in the order in
@@ -634,15 +634,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		span.RecordError(err)
 	}
 
-	span.SetAttributes(attribute.Int("eventCount", int(eventCount.Load())))
-	// Encode the end-event seqs as varint bytes for the SB processor.
-	// Format: varint(count) || count*varint(seq). The SB processor's
-	// OnEnd hook prepends traceID+depth to form a full DEE triple.
-	// Drop the last entry — its end is implicit at reconstruction time
-	// (mirrors the simulator's kept = rem[:len(rem)-1]).
+	children := int(childCount.Load())
+	span.SetAttributes(attribute.Int("childCount", children))
+	// Tomislav-RetCtx: delayed orthogonal truss summary for the SB processor:
+	// varint(children) || varint(count) || count*varint(start ordinal), in end
+	// order, dropping the last end (implied at reconstruction). The processor
+	// stamps this span's trace/span ID on it and queues it for the next call.
 	if n := len(endEvents); n > 0 {
 		kept := endEvents[:n-1]
 		buf := make([]byte, 0, 8+5*len(kept))
+		buf = binary.AppendUvarint(buf, uint64(children))
 		buf = binary.AppendUvarint(buf, uint64(len(kept)))
 		for _, s := range kept {
 			buf = binary.AppendUvarint(buf, uint64(s))

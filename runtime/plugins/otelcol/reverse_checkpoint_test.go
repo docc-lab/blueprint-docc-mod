@@ -64,7 +64,7 @@ func checkpointParentContext(kind string, depth int) context.Context {
 	case "cgpb":
 		br = packCGPRBBR(depth, [8]byte{}, bloomBytes, nil)
 	case "sb":
-		br = packSBridgeBR(depth%3, nil, nil, nil)
+		br = packStructuralBR(depth, [8]byte{}, 3, checkpointBlooms[2].emptyBytes(), nil, structuralTail{})
 	}
 	return backend.SetBaggageInContext(context.Background(), map[string]string{
 		reverseDepthBaggageKey: strconv.Itoa(depth), BaggageBRKey: encodeBR(br),

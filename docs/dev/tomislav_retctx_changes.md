@@ -10,6 +10,7 @@ not additional service implementations.
 | SDK checkpoint refusal | [reverse_checkpoint.go](../../runtime/plugins/otelcol/reverse_checkpoint.go) moves refusal and receipt decisions into the SDK before span end. Refused spans still export with ordinary metadata; original span IDs, absolute depths, and truss bytes return upstream. |
 | Per-truss reverse TTL | Original forward checkpoints are now protected. Only unscheduled server leaves may reject, drawing a fresh reverse TTL from collector CPD settings. Each upstream span emits expired trusses and forwards the rest; original checkpoints absorb all returns. This replaces the provider-wide `RT_POLICY`/`RT_DEPTH` bundle policy. See [routing and encoding](reverse_truss.md). |
 | Probabilistic reverse routing (September 13) | [reverse_policy.go](../../runtime/plugins/otelcol/reverse_policy.go) adds fixed p, 1/origin depth, and normalized linear depth bias. Each TTL-free truss gets its own receiver trial; explicit TTLs retain their countdown. Collector discovery and both deployment scripts validate/select policies. Existing origin metadata supplies depth, so the probability carrier adds no fields. See [formulas and configuration](reverse_checkpoint_probability.md). |
+| Simulator policy primer (September 14) | [The handoff primer](reverse_probability_simulator_primer.md) specifies per-truss trials, mandatory checkpoint absorption, fan-in, worked probability distributions, and byte accounting. It distinguishes implemented modes from the proposed increasing-upstream-pressure policy. |
 | Return transport | [backend helpers](../../runtime/core/backend/reversetruss.go) preserve typed trusses, varint depths, and individual TTLs. [Client](../../plugins/opentelemetry/ir_ot_client.go) and [server](../../plugins/opentelemetry/ir_ot_server.go) wrappers hand returns to recording spans, read the SDK decision, and merge only pending segments. The per-request mutex supports concurrent fan-in; private carriers never become forward baggage or exported attributes. |
 | Random forward CPD | [checkpoint_distance.go](../../runtime/plugins/otelcol/checkpoint_distance.go) validates collector `cpd_min`/`cpd_max` and schedules checkpoints using a one-byte countdown. Roots and scheduled checkpoints draw once for outgoing descendants; sibling paths use independent copies. Legacy `cpd` keeps its existing forward format. |
 | Bloom sizing | [checkpoint_window.go](../../runtime/plugins/otelcol/checkpoint_window.go) replaces the initial experimental maximum-sized Bloom with a filter sized for each selected window. An immutable distance byte identifies its geometry and CGPB HA boundary after the forward TTL changes. Incoming trusses retain their geometry when a checkpoint starts a new window. |
@@ -24,6 +25,7 @@ not additional service implementations.
 | Collector saturation ramps (September 14) | [run_spanload_ramp.py](../../utils/run_spanload_ramp.py) measures vanilla/PB/CGPB/SB export curves with zero or ten example semconv attributes, a one-CPU/4-GiB collector, and separate generator cores. `--profile` selects and records the baseline. Seeded `--checkpoint-fraction` sampling matches the imported corpus's 52.51% checkpoint share. Steady-window export/CPU samples exclude startup/drain; raw data, resource limits, and plots are retained. |
 | Protobuf correction and sender checks (September 14) | The initial file fixture used JSON; the intended experiment uses protobuf to `/dev/null`. The fixture and `--export-format` now make this explicit. Repeated `--generator-cpus` launches independent senders sharing the aggregate rate, measures their common active window, and weights payload means by count. [check_spanload_capacity.py](../../utils/check_spanload_capacity.py) checks one/two/four senders against one fixed collector; separate optional cases profile CPU and change collector batch size. |
 | Complete repeated ramps (September 14) | [run_spanload_suite.py](../../utils/run_spanload_suite.py) runs shared 16/20-point grids through all variants, with three repetitions and matched limiter controls. `--complete-grid` separates saturation detection from early stopping. A separate collector fixture adds `memory_limiter`, `GOMEMLIMIT=2400MiB`, and 8,192-span batches. Atomic progress records and per-stage archives support interrupted sessions. [The analyzer](../../utils/analyze_spanload_suite.py) independently checks raw counts/windows and plots means with sample SD in a combined figure. |
+| End-to-end return-policy ramps (September 15) | [The evaluation guide](dsb_sn_retctx_evaluation.md) records the paper and recovered settings for vanilla memory limiting versus PB/CGPB/SB priority processing, random CPD 2–6, and inverse-depth returns from unscheduled leaves. Three new DSB helpers prepare manifests, check/pin all image builds, and validate live behavior before fresh-state repeated ramps. The runner retains raw HDR, response/error counts, collector/SDK metrics, and trace samples. Service implementations remain unchanged. |
 
 Tomislav-RetCtx: two earlier Hotel repairs were made during the initial
 application check: `SearchHandler` propagates availability errors, and
@@ -33,6 +35,11 @@ implementations remains in force: the reverse-TTL work changes SDK/infrastructur
 code, and Social Network workflow implementations have not been modified.
 
 ## Experiment and deployment records
+
+Tomislav-RetCtx: the [September 15 detailed agent handoff](retctx_agent_handoff_2026-09-15.md)
+preserves the active n=5 end-to-end campaign, exact configuration, SDK semantics,
+historical work, reporting corrections, and monitoring/recovery commands. Its
+timestamped snapshot is a handoff record; live experiment status remains authoritative.
 
 Tomislav-RetCtx: the initial maximum-sized-Bloom experiment was superseded by
 [the corrected fixed-2/fixed-4/random-2–6 comparison](/users/tomislav/deployments/dsb-sn/cgpb-es-window-cpd-20260910/RESULTS.md).
@@ -96,6 +103,21 @@ All 37 ramp points and 16 controls reconciled, and temporary collectors were
 removed. The [corrected report](/users/tomislav/deployments/collector-load/spanload-proto-ramps-20260914T155957Z/RESULTS.md)
 supersedes the initial JSON results for this experiment and preserves both sets.
 
+Tomislav-RetCtx: the September 14–15 complete repeated **protobuf-export** suite
+finished all 432 ramp points and eight matched limiter controls. The one-CPU,
+4-GiB collector used `memory_limiter`, 8,192-span batches, `GOMEMLIMIT=2400MiB`,
+and protobuf file export to `/dev/null`. Three-repetition plateau means for
+vanilla/PB/CGPB/SB were 981.1k/542.1k/539.2k/533.4k spans/s without semconv and
+108.8k/101.6k/101.7k/101.2k with ten example attributes. All raw-counter and
+steady-window audits passed; collector CPU was saturated while the busiest
+generator used at most 1.065 of its four available cores. Excess offered load
+was counted as generator queue drops, with zero RPC failures or collector
+refusals. The [final report](/users/tomislav/deployments/collector-load/spanload-dense-ramps-20260914T185629Z/RESULTS.md)
+retains the full grids, variability, controls, and configuration. Its combined
+4.4 × 2.1-inch figure has one shared y-axis label and shows means with one sample
+standard deviation. Temporary collectors and generators exited; application
+services and Kubernetes were unchanged.
+
 ## Verification
 
 Tomislav-RetCtx: backend and SDK tests cover original checkpoint protection,
@@ -119,3 +141,16 @@ and collector-receiver race tests, all 13 deployment-option tests, and shell
 syntax checks. The concurrent-tree coverage
 now includes every probability policy as well as TTLs. No service implementation
 or running deployment is changed by this revision.
+
+## 2026-09-15: S-Bridge rebuilt on the CG-Bridge core
+
+Tomislav-RetCtx: the S-Bridge processor now emits the CG window core (anchor,
+absolute depth, window Bloom, fan-out witnesses) followed by vertical start
+ordinals and orthogonal end-event / delayed end-event trusses, with Lehmer-coded
+end-event permutations (compile-time default on; `-tags sb_nolehmer` selects plain lists). SB wrapper templates
+number children by start order. SB shares the PB/CGPB checkpoint classification
+and absolute-depth reverse routing. Spec and compatibility notes:
+[structural_bridge_truss.md](structural_bridge_truss.md). Files:
+`runtime/plugins/otelcol/{structural_truss.go,sb_processor.go,reverse_checkpoint.go,pack.go}`,
+`plugins/opentelemetry/ir_ot_{client,server}.go`, tests
+`structural_truss_test.go`, analyzer `utils/analyze_dsb_sn_e2e.py`.

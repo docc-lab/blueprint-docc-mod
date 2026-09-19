@@ -3,8 +3,6 @@ package otelcol
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,13 +79,10 @@ type StructuralBridgeProcessor struct {
 
 	bloomFilter *bloom.BloomFilter
 
-	// Pre-encoded DEE triples destined for the next OnStart's deeBytes.
-	// Each element is a complete varint-encoded triple ready to append
-	// (traceID16 || varint(depth) || varint(n) || n*varint(seq)).
-	// Producing as bytes (not parseable strings) matches the bridges
-	// Go simulator's deeQueue[][]byte model and keeps OnStart's drain
-	// loop free of Atoi-on-the-request-goroutine costs.
-	delayedEndEventsChan chan []byte
+	// Tomislav-RetCtx: delayed orthogonal trusses (paper §3.4) produced at
+	// server OnEnd, drained by the next OnStart in this process.
+	delayedEndEventsChan chan structuralDelayed
+	deeOnce              sync.Once
 
 	// Background processing
 	stopChan chan struct{}
@@ -254,8 +249,8 @@ func NewStructuralBridgeProcessor(ctx context.Context, agentEndpoint string, con
 		configDiscoveryPort:  configDiscoveryPortInt,
 		httpClient:           httpClient,
 		configMap:            make(map[string]interface{}),
-		checkpointDistance:   1,                        // Default: every span is a checkpoint
-		delayedEndEventsChan: make(chan []byte, 10000), // Buffered channel to avoid blocking
+		checkpointDistance:   1,                                   // Default: every span is a checkpoint
+		delayedEndEventsChan: make(chan structuralDelayed, 10000), // Buffered channel to avoid blocking
 	}
 
 	slog.Info("🔵 Ancestry mode configured", "mode", AncestryModePB)
@@ -520,173 +515,127 @@ func (p *StructuralBridgeProcessor) sendData(events []*tracepb.ResourceSpans, is
 
 // OnStart implements SpanProcessor.OnStart
 func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
-	// No mutex needed - checkpointDistance and ancestryMode are read-only after initialization
-	// slog.Debug("🔵 StructuralBridgeProcessor OnStart called", "span_name", s.Name(), "trace_id", s.SpanContext().TraceID())
-
-	// parentSpan := trace.SpanFromContext(parent)
-
-	// if s.SpanKind() == trace.SpanKindServer {
-	// 	totalSpanID := s.SpanContext().TraceID().String() + ":" + s.SpanContext().SpanID().String()
-	// 	// AI_ADDED: No longer need to initialize map entry - using hasChildren attribute instead
-	// 	s.SetAttributes(attribute.String("selfTotalID", totalSpanID))
-	// } else {
-	// 	slog.Info("🔵 Client-side span", "span_name", s.Name())
-	// 	parentTotalSpanID := parentSpan.SpanContext().TraceID().String() + ":" + parentSpan.SpanContext().SpanID().String()
-	// 	// AI_ADDED: No longer need map-based counting - server template sets hasChildren attribute via context
-	// 	s.SetAttributes(attribute.String("parentTotalID", parentTotalSpanID))
-	// }
-
-	// Decode incoming _br baggage. Bit-packed layout (mirrors
-	// bridges/bridge/pack.go PackSBridgeBR):
-	//   varint(depth) || varint(numGroups) ||
-	//     per group: varint(depthMod) || varint(numEntries) ||
-	//       numEntries * ( varint(ordinal) || fp )   # fp = FULL 8B parent span ID
-	//   varint(numEnd) || numEnd * varint(seq) || deeBytes (tail)
-	// Each ordinal entry carries the leading bytes of its immediate parent's
-	// span ID (the parent fingerprint). No explicit checkpoint anchor: it's the
-	// depthMod==1 entry's fp (or, for a checkpoint, its own native span_id).
+	// Tomislav-RetCtx: S-Bridge = CG-Bridge window core (anchor, absolute depth,
+	// window Bloom, fan-out witnesses) + vertical start ordinals + orthogonal end
+	// events (paper §3.4). Wire layout: structural_truss.go.
 	var (
-		hasParent     bool
-		parentTTL     byte
-		parentDepth   int
-		ordinalGroups map[int][]ordEntry
-		endEvents     []int
-		deeBytes      []byte
+		hasParent   bool
+		parentTTL   byte
+		parentDepth int
+		anchor      [8]byte
+		distance    int
+		inherited   []byte
+		parentHA    []byte
+		tail        structuralTail
 	)
-	if baggage := backend.GetBaggageFromContext(parent); baggage != nil {
-		if br, ok := baggage[BaggageBRKey]; ok && br != "" {
-			if raw, okB := decodeBR(br); okB {
-				parentTTL, raw = p.checkpointRange.unwrap(raw)
-				if d, og, ee, dee, okU := unpackSBridgeBR(raw); okU {
-					hasParent = true
-					parentDepth = d
-					ordinalGroups = og
-					endEvents = ee
-					// Detach from baggage-backed buffer; we mutate below.
-					deeBytes = append([]byte(nil), dee...)
-				}
-			}
+	if bag := backend.GetBaggageFromContext(parent); bag != nil {
+		if raw, valid := decodeBR(bag[BaggageBRKey]); valid {
+			parentTTL, raw = p.checkpointRange.unwrap(raw)
+			var ok bool
+			parentDepth, anchor, distance, inherited, parentHA, tail, ok = unpackStructuralBR(raw)
+			hasParent = ok && (!p.checkpointRange.enabled() || int(parentTTL) < distance)
 		}
 	}
-
 	cpd := int(p.checkpointDistance)
 	if cpd < 1 {
 		cpd = 1
 	}
-
-	var depthMod int
+	depth := 0
 	if hasParent {
-		depthMod = (parentDepth + 1) % cpd
-	} else {
-		depthMod = 0
+		depth = parentDepth + 1
 	}
+	var isCheckpoint bool
 	var outgoingTTL byte
 	if p.checkpointRange.enabled() {
-		checkpoint, ttl := p.checkpointRange.next(parentTTL, hasParent)
-		outgoingTTL = ttl
-		// Tomislav-RetCtx: this field is a window-relative position. Only a TTL checkpoint
-		// resets it; a global modulo cannot describe variable-length windows.
-		if checkpoint {
-			depthMod = 0
-		} else {
-			depthMod = parentDepth + 1
-		}
+		isCheckpoint, outgoingTTL = p.checkpointRange.next(parentTTL, hasParent)
+	} else {
+		// Fixed distance: same window layout, deterministic checkpoint positions.
+		isCheckpoint, distance = depth%cpd == 0, min(cpd, 256)
 	}
+	if !hasParent {
+		anchor = [8]byte{}
+		if p.checkpointRange.enabled() {
+			distance = int(outgoingTTL) + 1
+		}
+		inherited, parentHA, tail = nil, nil, structuralTail{}
+	}
+	geometry := checkpointBlooms[distance-1]
+	filter := bloom.NewFromBytes(inherited, geometry.m, geometry.k)
 
-	// Append this span's (ordinal, parent-fingerprint) entry to
-	// ordinalGroups[depthMod]. The parent fingerprint is the FULL 8 bytes of
-	// this span's IMMEDIATE parent span ID — 4 bytes when the parent is a
-	// checkpoint (this span's depthMod==1, so parent is at depthMod 0), else 2.
-	// We pull it locally from the native parent span context (already passed by
-	// OTel); nothing extra is propagated. Root span has a zero parent ID →
-	// zero-filled fp of the correct width (keeps decode aligned).
+	// CG core: fan-out witnesses follow the CGPB rule. The first-started child
+	// inherits the parent's window HA, the second records one
+	// (parent_span_id || depth) witness, later children carry none.
 	seqNum, _ := parent.Value("seqNum").(int)
-	if ordinalGroups == nil {
-		ordinalGroups = make(map[int][]ordEntry)
+	var ha []byte
+	if hasParent && seqNum == 1 {
+		ha = append([]byte(nil), parentHA...)
+	} else if hasParent && seqNum == 2 {
+		ha = haAppendEntry(nil, trace.SpanFromContext(parent).SpanContext().SpanID().String(), depth)
 	}
-	fpLen := fpLenForDepthMod(depthMod)
-	psid := s.Parent().SpanID()
-	fp := append([]byte(nil), psid[:fpLen]...)
-	ordinalGroups[depthMod] = append(ordinalGroups[depthMod], ordEntry{ord: seqNum, fp: fp})
 
-	// Inherit per-call end-events from parent context. The server
-	// template now stashes a *[]int there (matching the simulator's
-	// parentEEAcc); we snapshot a copy under the children mutex to
-	// avoid racing with concurrent client interceptors still appending.
+	// Orthogonal truss: the parent's end events observed so far (sibling start
+	// ordinals in end order) are recorded by this child at its start.
+	var ends []int
 	if eePtr, ok := parent.Value("endEvents").(*[]int); ok && eePtr != nil {
-		var mu *sync.Mutex
-		if mp, mok := parent.Value("childrenMutex").(*sync.Mutex); mok {
-			mu = mp
-		}
+		mu, _ := parent.Value("childrenMutex").(*sync.Mutex)
 		if mu != nil {
 			mu.Lock()
 		}
-		if n := len(*eePtr); n > 0 {
-			endEvents = append(endEvents, (*eePtr)...)
+		if len(*eePtr) > 0 {
+			ends = append([]int(nil), (*eePtr)...)
 		}
 		if mu != nil {
 			mu.Unlock()
 		}
 	}
-
-	// Drain delayed end events from the process-wide channel. Each
-	// channel element is a complete pre-encoded DEE triple bytes
-	// (traceID16 || varint(depth) || varint(n) || n*varint(seq)),
-	// produced once at OnEnd. The drain is a bare byte-append — no
-	// parsing on the request critical path. This matches the bridges
-	// Go simulator's drainDEE pattern.
-	draining := true
-	for draining {
+	// Delayed orthogonal trusses left by earlier requests in this service
+	// instance attach to this outgoing span and ride vertically until a
+	// checkpoint captures them. The drain is bounded by the channel depth.
+	delayed := tail.delayed
+	queue := p.delayedQueue()
+	for draining := true; draining; {
 		select {
-		case triple := <-p.delayedEndEventsChan:
-			deeBytes = append(deeBytes, triple...)
+		case entry := <-queue:
+			delayed = append(delayed, entry)
 		default:
 			draining = false
 		}
 	}
-
-	// Pre-reset packed form is the breadcrumb payload that will be
-	// wire-emitted iff this span ends up high-priority. Computed BEFORE
-	// the checkpoint reset so it carries the full inherited chain.
-	preResetPacked := packSBridgeBR(depthMod, ordinalGroups, endEvents, deeBytes)
-
-	// On a checkpoint (depthMod == 0): clear the ordinal chain/events/dee so
-	// children start a fresh segment. No explicit anchor to reset — a child's
-	// depthMod==1 entry will carry this checkpoint's fp (its 4-byte span-ID
-	// prefix), which IS the anchor. The post-reset state is propagated to
-	// children via baggage.
-	if depthMod == 0 {
-		ordinalGroups = nil
-		endEvents = nil
-		deeBytes = nil
+	emitTail := structuralTail{
+		ordinals:  append(append([]int(nil), tail.ordinals...), seqNum),
+		endEvents: append(append([][]int(nil), tail.endEvents...), ends),
+		delayed:   delayed,
 	}
 
-	propagationPacked := packSBridgeBR(depthMod, ordinalGroups, endEvents, deeBytes)
-	propagationPacked = p.checkpointRange.wrap(outgoingTTL, propagationPacked)
+	// Emitted payload (kept iff this span ends as a checkpoint or leaf): the
+	// INHERITED pre-self window plus this span's own ordinal and end-event group.
+	emit := packStructuralBR(depth, anchor, distance, filter.Bytes(), ha, emitTail)
 
-	// Two attributes are written here — that's the entire SB-processor
-	// wire+intra-process surface. The first becomes outgoing baggage
-	// (stripped from the exported span); the second is the wire-emit
-	// candidate, kept iff the span ends up high-priority. There is NO
-	// separate priority bit: OnEnd recovers the depth from the second
-	// attribute's leading varint (see decodeBRDepth) and re-derives
-	// `depth % cpd == 0` from there, matching the simulator's
-	// compute-on-the-fly model.
+	priority := 0
+	sid := s.SpanContext().SpanID()
+	propTail := emitTail
+	if isCheckpoint {
+		priority = 1
+		anchor = [8]byte(sid)
+		if p.checkpointRange.enabled() {
+			distance = int(outgoingTTL) + 1
+			geometry = checkpointBlooms[distance-1]
+		}
+		filter = bloom.New(geometry.m, geometry.k)
+		ha = nil
+		propTail = structuralTail{} // the checkpoint persisted everything above
+	} else {
+		filter.AddPrehashed(sid[:])
+	}
+	propagation := packStructuralBR(depth, anchor, distance, filter.Bytes(), ha, propTail)
+
 	s.SetAttributes(
-		// Becomes outgoing `_br` baggage via Blueprint's __bag.* →
-		// baggage translation. Carries the POST-RESET propagation
-		// snapshot (must stay a base64 string — W3C baggage is text).
-		attribute.String(AttrBR, encodeBR(propagationPacked)),
-		// CHECKPOINT wire-emit: the PRE-RESET full chain. Set on every span;
-		// convertAttributes keeps it only for high-priority (checkpoint) spans
-		// and emits it as proto BYTES. Presence on the wire IS the checkpoint
-		// signal. Base64 here so OnEnd's decodeBRDepth + the carrier stay
-		// UTF-8-safe; convertAttributes base64-decodes to raw bytes at export.
-		attribute.String(AttrBREmit, encodeBR(preResetPacked)),
-		// NON-CHECKPOINT wire-emit: key "_o" = just this span's own ordinal
-		// (varint), kept only for non-checkpoints and emitted as proto BYTES.
-		// Base64 carrier intra-process; decoded to raw varint bytes at export.
+		attribute.Int(AttrBagPrio, priority),
+		attribute.String(AttrBR, encodeBR(p.checkpointRange.wrap(outgoingTTL, propagation))),
+		attribute.String(AttrBREmit, encodeBR(emit)),
 		attribute.String(AttrO, encodeBR(varintEncode(seqNum))),
+		attribute.String(AttrD, encodeBR(varintEncode(depth))),
+		attribute.Int("depth", depth),
 	)
 	if spanPadding != "" {
 		// Artificial per-span byte inflation (SPAN_PADDING_BYTES env).
@@ -695,68 +644,38 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	}
 }
 
-// OnEnd implements SpanProcessor.OnEnd. The priority decision lives
-// entirely here — there is no OnStart-time priority attribute to carry
-// across. We:
-//
-//  1. Recover OnStart-time depth by peeking at the leading varint of
-//     AttrBREmit (set unconditionally in OnStart). depth % cpd == 0
-//     re-derives "was-CP-at-OnStart".
-//  2. Apply the leaf-server override: a Server-kind span with no
-//     children gets forced to CP regardless of depth. We use the
-//     childCount / eventCount attributes set by Blueprint's gRPC/HTTP
-//     wrappers as the leaf signal.
-//  3. Flush any pending end-event marker into the cross-trace DEE
-//     channel so the next OnStart in the same service can piggyback
-//     it.
-//
-// The final isCheckpoint bool is passed to routeToPipeline, which
-// flows through buildSpanProto → convertAttributes. convertAttributes
-// then keeps or strips AttrBREmit based on that bool — that's how the
-// breadcrumb's wire-presence ends up matching the priority decision.
-func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
-	var preResetEncoded, remEndEvents string
-	for _, attr := range s.Attributes() {
-		if attr.Key == AttrBREmit {
-			preResetEncoded = attr.Value.AsString()
+// delayedQueue returns the process-wide delayed-truss queue, creating it for
+// processors built without the constructor (tests).
+func (p *StructuralBridgeProcessor) delayedQueue() chan structuralDelayed {
+	p.deeOnce.Do(func() {
+		if p.delayedEndEventsChan == nil {
+			p.delayedEndEventsChan = make(chan structuralDelayed, 10000)
 		}
-	}
+	})
+	return p.delayedEndEventsChan
+}
+
+// OnEnd implements SpanProcessor.OnEnd. A server span's wrapper summarizes the
+// end events its children produced after the last child started
+// (remEndEvents = varint(children) || varint(count) || ordinals, minus the
+// implied last end). Those become a delayed orthogonal truss stamped with this
+// span's trace and span ID, queued for the next outgoing span of this process.
+// The checkpoint decision itself is the shared PB/CGPB rule (scheduled window
+// checkpoint, or a childless server span, unless rejected by the reverse SDK).
+func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	for _, attr := range s.Attributes() {
-		switch attr.Key {
-		case "remEndEvents":
-			// remEndEvents is now a base64-encoded varint payload:
-			//   varint(count) || count*varint(seq)
-			// produced by the server template at end-of-request.
-			// Decode once here, prepend traceID + depth to form a
-			// complete DEE triple (matches encodeDEETriple format),
-			// and push the raw bytes onto the channel. OnStart's
-			// drain becomes a free byte-append — no parsing on the
-			// request critical path.
-			remEndEvents = attr.Value.AsString()
-			if remEndEvents != "" {
-				if seqsBytes, err := base64.RawURLEncoding.DecodeString(remEndEvents); err == nil && len(seqsBytes) > 0 {
-					tid := s.SpanContext().TraceID()
-					// Recover depth from the breadcrumb we already
-					// have in hand (the AttrBREmit attribute value).
-					depthForDEE := 0
-					if d, ok := decodeBRDepth(preResetEncoded); ok {
-						depthForDEE = d
-					}
-					// Triple layout: traceID(16) || varint(depth) || seqsBytes
-					triple := make([]byte, 0, 16+5+len(seqsBytes))
-					triple = append(triple, tid[:]...)
-					triple = binary.AppendUvarint(triple, uint64(depthForDEE))
-					triple = append(triple, seqsBytes...)
-					// Non-blocking send: under sustained backpressure,
-					// dropping the triple is preferable to blocking the
-					// request goroutine. We log if we drop so it's
-					// visible in the metrics line below.
-					select {
-					case p.delayedEndEventsChan <- triple:
-					default:
-						atomic.AddInt64(&p.deeDropped, 1)
-					}
-				}
+		if attr.Key != "remEndEvents" {
+			continue
+		}
+		if summary, ok := decodeBR(attr.Value.AsString()); ok && len(summary) > 0 {
+			d, valid := structuralDelayedFromServer(s.SpanContext().TraceID(), s.SpanContext().SpanID(), summary)
+			if !valid || len(d.ends) == 0 {
+				continue
+			}
+			select {
+			case p.delayedQueue() <- d:
+			default:
+				atomic.AddInt64(&p.deeDropped, 1)
 			}
 		}
 	}
@@ -1058,11 +977,11 @@ func (p *StructuralBridgeProcessor) convertAttributes(attrs []attribute.KeyValue
 			out = append(out, bridgeBytesKV(string(AttrBREmit), attr.Value.AsString()))
 			continue
 		}
-		if attr.Key == AttrO {
+		if attr.Key == AttrO || attr.Key == AttrD {
 			if highPriority {
 				continue
 			}
-			out = append(out, bridgeBytesKV(string(AttrO), attr.Value.AsString()))
+			out = append(out, bridgeBytesKV(string(attr.Key), attr.Value.AsString()))
 			continue
 		}
 		if attr.Key == AttrOC || attr.Key == AttrDepth {

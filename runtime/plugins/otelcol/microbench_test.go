@@ -113,17 +113,16 @@ func mbHAWith(n int) []byte {
 	return ha
 }
 
-// ordGroupsWith builds an SB ordinal chain holding n entries, one per depthMod
-// level (each carrying a full 8-byte parent fingerprint) — the deepest-window
-// worst case where the chain is longest.
-func mbOrdGroupsWith(n int) map[int][]ordEntry {
-	g := make(map[int][]ordEntry, n)
+// mbTailWith builds an SB orthogonal tail holding n window positions, each
+// with a two-element end-event group, plus one delayed truss.
+func mbTailWith(n int) structuralTail {
+	tail := structuralTail{}
 	for i := 1; i <= n; i++ {
-		var fp [8]byte
-		binary.BigEndian.PutUint64(fp[:], uint64(0x3000+i))
-		g[i] = []ordEntry{{ord: i, fp: append([]byte(nil), fp[:]...)}}
+		tail.ordinals = append(tail.ordinals, i+2)
+		tail.endEvents = append(tail.endEvents, []int{2, 1})
 	}
-	return g
+	tail.delayed = []structuralDelayed{{children: 4, ends: []int{3, 1}}}
+	return tail
 }
 
 var mbCkpt = [8]byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04}
@@ -172,22 +171,20 @@ func BenchmarkProcessorOnStartCore(b *testing.B) {
 			}
 		})
 
-		// SB: unpack ordinal chain -> append self entry -> pack -> encode
+		// SB: unpack core+tail -> add self to bloom, append own ordinal -> pack -> encode
 		b.Run(fmt.Sprintf("SB/cpd%d", cpd), func(b *testing.B) {
-			inbound := encodeBR(packSBridgeBR(depth-1, mbOrdGroupsWith(maxInt(n-1, 0)), []int{1, 2}, nil))
-			var fp [8]byte
-			binary.BigEndian.PutUint64(fp[:], 0x30FF)
+			inbound := encodeBR(packStructuralBR(depth-1, mbCkpt, cpd, mbBloomWith(maxInt(n-1, 0)).Bytes(), nil, mbTailWith(maxInt(n-1, 0))))
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				raw, _ := decodeBR(inbound)
-				d, groups, ends, dee, _ := unpackSBridgeBR(raw)
-				if groups == nil {
-					groups = make(map[int][]ordEntry, 1)
-				}
-				dm := (d + 1) % cpd
-				groups[dm] = append(groups[dm], ordEntry{ord: len(ends) + 1, fp: append([]byte(nil), fp[:]...)})
-				mbSinkStr = encodeBR(packSBridgeBR(d+1, groups, ends, dee))
+				d, ck, _, pbloom, ha, tail, _ := unpackStructuralBR(raw)
+				g := checkpointBlooms[cpd-1]
+				bf := bloom.NewFromBytes(pbloom, g.m, g.k)
+				bf.AddPrehashed(self[:])
+				tail.ordinals = append(tail.ordinals, 3)
+				tail.endEvents = append(tail.endEvents, []int{2, 1})
+				mbSinkStr = encodeBR(packStructuralBR(d+1, ck, cpd, bf.Bytes(), ha, tail))
 			}
 		})
 	}
@@ -202,7 +199,7 @@ func BenchmarkProcessorPackOnly(b *testing.B) {
 		depth := cpd * 3
 		pbBloom := mbBloomWith(n).Bytes()
 		ha := mbHAWith(maxInt(n-1, 0))
-		groups := mbOrdGroupsWith(maxInt(n-1, 0))
+		tail := mbTailWith(maxInt(n-1, 0))
 
 		b.Run(fmt.Sprintf("PB/cpd%d", cpd), func(b *testing.B) {
 			b.ReportAllocs()
@@ -222,7 +219,7 @@ func BenchmarkProcessorPackOnly(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				mbSinkStr = encodeBR(packSBridgeBR(depth, groups, []int{1, 2}, nil))
+				mbSinkStr = encodeBR(packStructuralBR(depth, mbCkpt, cpd, pbBloom, ha, tail))
 			}
 		})
 	}
@@ -480,21 +477,19 @@ func BenchmarkProcessorOnStartCoreParallel(b *testing.B) {
 			})
 		})
 		b.Run(fmt.Sprintf("SB/cpd%d", cpd), func(b *testing.B) {
-			inbound := encodeBR(packSBridgeBR(depth-1, mbOrdGroupsWith(maxInt(n-1, 0)), []int{1, 2}, nil))
-			var fp [8]byte
-			binary.BigEndian.PutUint64(fp[:], 0x30FF)
+			inbound := encodeBR(packStructuralBR(depth-1, mbCkpt, cpd, mbBloomWith(maxInt(n-1, 0)).Bytes(), nil, mbTailWith(maxInt(n-1, 0))))
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				var keep string
 				for pb.Next() {
 					raw, _ := decodeBR(inbound)
-					d, groups, ends, dee, _ := unpackSBridgeBR(raw)
-					if groups == nil {
-						groups = make(map[int][]ordEntry, 1)
-					}
-					dm := (d + 1) % cpd
-					groups[dm] = append(groups[dm], ordEntry{ord: len(ends) + 1, fp: append([]byte(nil), fp[:]...)})
-					keep = encodeBR(packSBridgeBR(d+1, groups, ends, dee))
+					d, ck, _, pbloom, ha, tail, _ := unpackStructuralBR(raw)
+					g := checkpointBlooms[cpd-1]
+					bf := bloom.NewFromBytes(pbloom, g.m, g.k)
+					bf.AddPrehashed(self[:])
+					tail.ordinals = append(tail.ordinals, 3)
+					tail.endEvents = append(tail.endEvents, []int{2, 1})
+					keep = encodeBR(packStructuralBR(d+1, ck, cpd, bf.Bytes(), ha, tail))
 				}
 				mbStoreStr(keep)
 			})

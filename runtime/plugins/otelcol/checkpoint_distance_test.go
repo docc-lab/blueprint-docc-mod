@@ -99,7 +99,7 @@ func TestCheckpointTTLPaths(t *testing.T) {
 					} else if incoming == 0 || raw[0] != incoming-1 {
 						t.Fatalf("depth %d: incoming=%d outgoing=%d", depth, incoming, raw[0])
 					}
-					if kind != "sb" {
+					{ // Tomislav-RetCtx: the SB payload shares the ranged window core prefix.
 						_, nextAnchor, nextDistance, nextBloom, _, valid := unpackCheckpointWindowBR(raw[1:])
 						if !valid {
 							t.Fatal("missing outgoing window geometry")

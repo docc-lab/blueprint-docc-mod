@@ -17,6 +17,8 @@ type checkpointBloomGeometry struct {
 	bytes int
 }
 
+func (g checkpointBloomGeometry) emptyBytes() []byte { return make([]byte, g.bytes) }
+
 // Tomislav-RetCtx: immutable geometry for every encodable distance. Spans select an entry for
 // their own window; concurrent windows never resize a shared filter.
 var checkpointBlooms = func() [256]checkpointBloomGeometry {

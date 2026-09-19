@@ -92,7 +92,7 @@ comparing policies; readers can still decode older segments.
 `backend.DecodeReturnedCheckpoints` returns the origin, depth, exact truss and
 optional `ReverseTTL`. Depth counts client and server spans from zero at the
 root and never changes in transit. PB/CGPB use their native absolute depth;
-SB additionally propagates `__rt_depth` because its truss depth is window-relative.
+SB now carries absolute depth in its CG-core payload as well (see [S-Bridge on the CG core](structural_bridge_truss.md)); `__rt_depth` remains only as the vanilla carrier.
 
 `MergeRetCtx` and the mutex-protected request accumulator append sibling and
 nested descendant segments. Fan-in spends no TTL hop and never combines filters
