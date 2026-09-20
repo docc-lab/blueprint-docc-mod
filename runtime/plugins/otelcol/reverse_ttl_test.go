@@ -23,8 +23,7 @@ func TestOriginalCheckpointsNeverReject(t *testing.T) {
 				tp, buffered := checkpointTestProvider(kind)
 				_, span := tp.Tracer("test").Start(checkpointParentContext(kind, 2), "original", trace.WithSpanKind(trace.SpanKindServer))
 				span.SetAttributes(attribute.Bool("hasChildren", hasChildren))
-				backend.PrepareCheckpoint(tp, span)
-				if backend.ReadReverseBaggage(span) != "" {
+				if carried, _ := backend.PrepareCheckpoint(tp, span, ""); carried != "" {
 					t.Fatal("original checkpoint rejected")
 				}
 				span.End()
@@ -53,8 +52,8 @@ func TestRejectedLeafDrawsFreshReverseTTL(t *testing.T) {
 				for i := 0; i < 128; i++ {
 					_, leaf := tp.Tracer("test").Start(parent, "leaf", trace.WithSpanKind(trace.SpanKindServer))
 					want, _ := decodeBR(checkpointSpanAttribute(leaf, AttrBREmit))
-					backend.PrepareCheckpoint(tp, leaf)
-					cps, err := backend.DecodeReturnedCheckpoints(backend.ReadReverseBaggage(leaf))
+					carried, _ := backend.PrepareCheckpoint(tp, leaf, "")
+					cps, err := backend.DecodeReturnedCheckpoints(carried)
 					if err != nil || len(cps) != 1 || cps[0].ReverseTTL == nil || !bytes.Equal(cps[0].Truss, want) || cps[0].Depth != 1 {
 						t.Fatalf("rejection lost TTL, origin, or original geometry: %+v %v", cps, err)
 					}
@@ -86,8 +85,7 @@ func TestOriginalTTLLeafNeverRejects(t *testing.T) {
 			_, client := tp.Tracer("test").Start(ttlChildContext(t, root), "client", trace.WithSpanKind(trace.SpanKindClient))
 			defer client.End()
 			_, leaf := tp.Tracer("test").Start(ttlChildContext(t, client), "leaf", trace.WithSpanKind(trace.SpanKindServer))
-			backend.PrepareCheckpoint(tp, leaf)
-			if backend.ReadReverseBaggage(leaf) != "" {
+			if carried, _ := backend.PrepareCheckpoint(tp, leaf, ""); carried != "" {
 				t.Fatal("leaf scheduled by incoming TTL zero rejected")
 			}
 			leaf.End()
@@ -106,8 +104,8 @@ func TestReverseTTLRespectsSyntheticForceLP(t *testing.T) {
 	_, span := tp.Tracer("test").Start(checkpointParentContext("sb", 0), "synthetic", trace.WithSpanKind(trace.SpanKindClient))
 	input := backend.EncodeCheckpointRetCtxWithTTL(trace.SpanID{1}, 130, backend.SegStructuralCheckpoint, []byte{1, 2}, 0)
 	span.SetAttributes(attribute.Bool(AttrForceLP, true), attribute.String(backend.ReverseTrussInputKey, input))
-	backend.PrepareCheckpoint(tp, span)
-	if backend.ReadReverseBaggage(span) != input || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != "" {
+	onward, _ := backend.PrepareCheckpoint(tp, span, input)
+	if onward != input || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != "" {
 		t.Fatal("synthetic force-LP span consumed or changed a return")
 	}
 	span.End()
@@ -165,8 +163,7 @@ func testReversePolicyTree(t *testing.T, policy reversePolicy) {
 			}
 			finish := func(span trace.Span, input string, leaf bool) string {
 				span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, input), attribute.Bool("hasChildren", !leaf))
-				backend.PrepareCheckpoint(tp, span)
-				output := backend.ReadReverseBaggage(span)
+				output, _ := backend.PrepareCheckpoint(tp, span, input)
 				if leaf && output != "" {
 					cps, err := backend.DecodeReturnedCheckpoints(output)
 					if err != nil || len(cps) != 1 || cps[0].SpanID != span.SpanContext().SpanID() {

@@ -79,10 +79,11 @@ func TestSDKReceiverDecisionBeforeEnd(t *testing.T) {
 					wantReturn = backend.EncodeCheckpointRetCtxWithTTL(trace.SpanID{1}, 130, backend.SegPathCheckpoint, []byte{9, 8, 7}, tc.ttl-1)
 				}
 				for i := 0; i < 3; i++ {
-					if !backend.PrepareCheckpoint(provider, span) || !span.IsRecording() {
+					carried, prepared := backend.PrepareCheckpoint(provider, span, input)
+					if !prepared || !span.IsRecording() {
 						t.Fatal("SDK did not prepare live span")
 					}
-					if checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != wantCheckpoint || backend.ReadReverseBaggage(span) != wantReturn {
+					if checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != wantCheckpoint || carried != wantReturn {
 						t.Fatal("wrong consume/forward decision or repeated TTL decrement")
 					}
 				}
@@ -120,9 +121,8 @@ func TestSDKCoalescesExpiredTrussesAndForwardsOthers(t *testing.T) {
 			_, span := provider.Tracer("test").Start(checkpointParentContext(kind, 0), "fan-in", trace.WithSpanKind(trace.SpanKindServer))
 			span.SetAttributes(attribute.Bool("hasChildren", true), attribute.String(backend.ReverseTrussInputKey, input))
 			ownTruss := checkpointSpanAttribute(span, AttrBREmit)
-			backend.PrepareCheckpoint(provider, span)
+			pending, _ := backend.PrepareCheckpoint(provider, span, input)
 			emitted := checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey)
-			pending := backend.ReadReverseBaggage(span)
 			cps, err := backend.DecodeReturnedCheckpoints(emitted)
 			if err != nil || len(cps) != 2 || cps[0].SpanID != (trace.SpanID{1}) || cps[1].SpanID != (trace.SpanID{3}) {
 				t.Fatalf("wrong expired set: %+v %v", cps, err)
@@ -131,8 +131,8 @@ func TestSDKCoalescesExpiredTrussesAndForwardsOthers(t *testing.T) {
 			if err != nil || len(cps) != 1 || cps[0].SpanID != (trace.SpanID{2}) || cps[0].ReverseTTL == nil || *cps[0].ReverseTTL != 2 {
 				t.Fatalf("new checkpoint absorbed or reset a nonexpired sibling: %+v %v", cps, err)
 			}
-			backend.PrepareCheckpoint(provider, span)
-			if backend.ReadReverseBaggage(span) != pending || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != emitted {
+			again, _ := backend.PrepareCheckpoint(provider, span, "")
+			if again != pending || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != emitted {
 				t.Fatal("repeat preparation consumed pending siblings")
 			}
 			span.End()
@@ -174,15 +174,14 @@ func TestSDKReverseTTLCountsBothSpanKinds(t *testing.T) {
 			}
 			input := backend.EncodeCheckpointRetCtxWithTTL(trace.SpanID{1}, 4, backend.SegPathCheckpoint, []byte{1, 2}, 1)
 			spans[3].SetAttributes(attribute.String(backend.ReverseTrussInputKey, input))
-			backend.PrepareCheckpoint(provider, spans[3])
-			pending := backend.ReadReverseBaggage(spans[3])
+			pending, _ := backend.PrepareCheckpoint(provider, spans[3], input)
 			cps, err := backend.DecodeReturnedCheckpoints(pending)
 			if err != nil || len(cps) != 1 || cps[0].ReverseTTL == nil || *cps[0].ReverseTTL != 0 {
 				t.Fatal("client failed to decrement once")
 			}
 			spans[2].SetAttributes(attribute.String(backend.ReverseTrussInputKey, pending))
-			backend.PrepareCheckpoint(provider, spans[2])
-			if backend.ReadReverseBaggage(spans[2]) != "" || checkpointSpanAttribute(spans[2], backend.ReverseTrussCheckpointKey) != pending {
+			onward, _ := backend.PrepareCheckpoint(provider, spans[2], pending)
+			if onward != "" || checkpointSpanAttribute(spans[2], backend.ReverseTrussCheckpointKey) != pending {
 				t.Fatal("server failed to emit expired truss")
 			}
 			for _, span := range spans {
@@ -213,14 +212,14 @@ func TestSDKReceiverConcurrentRequests(t *testing.T) {
 			input := backend.EncodeCheckpointRetCtxWithTTL(trace.SpanID{byte(i + 1)}, 130+uint64(i), backend.SegPathCheckpoint, []byte{byte(i)}, ttl)
 			_, span := provider.Tracer("test").Start(checkpointParentContext("pb", 0), "receiver", trace.WithSpanKind(trace.SpanKindClient))
 			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, input))
-			backend.PrepareCheckpoint(provider, span)
-			backend.PrepareCheckpoint(provider, span)
+			backend.PrepareCheckpoint(provider, span, input)
+			carried, _ := backend.PrepareCheckpoint(provider, span, "")
 			if ttl == 0 {
-				if checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != input || backend.ReadReverseBaggage(span) != "" {
+				if checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != input || carried != "" {
 					t.Errorf("request %d did not emit expired truss", i)
 				}
 			} else {
-				cps, err := backend.DecodeReturnedCheckpoints(backend.ReadReverseBaggage(span))
+				cps, err := backend.DecodeReturnedCheckpoints(carried)
 				if err != nil || len(cps) != 1 || cps[0].SpanID != (trace.SpanID{byte(i + 1)}) || cps[0].ReverseTTL == nil || *cps[0].ReverseTTL != ttl-1 {
 					t.Errorf("request %d mixed or aged another truss", i)
 				}

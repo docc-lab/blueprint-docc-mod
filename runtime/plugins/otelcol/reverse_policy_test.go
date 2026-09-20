@@ -192,17 +192,18 @@ func TestSDKProbabilityBeforeEnd(t *testing.T) {
 					input := probabilityTestTruss(1, 6)
 					span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, input), attribute.Bool("hasChildren", true))
 					carrier := checkpointSpanAttribute(span, AttrBR)
+					var onward string
 					for i := 0; i < 3; i++ {
-						backend.PrepareCheckpoint(tp, span)
+						onward, _ = backend.PrepareCheckpoint(tp, span, input)
 					}
 					if checkpointSpanAttribute(span, AttrBR) != carrier || !span.IsRecording() {
 						t.Fatal("preparation changed forward propagation or ended span")
 					}
 					if probability == 1 {
-						if backend.ReadReverseBaggage(span) != "" || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != input {
+						if onward != "" || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != input {
 							t.Fatal("p=1 did not consume")
 						}
-					} else if backend.ReadReverseBaggage(span) != input || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != "" {
+					} else if onward != input || checkpointSpanAttribute(span, backend.ReverseTrussCheckpointKey) != "" {
 						t.Fatal("p=0 did not forward")
 					}
 					if hp, lp := buffered(); len(hp)+len(lp) != 0 {
@@ -224,8 +225,8 @@ func TestSDKProbabilityBeforeEnd(t *testing.T) {
 				tp, buffered := checkpointTestProvider(kind)
 				tp.(*checkpointTracerProvider).CheckpointPreparer.(*reverseCheckpointProcessor).reversePolicy = reversePolicy{mode: mode, probability: 1}
 				_, leaf := tp.Tracer("test").Start(checkpointParentContext(kind, 0), "leaf", trace.WithSpanKind(trace.SpanKindServer))
-				backend.PrepareCheckpoint(tp, leaf)
-				cps, err := backend.DecodeReturnedCheckpoints(backend.ReadReverseBaggage(leaf))
+				carried, _ := backend.PrepareCheckpoint(tp, leaf, "")
+				cps, err := backend.DecodeReturnedCheckpoints(carried)
 				if err != nil || len(cps) != 1 || cps[0].ReverseTTL != nil || cps[0].SpanID != leaf.SpanContext().SpanID() || cps[0].Depth != 1 {
 					t.Fatalf("probability leaf did not return its own TTL-free truss: %+v %v", cps, err)
 				}

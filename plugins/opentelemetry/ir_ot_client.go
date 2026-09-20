@@ -534,9 +534,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 		backend.AddToMerge(ctx, retCtx)
 	}
@@ -644,9 +643,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 		backend.AddToMerge(ctx, retCtx)
 	}
@@ -750,9 +748,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 		backend.AddToMerge(ctx, retCtx)
 	}
@@ -857,9 +854,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
-		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 		backend.AddToMerge(ctx, retCtx)
 	}

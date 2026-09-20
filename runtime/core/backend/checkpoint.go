@@ -25,22 +25,25 @@ func IsReverseBaggageKey(key attribute.Key) bool {
 // hook finalizes checkpointing while the span is still mutable: OTel OnEnd gets
 // a read-only snapshot, which is too late to write reverse baggage.
 type CheckpointPreparer interface {
-	PrepareCheckpoint(span trace.Span)
+	// Returns the carrier to forward upstream. Tomislav-RetCtx: returning it means
+	// the caller does not have to read it back off the span. Reading a recording
+	// span's attributes locks it and runs a full dedupe pass with a fresh map, so a
+	// read-back costs far more than passing the value.
+	PrepareCheckpoint(span trace.Span, returned string) string
 }
 
 // Tomislav-RetCtx: PrepareCheckpoint asks the SDK to finish its checkpoint decision. Call once,
 // after attaching received trusses and final span attributes, before reading
 // reverse baggage and ending the span. False means no SDK decision was possible;
 // instrumentation must forward the received trusses unchanged in that case.
-func PrepareCheckpoint(provider trace.TracerProvider, span trace.Span) bool {
+func PrepareCheckpoint(provider trace.TracerProvider, span trace.Span, returned string) (string, bool) {
 	if !span.IsRecording() {
-		return false
+		return "", false
 	}
 	if preparer, ok := provider.(CheckpointPreparer); ok {
-		preparer.PrepareCheckpoint(span)
-		return true
+		return preparer.PrepareCheckpoint(span, returned), true
 	}
-	return false
+	return "", false
 }
 
 // ReadReverseBaggage extracts the SDK's encoded return carrier from a recording

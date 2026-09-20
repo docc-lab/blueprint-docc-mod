@@ -86,13 +86,11 @@ func TestSDKReturnsCheckpointWithoutDroppingSpan(t *testing.T) {
 					expectedTruss, _ = decodeBR(attr.Value.AsString())
 				}
 			}
-			if backend.ReadReverseBaggage(span) != "" {
-				t.Fatal("checkpoint decided before final span attributes were available")
-			}
-			backend.PrepareCheckpoint(provider, span)
-			retCtx := backend.ReadReverseBaggage(span)
+			// Tomislav-RetCtx: the carrier comes back from PrepareCheckpoint now; it is
+			// no longer parked on the span as a __bag. attribute for the caller to find.
+			retCtx, _ := backend.PrepareCheckpoint(provider, span, "")
 			if retCtx == "" || !span.IsRecording() {
-				t.Fatal("SDK must publish __bag.rev while the span is still mutable")
+				t.Fatal("SDK must return the carrier while the span is still mutable")
 			}
 			checkpoints, err := backend.DecodeReturnedCheckpoints(retCtx)
 			if err != nil || len(checkpoints) != 1 {
@@ -102,8 +100,7 @@ func TestSDKReturnsCheckpointWithoutDroppingSpan(t *testing.T) {
 			if cp.SpanID != span.SpanContext().SpanID() || cp.Depth != 130 || !bytes.Equal(cp.Truss, expectedTruss) || cp.ReverseTTL == nil || *cp.ReverseTTL != 2 {
 				t.Fatalf("wrong checkpoint location or truss: %+v", cp)
 			}
-			backend.PrepareCheckpoint(provider, span)
-			if backend.ReadReverseBaggage(span) != retCtx {
+			if again, _ := backend.PrepareCheckpoint(provider, span, ""); again != retCtx {
 				t.Fatal("repeated preparation changed the result")
 			}
 			span.End()
@@ -144,7 +141,7 @@ func TestSDKCheckpointFallbacks(t *testing.T) {
 			t.Setenv(SampleRatioEnv, tc.sample)
 			provider, buffered := checkpointTestProvider("pb")
 			_, span := provider.Tracer("test").Start(context.Background(), "leaf", trace.WithSpanKind(trace.SpanKindServer))
-			backend.PrepareCheckpoint(provider, span)
+			backend.PrepareCheckpoint(provider, span, "")
 			if backend.ReadReverseBaggage(span) != "" {
 				t.Fatal("unexpected reverse checkpoint")
 			}
@@ -173,8 +170,8 @@ func TestSDKCheckpointDepthWithoutAuxiliaryBaggage(t *testing.T) {
 			provider, _ := checkpointTestProvider(kind)
 			_, span := provider.Tracer("test").Start(ctx, "leaf", trace.WithSpanKind(trace.SpanKindServer))
 			defer span.End()
-			backend.PrepareCheckpoint(provider, span)
-			cps, err := backend.DecodeReturnedCheckpoints(backend.ReadReverseBaggage(span))
+			carried, _ := backend.PrepareCheckpoint(provider, span, "")
+			cps, err := backend.DecodeReturnedCheckpoints(carried)
 			if err != nil || len(cps) != 1 || cps[0].Depth != 130 {
 				t.Fatalf("checkpoint location differs from the SDK's absolute depth: %+v, %v", cps, err)
 			}
@@ -192,7 +189,7 @@ func TestSDKDoesNotRejectOrdinarySpanCheckpoint(t *testing.T) {
 			provider, buffered := checkpointTestProvider(kind)
 			_, span := provider.Tracer("test").Start(checkpointParentContext(kind, 0), "interior", trace.WithSpanKind(trace.SpanKindServer))
 			span.SetAttributes(attribute.Bool("hasChildren", true), attribute.Int("childCount", 1), attribute.Int("eventCount", 2))
-			backend.PrepareCheckpoint(provider, span)
+			backend.PrepareCheckpoint(provider, span, "")
 			if backend.ReadReverseBaggage(span) != "" {
 				t.Fatal("created a reverse checkpoint for an ordinary span")
 			}
@@ -218,8 +215,8 @@ func TestSDKReverseCheckpointConcurrentRequests(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			_, span := provider.Tracer("test").Start(checkpointParentContext("pb", 3*i), "leaf", trace.WithSpanKind(trace.SpanKindServer))
-			backend.PrepareCheckpoint(provider, span)
-			cps, err := backend.DecodeReturnedCheckpoints(backend.ReadReverseBaggage(span))
+			carried, _ := backend.PrepareCheckpoint(provider, span, "")
+			cps, err := backend.DecodeReturnedCheckpoints(carried)
 			if err != nil || len(cps) != 1 || cps[0].SpanID != span.SpanContext().SpanID() || cps[0].Depth != uint64(3*i+1) {
 				t.Errorf("request %d received the wrong checkpoint: %+v, %v", i, cps, err)
 			}
@@ -244,7 +241,8 @@ func TestSDKUpstreamReverseCheckpointPriority(t *testing.T) {
 			_, span := provider.Tracer("test").Start(checkpointParentContext(kind, 0), "caller", trace.WithSpanKind(trace.SpanKindClient))
 			retCtx := backend.EncodeCheckpointRetCtxWithTTL(trace.SpanID{1, 2, 3, 4, 5, 6, 7, 8}, 130, backend.SegPathCheckpoint, []byte{9, 8, 7}, 0)
 			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-			if !backend.PrepareCheckpoint(provider, span) || backend.ReadReverseBaggage(span) != "" {
+			// Tomislav-RetCtx: the returned carrier must agree with what the span holds.
+			if out, prepared := backend.PrepareCheckpoint(provider, span, retCtx); !prepared || out != "" || backend.ReadReverseBaggage(span) != "" {
 				t.Fatal("SDK did not consume the received trusses before span end")
 			}
 			span.End()

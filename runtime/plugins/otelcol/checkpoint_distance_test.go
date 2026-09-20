@@ -314,16 +314,16 @@ func TestCheckpointTTLReverseLocation(t *testing.T) {
 			}
 			// Tomislav-RetCtx: depth 2 is an original TTL checkpoint and cannot
 			// reject. Only the early leaf at depth 3 returns a new reverse TTL.
-			backend.PrepareCheckpoint(tp, spans[2])
-			if backend.ReadReverseBaggage(spans[2]) != "" {
+			if carried, _ := backend.PrepareCheckpoint(tp, spans[2], ""); carried != "" {
 				t.Fatal("original TTL checkpoint rejected")
 			}
 			cp := spans[3]
 			truss, _ := decodeBR(checkpointSpanAttribute(cp, AttrBREmit))
-			if !backend.PrepareCheckpoint(tp, cp) {
+			carried, prepared := backend.PrepareCheckpoint(tp, cp, "")
+			if !prepared {
 				t.Fatal("SDK did not prepare TTL checkpoint")
 			}
-			returned, err := backend.DecodeReturnedCheckpoints(backend.ReadReverseBaggage(cp))
+			returned, err := backend.DecodeReturnedCheckpoints(carried)
 			if err != nil || len(returned) != 1 || returned[0].Depth != 3 || returned[0].SpanID != cp.SpanContext().SpanID() || !bytes.Equal(returned[0].Truss, truss) || returned[0].ReverseTTL == nil || *returned[0].ReverseTTL != 1 {
 				t.Fatalf("TTL corrupted reverse checkpoint origin or payload: %+v, %v", returned, err)
 			}

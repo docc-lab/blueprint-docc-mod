@@ -659,11 +659,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if retCtx != "" {
-			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		}
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 	}
 	return
@@ -787,11 +784,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if retCtx != "" {
-			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		}
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 	}
 	return
@@ -917,11 +911,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if retCtx != "" {
-			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		}
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 	}
 	return
@@ -1047,11 +1038,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if retCtx != "" {
-			span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		}
-		if backend.PrepareCheckpoint(tp, span) {
-			retCtx = backend.ReadReverseBaggage(span)
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			retCtx = out
 		}
 	}
 	return

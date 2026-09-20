@@ -96,8 +96,8 @@ func TestCheckpointWindowReverseFanIn(t *testing.T) {
 				tp, _ := ttlTestProvider(t, kind, checkpointRange{distance, distance})
 				_, root := tp.Tracer("window").Start(context.Background(), "root")
 				_, leaf := tp.Tracer("window").Start(ttlChildContext(t, root), "early leaf", trace.WithSpanKind(trace.SpanKindServer))
-				backend.PrepareCheckpoint(tp, leaf)
-				merged = backend.MergeRetCtx(merged, backend.ReadReverseBaggage(leaf))
+				carried, _ := backend.PrepareCheckpoint(tp, leaf, "")
+				merged = backend.MergeRetCtx(merged, carried)
 				leaf.End()
 				root.End()
 			}

@@ -75,8 +75,10 @@ func oneClientSpan(tp trace.TracerProvider, parent context.Context, reverse bool
 		// plugins/opentelemetry/ir_ot_client.go: hand the response to the live span,
 		// let the SDK route it, then read back whatever was not consumed.
 		span.SetAttributes(attribute.String(backend.ReverseTrussInputKey, retCtx))
-		if backend.PrepareCheckpoint(tp, span) {
-			_ = backend.ReadReverseBaggage(span)
+		// The wrapper now takes the carrier from the return value instead of
+		// re-scanning the span for it.
+		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+			_ = out
 		}
 	}
 	span.End()
@@ -117,4 +119,40 @@ func BenchmarkReverseSpanAttributesOnly(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = readable.Attributes()
 	}
+}
+
+// Tomislav-RetCtx: the deployed profile showed OnStart RISING on composepost
+// (11.10s -> 14.59s) after per-span reverse state moved off the span and into a
+// sync.Map, while the other three services were flat or better. composepost is the
+// busiest and most concurrent service, so the suspicion is contention on the map
+// rather than the map lookup itself. This benchmark reproduces that shape locally:
+// many goroutines each starting and preparing a span, which is exactly the fan-out
+// pattern composepost runs.
+//
+//	Run: RETCTX_COST=1 go test ./runtime/plugins/otelcol -run XXX \
+//	       -bench BenchmarkReverseSpanParallel -benchmem -cpu 1,8,40
+func BenchmarkReverseSpanParallel(b *testing.B) {
+	skipUnlessSDKCost(b)
+	tp, parent := reverseSpanHarness(true)
+	retCtx := backend.EncodeCheckpointRetCtxWithTTL(trace.SpanID{1, 2, 3, 4, 5, 6, 7, 8}, 3,
+		backend.SegPathCheckpoint, make([]byte, 19), 2)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			oneClientSpan(tp, parent, true, retCtx)
+		}
+	})
+}
+
+func BenchmarkReverseSpanParallelOff(b *testing.B) {
+	skipUnlessSDKCost(b)
+	tp, parent := reverseSpanHarness(false)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			oneClientSpan(tp, parent, false, "")
+		}
+	})
 }
