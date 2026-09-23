@@ -29,5 +29,6 @@ func main() {
 		specs.DockerSBES,
 		specs.DockerVES,
 		specs.DockerRCES,
+		specs.DockerNTES,
 	)
 }

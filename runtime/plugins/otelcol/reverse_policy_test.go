@@ -99,6 +99,66 @@ func TestReversePolicyDepthProbabilities(t *testing.T) {
 	}
 }
 
+// Tomislav-RetCtx: depth_cubic must equal the bridges repo's formula (bridge/reverse.go,
+// reverseAcceptance "depth_cubic") for every valid (receiver, origin) pair, be normalized over
+// the n ancestors, never exceed 1, and absorb closer to the leaf than inverse_depth.
+func TestReversePolicyDepthCubic(t *testing.T) {
+	cubic := reversePolicy{mode: reversePolicyDepthCubic}
+	inverse := reversePolicy{mode: reversePolicyInverseDepth}
+	bridges := func(receiverDepth, originDepth int) float64 { // verbatim from bridge/reverse.go
+		if originDepth <= 0 || receiverDepth < 0 || receiverDepth >= originDepth {
+			return 0
+		}
+		d, n := float64(receiverDepth)+1, float64(originDepth)
+		return 4 * d * d * d / (n * n * (n + 1) * (n + 1))
+	}
+	for n := uint64(1); n <= 128; n++ {
+		var sum float64
+		for d := uint64(0); d < n; d++ {
+			p := cubic.probabilityAt(d, n)
+			if want := bridges(int(d), int(n)); math.Abs(p-want) > 1e-15 {
+				t.Fatalf("d=%d n=%d: got %v want %v", d, n, p, want)
+			}
+			if p <= 0 || p > 1 {
+				t.Fatalf("invalid p=%v at d=%d n=%d", p, d, n)
+			}
+			if d > 0 && p <= cubic.probabilityAt(d-1, n) {
+				t.Fatal("cubic probability does not favor deeper receivers")
+			}
+			sum += p
+		}
+		if math.Abs(sum-1) > 1e-12 {
+			t.Fatalf("n=%d not normalized: %v", n, sum)
+		}
+		if first, want := cubic.probabilityAt(n-1, n), 4*float64(n)/((float64(n)+1)*(float64(n)+1)); math.Abs(first-want) > 1e-15 {
+			t.Fatalf("n=%d first-hop %v want 4n/(n+1)^2=%v", n, first, want)
+		}
+		if n > 1 && cubic.probabilityAt(n-1, n) <= inverse.probabilityAt(n-1, n) {
+			t.Fatal("cubic does not absorb at the parent more often than inverse_depth")
+		}
+	}
+	// the worked example for a depth-4 leaf (SN and HotelReservation leaves)
+	for d, want := range map[uint64]float64{3: 0.64, 2: 0.27, 1: 0.08, 0: 0.01} {
+		if math.Abs(cubic.probabilityAt(d, 4)-want) > 1e-15 {
+			t.Fatalf("n=4 d=%d: %v want %v", d, cubic.probabilityAt(d, 4), want)
+		}
+	}
+	for _, pair := range [][2]uint64{{0, 0}, {6, 6}, {7, 6}} {
+		if cubic.probabilityAt(pair[0], pair[1]) != 0 {
+			t.Fatal("sampled an invalid ancestor/depth")
+		}
+	}
+	if p := cubic.probabilityAt(math.MaxUint64-1, math.MaxUint64); p <= 0 || p > 1 || math.IsNaN(p) || math.IsInf(p, 0) {
+		t.Fatal("depth arithmetic overflowed")
+	}
+	if _, err := parseReversePolicy(map[string]interface{}{"reverse_policy": "depth_cubic"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseReversePolicy(map[string]interface{}{"reverse_policy": "depth_cubic", "reverse_probability": 0.5}); err == nil {
+		t.Fatal("depth_cubic accepted a reverse_probability")
+	}
+}
+
 func probabilityTestTruss(id byte, depth uint64) string {
 	return backend.EncodeCheckpointRetCtx(trace.SpanID{id}, depth, backend.SegCallGraphCheckpoint, []byte{id, 0, 0xff})
 }

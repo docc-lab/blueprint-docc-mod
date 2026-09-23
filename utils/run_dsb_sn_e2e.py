@@ -26,6 +26,7 @@ import urllib.request
 import yaml
 
 from prepare_dsb_sn_e2e import REPO, DSB, write_json
+from dsb_apps import APPS, app_of, entry_url  # Tomislav-RetCtx: per-application constants
 
 LUA = DSB / 'scripts/compose-post.lua'
 SEED = DSB / 'scripts/init_social_graph.py'
@@ -47,6 +48,12 @@ def kube(namespace, *args, timeout=60):
 def get_http(url, timeout=10):
     with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(url, timeout=timeout) as response:
         return response.read().decode()
+
+
+def get_bytes(url, timeout=60):
+    # Tomislav-RetCtx: binary fetch (refused-trace census records from the SDK endpoint).
+    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(url, timeout=timeout) as response:
+        return response.read()
 
 
 def milliseconds(value):
@@ -104,7 +111,8 @@ def prometheus(text):
 def log_metrics(text):
     found = {}
     for line in text.splitlines():
-        key = next((key for key in ('_processor_metrics', 'BRIDGES_RT') if key in line), None)
+        # Tomislav-RetCtx: BRIDGES_RETRY = SDK one-shot retry gauges (runtime/plugins/otelcol/sdk_retry.go)
+        key = next((key for key in ('_processor_metrics', 'BRIDGES_RETRY', 'BRIDGES_RT') if key in line), None)
         if key:
             found[key] = {name: float(value) for name, value in
                           re.findall(r'"?(\w+)"?\s*(?:=|:)\s*(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)', line)}
@@ -129,20 +137,47 @@ def snapshot(namespace, variant, directory):
             if name.startswith('otelcol-') and pod['status'].get('podIP'):
                 jobs.append((pool.submit(get_http, f"http://{pod['status']['podIP']}:8888/metrics"),
                              'prometheus', name))
-            if '-service-' in name or name.startswith(('otelcol-', 'jaeger-', 'elasticsearch-')):
+            # Tomislav-RetCtx: clickhouse backend. The gateway collector is scraped like the
+            # agents but kept under its own key so fleet counter deltas stay agent-only.
+            if ip and name.startswith('otelgw-'):
+                jobs.append((pool.submit(get_http, f'http://{ip}:8888/metrics'), 'gateway', name))
+            if ip and name.startswith('clickhouse-'):
+                sql = ("SELECT event AS name, toInt64(value) AS value FROM system.events UNION ALL "
+                       "SELECT metric, toInt64(value) FROM system.metrics UNION ALL "
+                       "SELECT 'otel_traces_rows', toInt64(count()) FROM otel.otel_traces FORMAT JSONEachRow")
+                jobs.append((pool.submit(get_http, f'http://{ip}:8123/?user=otel&password=otel&query=' + urllib.parse.quote(sql), 30),
+                             'backend', name))
+            # Tomislav-RetCtx: refused-trace census from the SDK (runtime/plugins/otelcol/refused_ids.go):
+            # the append-only (trace ID, flags) records and a JSON summary, per service pod. The
+            # point's delta is after[len(before):]; refused_union.py takes the union across services.
+            # Only pods that carry the SDK serve it: the no-tracing build has no SDK and no
+            # BRIDGE_KIND (run_dsb_sn_nw.verify_deployment asserts its absence there).
+            has_sdk = any(e.get('name') == 'BRIDGE_KIND' for c in pod['spec']['containers'] for e in c.get('env', []))
+            if ip and '-service-' in name and has_sdk:
+                jobs.append((pool.submit(get_bytes, f'http://{ip}:9464/retctx/refused'), 'refused-bin', name))
+                jobs.append((pool.submit(get_http, f'http://{ip}:9464/retctx/refused/summary'), 'refused', name))
+            if '-service-' in name or name.startswith(('otelcol-', 'otelgw-', 'clickhouse-', 'jaeger-', 'elasticsearch-')):
                 jobs.append((pool.submit(kube, namespace, 'logs', name, '--tail=2000'), 'logs', name))
         for i in range(1, 10):
             node = f'node-{i}'
             jobs.append((pool.submit(kube, namespace, 'get', '--raw',
                          f'/api/v1/nodes/{node}/proxy/stats/summary'), 'node', node))
-        data = {'started': start, 'collectors': {}, 'sdk': {}, 'cpu': {}, 'errors': []}
+        data = {'started': start, 'collectors': {}, 'gateway': {}, 'sdk': {}, 'refused': {}, 'cpu': {}, 'errors': []}
         for future, kind, name in jobs:
             try:
                 text = future.result()
+                if kind == 'refused-bin':
+                    (directory / f'refused-{name}.bin').write_bytes(text)
+                    continue
+                if kind == 'refused':
+                    data['refused'][name] = json.loads(text)
+                    continue
                 with gzip.open(directory / f'{kind}-{name}.txt.gz', 'wt') as stream:
                     stream.write(text)
                 if kind == 'prometheus':
                     data['collectors'][name] = prometheus(text)
+                elif kind == 'gateway':
+                    data['gateway'][name] = prometheus(text)
                 elif kind == 'logs':
                     data['sdk'][name] = log_metrics(text)
                 elif kind == 'node':
@@ -191,7 +226,12 @@ def counter_deltas(before, after):
     return result, resets
 
 
-def run_wrk(directory, rate, seconds, seed, connections=None):
+def run_wrk(directory, rate, seconds, seed, connections=None, generator=None, app='sn'):
+    """generator: optional plan['generator'] dict selecting a non-constant arrival process.
+    Tomislav-RetCtx: {'binary': path, 'dist': 'pareto', 'burst_alpha': f, 'burst_cap': f,
+    'burst_epoch': 'Ns'} appends `-D pareto --burst-*` and runs that binary; the seed is the
+    same RANDOM_SEED the Lua script gets, so the burst schedule is reproducible. None keeps
+    the historical fixed-interval argv exactly."""
     directory.mkdir(parents=True, exist_ok=True)
     # Tomislav-RetCtx: the 5k schedule needs 1,250 connections plus worker/Lua
     # descriptors. The login shell's 1,024 soft limit fails during initialization.
@@ -202,17 +242,31 @@ def run_wrk(directory, rate, seconds, seed, connections=None):
     if connections is None:
         connections = max(1, math.ceil(rate * rate / 20000))
     threads = max(1, math.ceil(connections / 10))
-    argv = ['wrk', '-t', str(threads), '-c', str(connections), '-d', f'{seconds}s',
-            '-r', '-L', '-s', str(LUA), 'http://10.10.1.1:23229', '-R', str(rate)]
-    record = {'argv': argv, 'seed': seed, 'offered_rps': rate, 'offer_seconds': seconds,
+    binary = generator['binary'] if generator else 'wrk'
+    # Tomislav-RetCtx: the workload script and entry NodePort come from the app table
+    # (SN: compose-post.lua on 23229, unchanged; hotel: search-hotels.lua on 23230).
+    spec = APPS[app]
+    argv = [binary, '-t', str(threads), '-c', str(connections), '-d', f'{seconds}s',
+            '-r', '-L', '-s', str(spec['lua']), entry_url(spec), '-R', str(rate)]
+    if generator:
+        argv += ['-D', generator['dist'],
+                 '--burst-alpha', str(generator['burst_alpha']),
+                 '--burst-cap', str(generator['burst_cap']),
+                 '--burst-epoch', str(generator['burst_epoch']),
+                 '--burst-seed', str(seed)]
+    record = {'argv': argv, 'seed': seed, 'offered_rps': rate, 'offer_seconds': seconds, 'app': app,
               'started': now(), 'connections': connections, 'threads': threads,
-              'file_descriptor_limit': list(resource.getrlimit(resource.RLIMIT_NOFILE))}
+              'file_descriptor_limit': list(resource.getrlimit(resource.RLIMIT_NOFILE)),
+              'generator': generator}
     write_json(directory / 'command.json', record)
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     start = time.monotonic()
     with (directory / 'wrk.stdout').open('w') as stdout, (directory / 'wrk.stderr').open('w') as stderr:
         process = subprocess.Popen(argv, stdout=stdout, stderr=stderr, start_new_session=True,
-                                   env=dict(os.environ, RANDOM_SEED=str(seed), max_user_index='962', LC_ALL='C'))
+                                   env=dict(os.environ, RANDOM_SEED=str(seed), LC_ALL='C', **spec['lua_env'],
+                                            # one "burst epoch k g rate" line per epoch in wrk.stderr, so the
+                                            # realised per-epoch offered rate can be lined up with the collectors
+                                            **({'WRK_BURST_TRACE': '1'} if generator else {})))
         try:
             code = process.wait(timeout=seconds + 60)
         except BaseException:
@@ -253,11 +307,12 @@ def teardown(namespace, directory):
     raise RuntimeError('old application pods did not terminate')
 
 
-def ready(namespace, variant):
+def ready(namespace, variant, expected=33):
+    # Tomislav-RetCtx: 33 = 25 Blueprint deployments + 8 collectors; the clickhouse backend has 34.
     deadline = time.monotonic() + 600
     while time.monotonic() < deadline:
         pods = json.loads(kube(namespace, 'get', 'pods', '-l', f'retctx-e2e={variant}', '-o', 'json'))['items']
-        if len(pods) == 33 and all(any(c['type'] == 'Ready' and c['status'] == 'True'
+        if len(pods) == expected and all(any(c['type'] == 'Ready' and c['status'] == 'True'
                                      for c in p['status'].get('conditions', [])) for p in pods):
             return pods
         time.sleep(5)
@@ -321,16 +376,40 @@ def sample_traces(case, directory, window=None):
     jaeger = next(p for p in pods if p['metadata']['name'].startswith('jaeger-'))
     base = f"http://{jaeger['status']['podIP']}:16686/api"
     services = json.loads(get_http(base + '/services'))
-    names = [s for s in services.get('data', []) if 'wrk2api' in s]
+    names = [s for s in services.get('data', []) if app_of(case)['entry_trace_service'] in s]
     assert names, services
-    parameters = {'service': names[0], 'limit': 100, 'lookback': '1h'}
+    # Tomislav-RetCtx: Jaeger returns the MOST RECENT matches, so one limit=100 query
+    # bounded to the measured window yields a 0.02-1 s slice from the END of the window
+    # (measured: every n=5 point, and t=243-262 s of the 300 s bursty points). With
+    # RETCTX_TRACE_SAMPLE_WINDOWS=N (default 1 = historical behaviour) the window is cut
+    # into N equal sub-windows and 100/N traces are taken from each, so the sample spans
+    # the whole point. The settle step re-fetches by trace ID and inherits the spread.
+    windows = int(os.environ.get('RETCTX_TRACE_SAMPLE_WINDOWS', '1')) if window else 1
+    # Tomislav-RetCtx: RETCTX_TRACE_SAMPLE_SIZE traces in total (default 100 = Jaeger's historical
+    # limit), RETCTX_TRACE_SAMPLE_ORDER=random asks the ClickHouse shim for a uniform draw across
+    # each sub-window instead of the most-recent slice (Jaeger ignores the parameter).
+    size = int(os.environ.get('RETCTX_TRACE_SAMPLE_SIZE', '100')) if window else 100
+    order = os.environ.get('RETCTX_TRACE_SAMPLE_ORDER', 'recent') if window else 'recent'
+    bounds = None
     if window:
-        parameters.update({key: int(datetime.fromisoformat(window[field]).timestamp() * 1_000_000)
-                           for key, field in (('start', 'started'), ('end', 'finished'))})
-    write_json(directory / 'trace-query.json', {'parameters': parameters, 'started': now()})
-    query = urllib.parse.urlencode(parameters)
-    traces = json.loads(get_http(base + '/traces?' + query, timeout=30))
-    assert not traces.get('errors'), traces.get('errors')
+        bounds = tuple(int(datetime.fromisoformat(window[field]).timestamp() * 1_000_000)
+                       for field in ('started', 'finished'))
+    queries, data = [], []
+    for i in range(max(windows, 1)):
+        parameters = {'service': names[0], 'limit': max(1, size // max(windows, 1)), 'lookback': '1h'}
+        if order != 'recent':
+            parameters['order'] = order
+        if bounds:
+            step = (bounds[1] - bounds[0]) // max(windows, 1)
+            parameters.update(start=bounds[0] + i * step,
+                              end=bounds[1] if i == windows - 1 else bounds[0] + (i + 1) * step)
+        queries.append(parameters)
+        part = json.loads(get_http(base + '/traces?' + urllib.parse.urlencode(parameters), timeout=30))
+        assert not part.get('errors'), part.get('errors')
+        data.extend(part.get('data', []))
+    write_json(directory / 'trace-query.json', {'parameters': queries, 'windows': max(windows, 1), 'size': size,
+                                                 'order': order, 'started': now()})
+    traces = {'data': data, 'errors': None}
     with gzip.open(directory / 'sample-traces.json.gz', 'wt') as stream:
         json.dump(traces, stream)
     return traces
@@ -353,7 +432,10 @@ def settle_trace_samples(case, directory):
                            f'retctx-e2e={case["variant"]}', '-o', 'json'))['items']
     collectors = [p['status']['podIP'] for p in pods if p['metadata']['name'].startswith('otelcol-')]
     jaeger = next(p['status']['podIP'] for p in pods if p['metadata']['name'].startswith('jaeger-'))
-    elastic = next(p['status']['podIP'] for p in pods if p['metadata']['name'].startswith('elasticsearch-'))
+    # Tomislav-RetCtx: the clickhouse backend has no Elasticsearch pod; its pending writes are the
+    # gateway collector's exporter queue instead.
+    elastic = next((p['status']['podIP'] for p in pods if p['metadata']['name'].startswith('elasticsearch-')), None)
+    gateways = [p['status']['podIP'] for p in pods if p['metadata']['name'].startswith('otelgw-')]
     start = time.monotonic()
     observations = []
     stable = 0
@@ -367,12 +449,18 @@ def settle_trace_samples(case, directory):
             text = get_http(f'http://{jaeger}:14269/metrics')
             observation['jaeger_queue'] = sum(float(v) for v in re.findall(
                 r'^jaeger_collector_queue_length(?:\{.*\})?\s+(\S+)', text, re.M))
-            nodes = json.loads(get_http(f'http://{elastic}:9200/_nodes/stats/thread_pool'))['nodes']
-            observation['elasticsearch_pending_writes'] = sum(
-                node['thread_pool']['write']['queue'] + node['thread_pool']['write']['active']
-                for node in nodes.values())
+            if elastic is not None:
+                nodes = json.loads(get_http(f'http://{elastic}:9200/_nodes/stats/thread_pool'))['nodes']
+                observation['elasticsearch_pending_writes'] = sum(
+                    node['thread_pool']['write']['queue'] + node['thread_pool']['write']['active']
+                    for node in nodes.values())
+            if gateways:
+                gw_metrics = [prometheus(get_http(f'http://{ip}:8888/metrics')) for ip in gateways]
+                observation['gateway_queue'] = sum(value for m in gw_metrics for name, value in m.items()
+                                                   if 'exporter_queue_size' in name)
             empty = all(observation[key] == 0 for key in
-                        ('collector_queue', 'jaeger_queue', 'elasticsearch_pending_writes'))
+                        ('collector_queue', 'jaeger_queue', 'elasticsearch_pending_writes', 'gateway_queue')
+                        if key in observation)
             stable = stable + 1 if empty else 0
         except Exception as error:
             observation['error'] = str(error)

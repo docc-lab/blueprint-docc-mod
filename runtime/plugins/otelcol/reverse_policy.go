@@ -17,6 +17,11 @@ const (
 	reversePolicyProbability  = "probability"
 	reversePolicyInverseDepth = "inverse_depth"
 	reversePolicyDepthLinear  = "depth_linear"
+	// Tomislav-RetCtx: depth_cubic, ported from the bridges repo (bridge/reverse.go,
+	// reverseAcceptance): weights proportional to (d+1)^3 over the origin's ancestors,
+	// normalized by sum_{j=1..n} j^3 = (n(n+1)/2)^2. First-hop acceptance 4n/(n+1)^2 -> 4/n,
+	// so trusses are absorbed close to their leaf instead of riding toward the root.
+	reversePolicyDepthCubic = "depth_cubic"
 )
 
 // Tomislav-RetCtx: collector-discovered reverse routing, immutable before spans
@@ -38,7 +43,7 @@ func parseReversePolicy(config map[string]interface{}) (reversePolicy, error) {
 	}
 	value, hasProbability := config["reverse_probability"]
 	switch policy.mode {
-	case reversePolicyTTL, reversePolicyInverseDepth, reversePolicyDepthLinear:
+	case reversePolicyTTL, reversePolicyInverseDepth, reversePolicyDepthLinear, reversePolicyDepthCubic:
 		if hasProbability {
 			return reversePolicy{}, fmt.Errorf("%w: reverse_probability requires reverse_policy: probability", errInvalidReversePolicy)
 		}
@@ -49,7 +54,7 @@ func parseReversePolicy(config map[string]interface{}) (reversePolicy, error) {
 		}
 		policy.probability = probability
 	default:
-		return reversePolicy{}, fmt.Errorf("%w: reverse_policy must be ttl, probability, inverse_depth, or depth_linear", errInvalidReversePolicy)
+		return reversePolicy{}, fmt.Errorf("%w: reverse_policy must be ttl, probability, inverse_depth, depth_linear, or depth_cubic", errInvalidReversePolicy)
 	}
 	return policy, nil
 }
@@ -94,6 +99,11 @@ func (p reversePolicy) probabilityAt(d, n uint64) float64 {
 	case reversePolicyDepthLinear:
 		// Convert before adding/multiplying to avoid uint64 overflow.
 		return (2 * ((float64(d) + 1) / float64(n))) / (float64(n) + 1)
+	case reversePolicyDepthCubic:
+		// 4 (d+1)^3 / (n^2 (n+1)^2), exactly bridge/reverse.go's depth_cubic. Floats
+		// before arithmetic so extreme depths cannot overflow uint64.
+		dd, nn := float64(d)+1, float64(n)
+		return 4 * dd * dd * dd / (nn * nn * (nn + 1) * (nn + 1))
 	default:
 		return 0
 	}

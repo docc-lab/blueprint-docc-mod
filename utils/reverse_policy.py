@@ -2,7 +2,7 @@
 
 import math
 
-POLICIES = ("ttl", "probability", "inverse_depth", "depth_linear")
+POLICIES = ("ttl", "probability", "inverse_depth", "depth_linear", "depth_cubic")  # Tomislav-RetCtx: + depth_cubic
 
 
 def validate(policy=None, probability=None):

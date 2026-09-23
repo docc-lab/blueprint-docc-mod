@@ -219,6 +219,8 @@ func (p *VanillaProcessor) logMetrics() {
 		"send_other", atomic.LoadInt64(&p.sendOther),
 		"buffer_depth", bufDepth,
 	)
+	// Tomislav-RetCtx: SDK retry gauges on their own line (sdk_retry.go; parsed as BRIDGES_RETRY)
+	sdkRetry.logMetrics()
 }
 
 // categorizeSendError increments the appropriate per-code counter for a
@@ -328,16 +330,39 @@ func (p *VanillaProcessor) flushBuffer() {
 			p.exportWG.Add(1)
 			go func(rs *tracepb.ResourceSpans, n int) {
 				defer p.exportWG.Done()
-				if err := p.sendData([]*tracepb.ResourceSpans{rs}); err != nil {
+				batch := []*tracepb.ResourceSpans{rs}
+				dropped := func(err error) {
 					slog.Error("Failed to send batch", "error", err, "count", n)
 					atomic.AddInt64(&p.batchesDropped, 1)
 					atomic.AddInt64(&p.spansDropped, int64(n))
 					p.categorizeSendError(err)
+					recordRefused(batch, true) // Tomislav-RetCtx: every vanilla span is trace-critical
+				}
+				sent := func() {
+					slog.Debug("Sent batch", "count", n)
+					atomic.AddInt64(&p.batchesSent, 1)
+					atomic.AddInt64(&p.spansSent, int64(n))
+				}
+				err := p.sendData(batch)
+				// Tomislav-RetCtx: vanilla's side of the SDK one-shot retry policy (sdk_retry.go):
+				// BRIDGES_RETRY=all retries every refused batch once; nothing is suppressed.
+				if err != nil && sdkRetry.wants(true, err) {
+					p.exportWG.Add(1)
+					sdkRetry.schedule(batch, int64(n), func() error { return p.sendData(batch) }, func(err error) {
+						defer p.exportWG.Done()
+						if err != nil {
+							dropped(err)
+							return
+						}
+						sent()
+					})
 					return
 				}
-				slog.Debug("Sent batch", "count", n)
-				atomic.AddInt64(&p.batchesSent, 1)
-				atomic.AddInt64(&p.spansSent, int64(n))
+				if err != nil {
+					dropped(err)
+					return
+				}
+				sent()
 			}(rs, len(chunk))
 		}
 	}

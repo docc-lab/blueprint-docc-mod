@@ -18,6 +18,7 @@ import yaml
 
 from prepare_dsb_sn_e2e import command, write_json, REGISTRY
 from build_dsb_sn_e2e import registry_digest, prepare_dockerfile, tree_hash
+from dsb_apps import app_of  # Tomislav-RetCtx: per-application counts (default app 'sn')
 
 
 def backend_digests(pinned_manifest):
@@ -35,19 +36,41 @@ def backend_digests(pinned_manifest):
     return backends
 
 
+def hotel_backend_digests(pinned_manifest, documents, variant):
+    """Tomislav-RetCtx: HotelReservation stores (mongo:4.4, memcached) are pinned to the registry
+    digest their tag resolves to now; Jaeger and Elasticsearch keep the exact digests of the SN
+    campaigns (pinned_manifest), so the trace store is identical across the two applications."""
+    sn = backend_digests(pinned_manifest)
+    backends = {'jaeger': sn['jaeger'], 'elasticsearch': sn['elasticsearch']}
+    for doc in documents:
+        if not doc or doc.get('kind') != 'Deployment':
+            continue
+        name = doc['metadata']['name']
+        if '-service-' in name or name.startswith(('otelcol-', 'jaeger-', 'elasticsearch-')):
+            continue
+        base = name.removesuffix('-' + variant + '-ctr')
+        backends[base] = registry_digest(doc['spec']['template']['spec']['containers'][0]['image'])
+    assert len(backends) == 11, sorted(backends)  # 6 mongo, 3 memcached, jaeger, elasticsearch
+    return backends
+
+
 def build(root, pinned_manifest):
     assert json.loads((root / 'prepare-status.json').read_text())['state'] == 'complete'
     cases = json.loads((root / 'cases.json').read_text())
-    backends = backend_digests(pinned_manifest)
+    app = app_of(cases[0])
+    backends = backend_digests(pinned_manifest) if app['backends'] == 12 else None
     bases_path = root / 'base-image-digests.json'
     bases = json.loads(bases_path.read_text()) if bases_path.exists() else {}
-    total = 13 * len({c['kind'] for c in cases})
+    total = app['app_services'] * len({c['kind'] for c in cases})
     completed = 0
     for case in cases:
         kind, variant = case['kind'], case['variant']
         directory = Path(case['case'])
         manifest = directory / 'manifest.yaml'
         documents = list(yaml.safe_load_all(manifest.read_text()))
+        if backends is None or app['backends'] != 12:
+            backends = hotel_backend_digests(pinned_manifest, documents, variant)
+            write_json(root / 'backend-image-digests.json', backends)
         compose_dir = Path(case['build']) / 'docker'
         compose = yaml.safe_load((compose_dir / 'docker-compose.yml').read_text())
         images_path = Path(case['image_case']) / 'images.json'  # shared across sampling tiers
@@ -93,7 +116,7 @@ def build(root, pinned_manifest):
                     assert images[name]['context_sha256'] == digest, f'build context changed: {name}'
                     container['image'] = images[name]['image']
                 container['imagePullPolicy'] = 'IfNotPresent'
-        assert app_count == 13, (case['name'], app_count)
+        assert app_count == app['app_services'], (case['name'], app_count)
         manifest.write_text(yaml.safe_dump_all(documents, sort_keys=False))
         assert all('@sha256:' in c['image'] for d in documents
                    if d['kind'] in ('Deployment', 'DaemonSet')

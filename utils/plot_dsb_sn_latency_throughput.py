@@ -23,22 +23,55 @@ from pathlib import Path
 
 COLORS = {'nt': '#7A7A7A', 'v': '#333333', 'pb': '#2878B5', 'cgpb': '#D36B23', 'sb': '#33945B'}
 LABELS = {'nt': 'None', 'v': 'Vanilla', 'pb': 'PB', 'cgpb': 'CGPB', 'sb': 'SB'}
-ORDER = ('nt', 'v', 'pb', 'cgpb', 'sb')
+ORDER = ['nt', 'v', 'pb', 'cgpb', 'sb']
+# Tomislav-RetCtx: colours for labelled extras, e.g. the same bridge measured with
+# the response path on and off -- two series of the same KIND, which the plain
+# --extra form cannot express because it keys on kind alone.
+EXTRA_COLORS = ['#7B3F9E', '#1F7A8C', '#B5651D', '#A63D57', '#4C6EB1', '#5B8C3A']
+BASE_COLORS = frozenset(COLORS)
 
 
-def curves(root, extra=(), repetitions=None):
+def curves(root, extra=(), repetitions=None, exclude=()):
     """Per kind, per offered rate: mean and sample SD over repetitions.
 
     extra is a list of "ROOT:KIND" overrides: that kind is taken from that other root and
     REPLACES any same-kind rows in the primary root. The real-work campaign needs this
     because the rebuilt S-Bridge was measured in its own root while the primary root still
-    holds the superseded one."""
+    holds the superseded one.
+
+    "LABEL=ROOT:KIND" instead ADDS the series under its own name and colour, leaving any
+    same-kind rows alone. That is what lets one figure hold the same bridge with the
+    response path on and off, which are two roots of the same kind."""
     rows = json.loads((root / 'analysis' / 'points.json').read_text())
-    for spec in extra:
+    # Tomislav-RetCtx: drop a kind the primary root happens to carry. Needed when the
+    # same root also supplies that kind under a LABEL (the response-path-on series),
+    # which would otherwise be drawn twice -- once labelled, once under its bare kind.
+    if exclude:
+        rows = [r for r in rows if r['kind'] not in exclude]
+    for index, spec in enumerate(extra):
+        label = None
+        if '=' in spec.split(':', 1)[0]:
+            label, spec = spec.split('=', 1)
         other, kind = spec.rsplit(':', 1)
-        rows = [r for r in rows if r['kind'] != kind]
-        rows += [r for r in json.loads((Path(other) / 'analysis' / 'points.json').read_text())
+        added = [r for r in json.loads((Path(other) / 'analysis' / 'points.json').read_text())
                  if r['kind'] == kind]
+        assert added, ('no rows for', spec)
+        if label:
+            for row in added:
+                row['kind'] = label
+            # A label that already exists ACCUMULATES into that series and keeps its
+            # colour. That is how repetitions spread across separate campaign roots
+            # (one per round of the n=5 matrix) merge into a single curve with a band,
+            # rather than each round drawing its own line.
+            if label not in COLORS:
+                assigned = sum(1 for k in COLORS if k not in BASE_COLORS)
+                COLORS[label] = EXTRA_COLORS[assigned % len(EXTRA_COLORS)]
+            LABELS.setdefault(label, label)
+            if label not in ORDER:
+                ORDER.append(label)
+        else:
+            rows = [r for r in rows if r['kind'] != kind]
+        rows += added
     if repetitions:
         # Tomislav-RetCtx: plot a subset of the runs (n=1 while a campaign is still
         # measuring its later repetitions). The band then collapses onto the line.
@@ -95,7 +128,11 @@ def main():
     parser.add_argument('--repetition', type=int, action='append', default=[], metavar='N',
                         help='only use these repetitions (repeatable). Default: all of them.')
     parser.add_argument('--extra', action='append', default=[], metavar='ROOT:KIND',
-                        help='take KIND from another root, replacing that kind in the primary root')
+                        help='take KIND from another root, replacing that kind in the primary root. '
+                             'With a LABEL= prefix it is ADDED as its own series instead, so two '
+                             'roots of the same kind (e.g. response path on and off) can share a figure.')
+    parser.add_argument('--exclude', action='append', default=[], metavar='KIND',
+                        help='drop this kind from the primary root (it may be re-added under a label)')
     parser.add_argument('--no-tail', action='store_true', help='omit the post-saturation branch entirely')
     parser.add_argument('--ylim', default='300,600',
                         help='y-axis ceiling in ms for the mean and p99 panels, comma separated. '
@@ -112,12 +149,31 @@ def main():
                         help='axis-label point size on the page (ACM body text is 9 pt; 8 sits just '
                              'under it, which reads fine at column width). Ticks and legend are one '
                              'point smaller.')
+    parser.add_argument('--color', action='append', default=[], metavar='LABEL=#RRGGBB',
+                        help='pin a series colour, so related series can share one')
+    parser.add_argument('--dashed', action='append', default=[], metavar='LABEL',
+                        help='draw this series dashed. Response-path on vs off reads better as one '
+                             'colour per bridge with the style carrying the mode than as six colours.')
+    parser.add_argument('--x-axis', choices=('achieved', 'offered'), default='achieved',
+                        help="'achieved' ends each curve at that variant's capacity, so the ceiling "
+                             "is read off the x axis. 'offered' plots against the load the generator "
+                             "applied, which is the view that shows where each knee falls on a common "
+                             "axis. Neither subsumes the other.")
+    parser.add_argument('--legend-cols', type=int, default=0,
+                        help='legend columns; 0 puts every entry on one row. Eight series need 4.')
+    # Tomislav-RetCtx: the min-max spread as error bars instead of a shaded band.
+    parser.add_argument('--spread', choices=('band', 'errorbars'), default='band',
+                        help='how to draw the min-max spread across repetitions (default shaded band)')
     parser.add_argument('--spaghetti', action='store_true',
                         help='also draw each repetition as a thin line inside the band')
     args = parser.parse_args()
     root = args.out.resolve()
     args.figures.mkdir(parents=True, exist_ok=True)
-    data = curves(root, args.extra, args.repetition)
+    data = curves(root, args.extra, args.repetition, set(args.exclude))
+    for spec in args.color:
+        label, value = spec.split('=', 1)
+        COLORS[label] = value
+    dashed = set(args.dashed)
 
     import matplotlib
     matplotlib.use('Agg')
@@ -139,12 +195,24 @@ def main():
             points = data.get(kind)
             if not points:
                 continue
-            rising, tail = split_at_saturation(points)
-            x = [p['completed_rps'] / 1000 for p in rising]
+            if args.x_axis == 'offered':
+                # Against offered load a curve never folds back, so there is no
+                # saturation branch to split off: every point belongs to the line.
+                rising, tail = points, []
+                x = [p['offered_rps'] / 1000 for p in rising]
+            else:
+                rising, tail = split_at_saturation(points)
+                x = [p['completed_rps'] / 1000 for p in rising]
             # Throughput varies 0.09 % across repetitions (2.7 % worst case), so an x error
             # bar draws nothing; the run-to-run spread that matters is all in latency.
-            axis.fill_between(x, [p[field + '_min'] for p in rising], [p[field + '_max'] for p in rising],
-                              color=COLORS[kind], alpha=.18, linewidth=0)
+            if args.spread == 'errorbars':
+                y = [p[field] for p in rising]
+                axis.errorbar(x, y, yerr=[[yy - p[field + '_min'] for yy, p in zip(y, rising)],
+                                         [p[field + '_max'] - yy for yy, p in zip(y, rising)]],
+                              fmt='none', ecolor=COLORS[kind], elinewidth=.55, capsize=1.1, capthick=.55, alpha=.85, zorder=2)
+            else:
+                axis.fill_between(x, [p[field + '_min'] for p in rising], [p[field + '_max'] for p in rising],
+                                  color=COLORS[kind], alpha=.18, linewidth=0)
             if args.spaghetti:
                 for i in range(max(len(p['runs'][field]) for p in rising)):
                     ys = [p['runs'][field][i] if i < len(p['runs'][field]) else None for p in rising]
@@ -152,7 +220,8 @@ def main():
                               [yy for yy in ys if yy is not None],
                               color=COLORS[kind], linewidth=.4, alpha=.45)
             axis.plot(x, [p[field] for p in rising], color=COLORS[kind], marker='o', markersize=1.6,
-                      linewidth=.9, label=LABELS[kind])
+                      linewidth=.9, label=LABELS[kind],
+                      linestyle=(0, (3, 1.2)) if kind in dashed else '-')
             if tail and not args.no_tail:
                 axis.plot([p['completed_rps'] / 1000 for p in tail], [p[field] for p in tail],
                           color=COLORS[kind], marker='o', markersize=1.2, linewidth=.6, alpha=.25)
@@ -178,15 +247,18 @@ def main():
     # per-panel label overflows the figure edge. Reserve bands just tall enough for the
     # text (larger bands leave visible whitespace) and centre both across the panels.
     band = (fs + 3) / 72 / args.height
-    top = (fs + 1) / 72 / args.height
+    legend_rows = -(-len(data) // (args.legend_cols or max(len(data), 1)))
+    top = (legend_rows * (fs + 1)) / 72 / args.height
     fig.tight_layout(pad=.35, w_pad=.9, rect=(0, band, 1, 1 - top))
     mid = (axes[0].get_position().x0 + axes[1].get_position().x1) / 2
-    fig.text(mid, .012, 'Achieved throughput (k req/s)', ha='center', va='bottom', fontsize=fs)
+    fig.text(mid, .012, 'Offered rate (k req/s)' if args.x_axis == 'offered'
+             else 'Achieved throughput (k req/s)', ha='center', va='bottom', fontsize=fs)
     # Centred on the figure (x=.5), not on the axes span, which sits right of centre
     # because of the y-label gutter. Vertically anchored to the axes top: slack between
     # the axes and the figure top would otherwise show as a gap under the legend.
+    ncol = args.legend_cols or len(labels)
     fig.legend(handles, labels, loc='lower center',
-               bbox_to_anchor=(.5, max(ax.get_position().y1 for ax in axes) + .022), ncol=len(labels),
+               bbox_to_anchor=(.5, max(ax.get_position().y1 for ax in axes) + .022), ncol=ncol,
                frameon=False, handlelength=1.0, handletextpad=.4, columnspacing=.8,
                borderpad=0, borderaxespad=.1, fontsize=fs - 1)
     for extension in ('pdf', 'svg', 'png'):

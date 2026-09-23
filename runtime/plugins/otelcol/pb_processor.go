@@ -256,6 +256,8 @@ func (p *PathBridgeProcessor) logMetrics() {
 		"hp_buffer_depth", hpDepth,
 		"lp_buffer_depth", lpDepth,
 	)
+	// Tomislav-RetCtx: SDK retry gauges on their own line (sdk_retry.go; parsed as BRIDGES_RETRY)
+	sdkRetry.logMetrics()
 }
 
 // categorizeSendError increments the appropriate per-code counter for a
@@ -364,19 +366,48 @@ func (p *PathBridgeProcessor) dispatchPriority(snap []sbBufEntry, isHP bool) {
 // based on outcome. On failure the spans are permanently dropped (no retry).
 func (p *PathBridgeProcessor) exportBatch(events []*tracepb.ResourceSpans, n int64, isHP bool) {
 	defer p.exportWG.Done()
-	err := p.sendData(events, isHP)
-	if err != nil {
-		atomic.AddInt64(&p.batchesDropped, 1)
-		atomic.AddInt64(&p.spansDropped, n)
-		if isHP {
-			atomic.AddInt64(&p.cpDropped, n)
-		} else {
-			atomic.AddInt64(&p.lpDropped, n)
-		}
-		p.categorizeSendError(err)
-		slog.Error("Failed to send batch", "error", err, "count", n, "hp", isHP)
+	// Tomislav-RetCtx: SDK one-shot retry policy (sdk_retry.go; BRIDGES_RETRY, default off).
+	if !isHP && sdkRetry.suppressLP() {
+		sdkRetry.lpSuppressed.Add(n)
+		p.batchDropped(events, n, isHP, errLPSuppressed)
 		return
 	}
+	err := p.sendData(events, isHP)
+	if err != nil && sdkRetry.wants(isHP, err) {
+		p.exportWG.Add(1)
+		sdkRetry.schedule(events, n, func() error { return p.sendData(events, isHP) }, func(err error) {
+			defer p.exportWG.Done()
+			if err != nil {
+				p.batchDropped(events, n, isHP, err)
+				return
+			}
+			p.batchSent(n, isHP)
+		})
+		return
+	}
+	if err != nil {
+		p.batchDropped(events, n, isHP, err)
+		return
+	}
+	p.batchSent(n, isHP)
+}
+
+// batchDropped accounts one batch that will not be delivered (census included).
+func (p *PathBridgeProcessor) batchDropped(events []*tracepb.ResourceSpans, n int64, isHP bool, err error) {
+	atomic.AddInt64(&p.batchesDropped, 1)
+	atomic.AddInt64(&p.spansDropped, n)
+	if isHP {
+		atomic.AddInt64(&p.cpDropped, n)
+	} else {
+		atomic.AddInt64(&p.lpDropped, n)
+	}
+	p.categorizeSendError(err)
+	recordRefused(events, isHP) // Tomislav-RetCtx: census of trace IDs in the dropped batch
+	slog.Error("Failed to send batch", "error", err, "count", n, "hp", isHP)
+}
+
+// batchSent accounts one delivered batch.
+func (p *PathBridgeProcessor) batchSent(n int64, isHP bool) {
 	atomic.AddInt64(&p.batchesSent, 1)
 	atomic.AddInt64(&p.spansSent, n)
 	if isHP {

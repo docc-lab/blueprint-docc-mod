@@ -194,6 +194,9 @@ def main():
                         help='inches; 3.33 = one column of a two-column CS conference paper. '
                              'Figures are drawn at final size, so the point sizes are what the '
                              'reader sees. Below 4.5 in the three drop panels stack vertically.')
+    parser.add_argument('--legend-cols', type=int, default=0,
+                        help='legend columns; 0 puts every entry on one row. Eight series do not '
+                             'fit one row at column width, so use 4 for two rows.')
     parser.add_argument('--fontsize', type=float, default=8)
     parser.add_argument('--figures', type=Path, default=None,
                         help='also write the figures here (default: only <root>/analysis)')
@@ -231,9 +234,14 @@ def main():
                     row = point_drops(point, kind)
                     row['kind'] = label
                     rows.append(row)
-        COLORS[label] = EXTRA_COLORS[index % len(EXTRA_COLORS)]
-        LABELS[label] = label
-        kinds.append(label)
+        # Tomislav-RetCtx: the same label may appear more than once -- one --extra per
+        # campaign root when repetitions live in separate roots. Those rows ACCUMULATE
+        # into a single series; appending the label again would draw it once per root.
+        if label not in COLORS:
+            COLORS[label] = EXTRA_COLORS[len([k for k in kinds if k not in KINDS]) % len(EXTRA_COLORS)]
+        LABELS.setdefault(label, label)
+        if label not in kinds:
+            kinds.append(label)
     KINDS = tuple(kinds)
     if args.repetition:
         # Tomislav-RetCtx: applied after every source is loaded, so a borrowed baseline is cut
@@ -291,15 +299,18 @@ def main():
             axis.grid(alpha=.2)
             axis.spines[['right', 'top']].set_visible(False)
         handles, labels = axes[0].get_legend_handles_labels()
-        band = (fs + 2) / 72 / fig.get_size_inches()[1]
+        legend_rows = -(-len(labels) // (args.legend_cols or len(labels)))
+        band = (legend_rows * (fs + 2)) / 72 / fig.get_size_inches()[1]
         bottom = 0 if vertical else (fs + 3) / 72 / fig.get_size_inches()[1]
         fig.tight_layout(pad=.35, w_pad=.9, h_pad=.7, rect=(0, bottom, 1, 1 - band))
         if not vertical:
             mid = (axes[0].get_position().x0 + axes[-1].get_position().x1) / 2
             fig.text(mid, .012, 'Offered rate (k req/s)', ha='center', va='bottom', fontsize=fs)
+        ncol = args.legend_cols or len(labels)
+        rows = -(-len(labels) // ncol)
         fig.legend(handles, labels, loc='lower center',
                    bbox_to_anchor=(.5, max(a.get_position().y1 for a in axes) + .012),
-                   ncol=len(labels), frameon=False, handlelength=1.0, handletextpad=.4,
+                   ncol=ncol, frameon=False, handlelength=1.0, handletextpad=.4,
                    columnspacing=.8, borderpad=0, borderaxespad=.1, fontsize=fs - 1)
         for extension in ('pdf', 'svg', 'png'):
             fig.savefig(output / f'{path}{args.suffix}.{extension}', dpi=300)

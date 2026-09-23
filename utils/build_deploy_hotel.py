@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parents[1]
 APP = REPO / "examples/dsb_hotel"
 SERVICES = ("frontend", "search", "geo", "rate", "profile", "recomd", "user", "reserv")
 SPECS = [f"docker_{kind}{storage}" for kind in ("pb", "cgpb", "sb", "v")
-         for storage in ("", "_es")] + ["docker_rc_es"]
+         for storage in ("", "_es")] + ["docker_rc_es", "docker_nt_es"]  # Tomislav-RetCtx: + no-tracing baseline
 
 
 def run(command, **kwargs):

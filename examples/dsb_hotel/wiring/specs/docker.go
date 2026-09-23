@@ -30,7 +30,20 @@ var (
 	DockerSBES   = makeVariant("sb", true)
 	DockerVES    = makeVariant("v", true)
 	DockerRCES   = makeVariant("rc", true)
+	// Tomislav-RetCtx: no-tracing baseline (vanilla collector config; collector pods idle).
+	DockerNTES = makeVariantNT()
 )
+
+func makeVariantNT() cmdbuilder.SpecOption {
+	return cmdbuilder.SpecOption{
+		Name:        "docker_nt_es",
+		Description: "Hotel Reservation with NO tracing (OTel SDK not instrumented); collector/Jaeger/ES deployed idle",
+		Build: func(spec wiring.WiringSpec) ([]string, error) {
+			configureRuntime("nt")
+			return makeHotelSpec(spec, "hotel_nt_es"+*extraSuffix, true, *withWorkload, collectorConfig("v"), false)
+		},
+	}
+}
 
 func makeVariant(kind string, useES bool) cmdbuilder.SpecOption {
 	variant := kind
@@ -42,7 +55,7 @@ func makeVariant(kind string, useES bool) cmdbuilder.SpecOption {
 		Description: fmt.Sprintf("Hotel Reservation with %s tracing through otelcol; Elasticsearch=%t", kind, useES),
 		Build: func(spec wiring.WiringSpec) ([]string, error) {
 			configureRuntime(kind)
-			return makeHotelSpec(spec, "hotel_"+variant+*extraSuffix, useES, *withWorkload, collectorConfig(kind))
+			return makeHotelSpec(spec, "hotel_"+variant+*extraSuffix, useES, *withWorkload, collectorConfig(kind), true)
 		},
 	}
 }

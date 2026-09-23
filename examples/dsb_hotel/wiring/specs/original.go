@@ -33,10 +33,15 @@ var Original = cmdbuilder.SpecOption{
 
 func makeOriginalSpec(spec wiring.WiringSpec) ([]string, error) {
 	configureRuntime("pb")
-	return makeHotelSpec(spec, "", false, true, collectorConfig("pb"))
+	return makeHotelSpec(spec, "", false, true, collectorConfig("pb"), true)
 }
 
-func makeHotelSpec(spec wiring.WiringSpec, suffix string, useES, includeWorkload bool, configPath string) ([]string, error) {
+// Tomislav-RetCtx: instrument=false builds the NO-TRACING baseline (docker_nt_es): identical
+// topology, backends, gRPC/HTTP deployment and Go runtime to the traced variants, but no
+// opentelemetry.Instrument, so services create no spans, propagate no context and run no
+// exporter. The otelcol/jaeger/ES pods are still deployed and sit idle, so nt vs v differs in
+// exactly the app-side SDK (same construction as examples/dsb_sn/wiring/specs/docker_nt.go).
+func makeHotelSpec(spec wiring.WiringSpec, suffix string, useES, includeWorkload bool, configPath string, instrument bool) ([]string, error) {
 	if err := validateOptions(); err != nil {
 		return nil, err
 	}
@@ -72,43 +77,43 @@ func makeHotelSpec(spec wiring.WiringSpec, suffix string, useES, includeWorkload
 
 	// Define internal services
 	user_service := workflow.Service[hotelreservation.UserService](spec, sn("user_service"), user_db)
-	user_ctr := applyDefaults(spec, user_service, trace_collector)
+	user_ctr := applyDefaults(spec, user_service, trace_collector, instrument)
 	cntrs = append(cntrs, user_ctr)
 	allServices = append(allServices, user_service)
 
 	recomd_service := workflow.Service[hotelreservation.RecommendationService](spec, sn("recomd_service"), recommendations_db)
-	recomd_ctr := applyDefaults(spec, recomd_service, trace_collector)
+	recomd_ctr := applyDefaults(spec, recomd_service, trace_collector, instrument)
 	cntrs = append(cntrs, recomd_ctr)
 	allServices = append(allServices, recomd_service)
 
 	reserv_service := workflow.Service[hotelreservation.ReservationService](spec, sn("reserv_service"), reserv_cache, reserv_db)
-	reserv_ctr := applyDefaults(spec, reserv_service, trace_collector)
+	reserv_ctr := applyDefaults(spec, reserv_service, trace_collector, instrument)
 	cntrs = append(cntrs, reserv_ctr)
 	allServices = append(allServices, reserv_service)
 
 	geo_service := workflow.Service[hotelreservation.GeoService](spec, sn("geo_service"), geo_db)
-	geo_ctr := applyDefaults(spec, geo_service, trace_collector)
+	geo_ctr := applyDefaults(spec, geo_service, trace_collector, instrument)
 	cntrs = append(cntrs, geo_ctr)
 	allServices = append(allServices, geo_service)
 
 	rate_service := workflow.Service[hotelreservation.RateService](spec, sn("rate_service"), rate_cache, rate_db)
-	rate_ctr := applyDefaults(spec, rate_service, trace_collector)
+	rate_ctr := applyDefaults(spec, rate_service, trace_collector, instrument)
 	cntrs = append(cntrs, rate_ctr)
 	allServices = append(allServices, rate_service)
 
 	profile_service := workflow.Service[hotelreservation.ProfileService](spec, sn("profile_service"), profile_cache, profile_db)
-	profile_ctr := applyDefaults(spec, profile_service, trace_collector)
+	profile_ctr := applyDefaults(spec, profile_service, trace_collector, instrument)
 	cntrs = append(cntrs, profile_ctr)
 	allServices = append(allServices, profile_service)
 
 	search_service := workflow.Service[hotelreservation.SearchService](spec, sn("search_service"), geo_service, rate_service)
-	search_ctr := applyDefaults(spec, search_service, trace_collector)
+	search_ctr := applyDefaults(spec, search_service, trace_collector, instrument)
 	cntrs = append(cntrs, search_ctr)
 	allServices = append(allServices, search_service)
 
 	// Define frontend service
 	frontend_service := workflow.Service[hotelreservation.FrontEndService](spec, sn("frontend_service"), search_service, profile_service, recomd_service, user_service, reserv_service)
-	frontend_ctr := applyHTTPDefaults(spec, frontend_service, trace_collector)
+	frontend_ctr := applyHTTPDefaults(spec, frontend_service, trace_collector, instrument)
 	cntrs = append(cntrs, frontend_ctr)
 	allServices = append(allServices, frontend_service)
 
@@ -123,19 +128,23 @@ func makeHotelSpec(spec wiring.WiringSpec, suffix string, useES, includeWorkload
 	return cntrs, nil
 }
 
-func applyDefaults(spec wiring.WiringSpec, serviceName string, collectorName string) string {
+func applyDefaults(spec wiring.WiringSpec, serviceName string, collectorName string, instrument bool) string {
 	procName := fmt.Sprintf("%s_proc", serviceName)
 	ctrName := fmt.Sprintf("%s_ctr", serviceName)
-	opentelemetry.Instrument(spec, serviceName, collectorName)
+	if instrument {
+		opentelemetry.Instrument(spec, serviceName, collectorName)
+	}
 	grpc.DeployWithTimeout(spec, serviceName, *rpcTimeout)
 	goproc.CreateProcess(spec, procName, serviceName)
 	return linuxcontainer.CreateContainer(spec, ctrName, procName)
 }
 
-func applyHTTPDefaults(spec wiring.WiringSpec, serviceName string, collectorName string) string {
+func applyHTTPDefaults(spec wiring.WiringSpec, serviceName string, collectorName string, instrument bool) string {
 	procName := fmt.Sprintf("%s_proc", serviceName)
 	ctrName := fmt.Sprintf("%s_ctr", serviceName)
-	opentelemetry.Instrument(spec, serviceName, collectorName)
+	if instrument {
+		opentelemetry.Instrument(spec, serviceName, collectorName)
+	}
 	http.Deploy(spec, serviceName)
 	goproc.CreateProcess(spec, procName, serviceName)
 	return linuxcontainer.CreateContainer(spec, ctrName, procName)
