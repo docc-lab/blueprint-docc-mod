@@ -148,6 +148,8 @@ func TestCheckpointTTLPaths(t *testing.T) {
 						t.Fatal("OnStart exported an unfinished span")
 					}
 					oldHP := len(hp)
+					// Tomislav-RetCtx: the wire state is freed at OnEnd; read the payload first.
+					wantEmit, _ := decodeBR(checkpointSpanAttribute(span, AttrBREmit))
 					span.End()
 					hp, lp = snapshot()
 					if len(hp)+len(lp) != depth+1 || (len(hp) > oldHP) != checkpoint {
@@ -164,8 +166,7 @@ func TestCheckpointTTLPaths(t *testing.T) {
 							t.Fatalf("internal TTL carrier leaked: %s", attr.Key)
 						}
 						if attr.Key == AttrBREmit {
-							emit, _ := decodeBR(checkpointSpanAttribute(span, AttrBREmit))
-							if !checkpoint || !bytes.Equal(attr.Value.GetBytesValue(), emit) {
+							if !checkpoint || !bytes.Equal(attr.Value.GetBytesValue(), wantEmit) {
 								t.Fatal("export truss changed or emitted early")
 							}
 						}

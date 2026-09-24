@@ -435,7 +435,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if baggage == nil {
 		baggage = make(map[string]string)
 	}
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
+	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
+	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
 		for _, attr := range rwSpan.Attributes() {
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
@@ -582,7 +584,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if baggage == nil {
 		baggage = make(map[string]string)
 	}
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
+	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
+	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
@@ -743,7 +747,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if baggage == nil {
 		baggage = make(map[string]string)
 	}
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
+	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
+	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
@@ -865,7 +871,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if baggage == nil {
 		baggage = make(map[string]string)
 	}
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
+	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
+	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
@@ -992,7 +1000,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	if baggage == nil {
 		baggage = make(map[string]string)
 	}
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
+	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
+	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.

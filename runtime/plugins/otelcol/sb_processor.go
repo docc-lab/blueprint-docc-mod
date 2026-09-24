@@ -660,14 +660,11 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	}
 	propagation := packStructuralBR(depth, anchor, distance, filter.Bytes(), ha, propTail)
 
-	s.SetAttributes(
-		attribute.Int(AttrBagPrio, priority),
-		attribute.String(AttrBR, encodeBR(p.checkpointRange.wrap(outgoingTTL, propagation))),
-		attribute.String(AttrBREmit, encodeBR(emit)),
-		attribute.String(AttrO, encodeBR(varintEncode(seqNum))),
-		attribute.String(AttrD, encodeBR(varintEncode(depth))),
-		attribute.Int("depth", depth),
-	)
+	// Tomislav-RetCtx: nothing goes on the OTel span. The outgoing propagation reaches the RPC
+	// wrappers through backend.AppendSpanBaggage; the export payload, ordinal, depth and
+	// scheduling decision stay beside the span (wire_state.go).
+	bridgeWires.store(sid, &bridgeWire{emit: emit, depth: depth, priority: priority == 1, structural: true, ordinal: seqNum,
+		prop: encodeBR(p.checkpointRange.wrap(outgoingTTL, propagation))})
 	if spanPadding != "" {
 		// Artificial per-span byte inflation (SPAN_PADDING_BYTES env).
 		// Goes on the wire — convertAttributes does not strip it.
@@ -694,7 +691,11 @@ func (p *StructuralBridgeProcessor) delayedQueue() chan structuralDelayed {
 // The checkpoint decision itself is the shared PB/CGPB rule (scheduled window
 // checkpoint, or a childless server span, unless rejected by the reverse SDK).
 func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
-	for _, attr := range s.Attributes() {
+	// Tomislav-RetCtx: one attribute read serves the DEE summary, classification and
+	// conversion; the span's wire state is taken (and freed) here.
+	attrs := s.Attributes()
+	w := bridgeWires.take(s.SpanContext().SpanID())
+	for _, attr := range attrs {
 		if attr.Key != "remEndEvents" {
 			continue
 		}
@@ -711,7 +712,7 @@ func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 		}
 	}
 	// Tomislav-RetCtx: apply reverse decisions without changing the DEE queue.
-	p.routeToPipeline(s, p.isCheckpoint(s))
+	p.routeToPipeline(s, attrs, w, structuralCheckpoint(s.SpanKind(), attrs, w))
 }
 
 // routeToPipeline builds the ResourceSpans envelope and appends it to
@@ -720,7 +721,7 @@ func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 // wire iff highPriority — that PRESENCE is the priority signal the
 // collector-side priority processor reads. The SDK itself no longer
 // treats priorities differently at the export layer.
-func (p *StructuralBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, highPriority bool) {
+func (p *StructuralBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWire, highPriority bool) {
 	atomic.AddInt64(&p.spansReceived, 1)
 	if highPriority {
 		atomic.AddInt64(&p.cpReceived, 1)
@@ -734,7 +735,7 @@ func (p *StructuralBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, hig
 	p.resourceOnce.Do(func() {
 		p.resource = p.convertResourceToProto(s.Resource())
 	})
-	spanProto := p.buildSpanProto(s, highPriority)
+	spanProto := p.buildSpanProto(s, attrs, w, highPriority)
 	entry := sbBufEntry{
 		span:         spanProto,
 		scope:        s.InstrumentationScope(),
@@ -759,7 +760,7 @@ func (p *StructuralBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, hig
 // highPriority is threaded through to convertAttributes which keeps the
 // `_br` breadcrumb attribute iff highPriority (that presence is the
 // collector's priority signal).
-func (p *StructuralBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, highPriority bool) *tracepb.Span {
+func (p *StructuralBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWire, highPriority bool) *tracepb.Span {
 	traceID := s.SpanContext().TraceID()
 	spanID := s.SpanContext().SpanID()
 
@@ -776,7 +777,7 @@ func (p *StructuralBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, high
 		Name:              name,
 		Kind:              p.convertSpanKind(s.SpanKind()),
 		Status:            p.convertStatus(s.Status()),
-		Attributes:        p.convertAttributes(s.Attributes(), highPriority),
+		Attributes:        appendBridgeWire(p.convertAttributes(attrs, highPriority), w, highPriority),
 		Events:            p.convertEvents(s.Events()),
 		Links:             p.convertLinks(s.Links()),
 	}

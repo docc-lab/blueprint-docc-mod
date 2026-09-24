@@ -121,6 +121,17 @@ func (bf *BloomFilter) AddPrehashed(data []byte) {
 	bf.setBits(h1, h2)
 }
 
+// SetPrehashed sets data's k bits in a caller-owned bit array of m bits -- exactly what
+// NewFromBytes(bits).AddPrehashed(data) followed by Bytes() produces, without the filter
+// object or the copies. Tomislav-RetCtx.
+func SetPrehashed(bits []byte, m uint64, k uint, data []byte) {
+	h1, h2 := splitHashes(data)
+	for i := uint(0); i < k; i++ {
+		bitIndex := (h1 + uint64(i)*h2) % m
+		bits[bitIndex/8] |= 1 << (bitIndex % 8)
+	}
+}
+
 // TestPrehashed is the get-counterpart of AddPrehashed: it derives (h1,h2)
 // directly from the (random) input bytes with no MurmurHash pass. Must be used
 // against filters populated with AddPrehashed (same derivation on both sides).

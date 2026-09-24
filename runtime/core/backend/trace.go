@@ -41,10 +41,14 @@ type traceCtxWithBaggage struct {
 
 // Utility function to convert an encoded string into a Span Context
 func GetSpanContext(encoded_string string) (trace.SpanContextConfig, map[string]string, error) {
-	var tCtx traceCtxWithBaggage
-	err := json.Unmarshal([]byte(encoded_string), &tCtx)
-	if err != nil {
-		return trace.SpanContextConfig{}, nil, err
+	// Tomislav-RetCtx: the carriers the wrappers send decode without reflection
+	// (carrier_json.go); anything else goes through encoding/json as before.
+	tCtx, fast := parseCarrierFast(encoded_string)
+	if !fast {
+		tCtx = traceCtxWithBaggage{}
+		if err := json.Unmarshal([]byte(encoded_string), &tCtx); err != nil {
+			return trace.SpanContextConfig{}, nil, err
+		}
 	}
 	tid, err := trace.TraceIDFromHex(tCtx.TraceCtx.TraceID)
 	if err != nil {
@@ -74,6 +78,10 @@ func GetSpanContext(encoded_string string) (trace.SpanContextConfig, map[string]
 
 // AddBaggageToTraceContext takes an already JSON-ified trace context string and adds baggage to it
 func AddBaggageToTraceContext(traceContextJSON string, baggage map[string]string) (string, error) {
+	// Tomislav-RetCtx: reflection-free fast path, same bytes (carrier_json.go).
+	if out, ok := addBaggageFast(traceContextJSON, baggage); ok {
+		return out, nil
+	}
 	// Construct the combined JSON directly
 	combined := map[string]interface{}{
 		"trace_ctx": json.RawMessage(traceContextJSON),

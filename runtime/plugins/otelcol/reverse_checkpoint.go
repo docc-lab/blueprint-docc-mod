@@ -102,6 +102,12 @@ func wrapReverseCheckpointProcessor(next sdktrace.SpanProcessor) sdktrace.SpanPr
 
 func (p *reverseCheckpointProcessor) OnStart(parent context.Context, span sdktrace.ReadWriteSpan) {
 	p.SpanProcessor.OnStart(parent, span)
+	// Tomislav-RetCtx: the ranged PB/CGPB window records depth and the scheduling decision
+	// beside the span (wire_state.go); no attribute scan needed.
+	if w := bridgeWires.load(span.SpanContext().SpanID()); w != nil {
+		w.rev = reverseSpanState{depth: uint64(w.depth), scheduled: w.priority}
+		return
+	}
 	depth := uint64(0)
 	if value := backend.GetBaggageFromContext(parent)[reverseDepthBaggageKey]; value != "" {
 		if n, err := strconv.ParseUint(value, 10, 64); err == nil && n < math.MaxUint64 {
@@ -136,13 +142,17 @@ func (p *reverseCheckpointProcessor) OnStart(parent context.Context, span sdktra
 	})
 }
 
-// OnEnd releases the per-span state after the bridge processor has exported.
+// OnEnd releases the per-span state after the bridge processor has exported. (Bridge spans
+// keep it in their wire entry, which the bridge's OnEnd frees.)
 func (p *reverseCheckpointProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	p.SpanProcessor.OnEnd(s)
-	p.states.delete(s.SpanContext().SpanID())
+	p.states.delete(s.SpanContext().SpanID()) // spans without a wire entry (vanilla, legacy fixed mode)
 }
 
 func (p *reverseCheckpointProcessor) state(id trace.SpanID) *reverseSpanState {
+	if w := bridgeWires.load(id); w != nil {
+		return &w.rev
+	}
 	if state := p.states.load(id); state != nil {
 		return state
 	}
@@ -176,13 +186,25 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 	// they still come off the span -- one scan, where there used to be several.
 	var truss []byte
 	var forceLP bool
-	attrs := s.Attributes()
-	for _, attr := range attrs {
-		switch attr.Key {
-		case AttrBREmit:
-			truss, _ = decodeBR(attr.Value.AsString())
-		case AttrForceLP:
-			forceLP = p.kind == backend.SegStructuralCheckpoint && attr.Value.AsBool()
+	var attrs []attribute.KeyValue
+	// Tomislav-RetCtx: the ranged window's truss is the raw emit payload beside the span;
+	// attributes are read only for what still lives there (SB's force_lp, the children
+	// markers a server-leaf rejection checks, or a legacy bridge with no wire state).
+	w := bridgeWires.load(s.SpanContext().SpanID())
+	if w != nil {
+		truss = w.emit
+	}
+	if w == nil || p.kind == backend.SegStructuralCheckpoint || s.SpanKind() == trace.SpanKindServer {
+		attrs = s.Attributes()
+		for _, attr := range attrs {
+			switch attr.Key {
+			case AttrBREmit:
+				if w == nil {
+					truss, _ = decodeBR(attr.Value.AsString())
+				}
+			case AttrForceLP:
+				forceLP = p.kind == backend.SegStructuralCheckpoint && attr.Value.AsBool()
+			}
 		}
 	}
 	root := depth == 0 || (p.root && s.SpanKind() == trace.SpanKindServer)
@@ -230,8 +252,17 @@ type checkpointTracerProvider struct {
 
 // isPathCheckpoint is shared by PB/CGPB finalization and export classification.
 func isPathCheckpoint(s sdktrace.ReadOnlySpan) bool {
+	return pathCheckpoint(s.SpanKind(), s.Attributes(), bridgeWires.load(s.SpanContext().SpanID()))
+}
+
+// pathCheckpoint classifies from the attribute slice the caller already holds. The scheduling
+// decision comes from the span's wire state when the ranged window recorded one
+// (Tomislav-RetCtx, wire_state.go), else from the legacy __bag.prio attribute.
+func pathCheckpoint(kind trace.SpanKind, attrs []attribute.KeyValue, w *bridgeWire) bool {
 	var priority, hasPriority, rejected, reverseCheckpoint bool
-	attrs := s.Attributes()
+	if w != nil {
+		priority, hasPriority = w.priority, true
+	}
 	for _, attr := range attrs {
 		switch attr.Key {
 		case checkpointRejectedAttribute:
@@ -242,7 +273,7 @@ func isPathCheckpoint(s sdktrace.ReadOnlySpan) bool {
 			priority, hasPriority = attr.Value.AsInt64() == 1, true
 		}
 	}
-	return reverseCheckpoint || (!rejected && hasPriority && (priority || (s.SpanKind() == trace.SpanKindServer && !spanHasChildrenIn(attrs))))
+	return reverseCheckpoint || (!rejected && hasPriority && (priority || (kind == trace.SpanKindServer && !spanHasChildrenIn(attrs))))
 }
 
 func isScheduledPathCheckpoint(attrs []attribute.KeyValue) bool {
@@ -273,6 +304,17 @@ func spanHasChildrenIn(attrs []attribute.KeyValue) bool {
 		}
 	}
 	return false
+}
+
+// structuralCheckpoint is SB's classification from the attribute slice the caller holds:
+// the PB/CGPB window classification, with force_lp keeping synthetic pressure spans ordinary.
+func structuralCheckpoint(kind trace.SpanKind, attrs []attribute.KeyValue, w *bridgeWire) bool {
+	for _, attr := range attrs {
+		if attr.Key == AttrForceLP && attr.Value.AsBool() {
+			return false
+		}
+	}
+	return pathCheckpoint(kind, attrs, w)
 }
 
 func (p *StructuralBridgeProcessor) isCheckpoint(s sdktrace.ReadOnlySpan) bool {

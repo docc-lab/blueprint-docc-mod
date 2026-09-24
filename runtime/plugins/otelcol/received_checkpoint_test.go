@@ -19,6 +19,18 @@ func checkpointSpanAttribute(span trace.Span, key attribute.Key) string {
 			return attr.Value.AsString()
 		}
 	}
+	// Tomislav-RetCtx: the ranged PB/CGPB window keeps `_br` / `_d` beside the span
+	// (wire_state.go) until OnEnd; report them in their former carrier encoding.
+	if w := bridgeWires.load(span.SpanContext().SpanID()); w != nil {
+		switch key {
+		case AttrBR:
+			return w.prop
+		case AttrBREmit:
+			return encodeBR(w.emit)
+		case AttrD:
+			return encodeBR(varintEncode(w.depth))
+		}
+	}
 	return ""
 }
 

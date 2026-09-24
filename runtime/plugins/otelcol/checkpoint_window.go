@@ -6,7 +6,6 @@ import (
 
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/bloom"
-	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -93,8 +92,6 @@ func onStartCheckpointWindow(parent context.Context, s sdktrace.ReadWriteSpan, r
 		distance = int(outgoingTTL) + 1
 		inherited, parentHA = nil, nil
 	}
-	geometry := checkpointBlooms[distance-1]
-	filter := bloom.NewFromBytes(inherited, geometry.m, geometry.k)
 	var ha []byte
 	if callGraph && hasParent {
 		seq, _ := parent.Value("seqNum").(int)
@@ -106,25 +103,62 @@ func onStartCheckpointWindow(parent context.Context, s sdktrace.ReadWriteSpan, r
 	}
 
 	// Retain the old window and its geometry for OnEnd and reverse rejection.
-	emit := packCheckpointWindowBR(depth, anchor, distance, filter.Bytes(), ha)
-	priority := 0
 	sid := s.SpanContext().SpanID()
-	if isCheckpoint {
-		priority = 1
-		anchor = [8]byte(sid)
-		distance = int(outgoingTTL) + 1
-		geometry = checkpointBlooms[distance-1]
-		filter = bloom.New(geometry.m, geometry.k)
-		ha = nil
-	} else {
-		filter.AddPrehashed(sid[:])
+	emit, wrapped := encodeWindowPayloads(r, depth, anchor, distance, inherited, ha, isCheckpoint, outgoingTTL, sid)
+	// Tomislav-RetCtx: nothing goes on the OTel span. The outgoing propagation reaches the RPC
+	// wrappers through backend.AppendSpanBaggage; the export payload, depth and scheduling
+	// decision stay beside the span as raw bytes (wire_state.go).
+	bridgeWires.store(sid, &bridgeWire{emit: emit, depth: depth, priority: isCheckpoint, prop: encodeBR(wrapped)})
+}
+
+// encodeWindowPayloads builds the span's export payload (the window it inherited) and its
+// outgoing propagation (TTL-wrapped in range mode): a checkpoint re-anchors on itself with an
+// empty window of the newly drawn distance; any other span adds itself to the inherited window.
+// Tomislav-RetCtx: both are written into one buffer, with the inherited Bloom bits copied once
+// and this span's bits set in place -- the same bytes the filter-object path produced
+// (packCheckpointWindowBR over NewFromBytes/AddPrehashed/Bytes and r.wrap), which
+// checkpoint_window_encode_test.go checks against that path.
+func encodeWindowPayloads(r checkpointRange, depth int, anchor [8]byte, distance int, inherited, ha []byte,
+	isCheckpoint bool, outgoingTTL byte, sid trace.SpanID) (emit, wrapped []byte) {
+	geometry := checkpointBlooms[distance-1]
+	if len(inherited) != geometry.bytes { // NewFromBytes: anything but an exact-size window starts empty
+		inherited = nil
 	}
-	propagation := packCheckpointWindowBR(depth, anchor, distance, filter.Bytes(), ha)
-	s.SetAttributes(
-		attribute.Int(AttrBagPrio, priority),
-		attribute.String(AttrBR, encodeBR(r.wrap(outgoingTTL, propagation))),
-		attribute.String(AttrBREmit, encodeBR(emit)),
-		attribute.String(AttrD, encodeBR(varintEncode(depth))),
-		attribute.Int("depth", depth),
-	)
+	propAnchor, propDistance, propGeometry, propInherited, propHA := anchor, distance, geometry, inherited, ha
+	if isCheckpoint {
+		propAnchor, propDistance, propHA, propInherited = [8]byte(sid), int(outgoingTTL)+1, nil, nil
+		propGeometry = checkpointBlooms[propDistance-1]
+	}
+	head := varintLen(depth) + 9
+	emitLen := head + geometry.bytes + len(ha)
+	ttlLen := 0
+	if r.enabled() {
+		ttlLen = 1
+	}
+	buf := make([]byte, 0, emitLen+ttlLen+head+propGeometry.bytes+len(propHA))
+	buf = appendWindowBR(buf, depth, anchor, distance, inherited, geometry.bytes, ha)
+	emit = buf[:emitLen:emitLen]
+	if ttlLen == 1 {
+		buf = append(buf, outgoingTTL)
+	}
+	bloomAt := len(buf) + head
+	buf = appendWindowBR(buf, depth, propAnchor, propDistance, propInherited, propGeometry.bytes, propHA)
+	if !isCheckpoint {
+		bloom.SetPrehashed(buf[bloomAt:bloomAt+geometry.bytes], geometry.m, geometry.k, sid[:])
+	}
+	return emit, buf[emitLen:]
+}
+
+// appendWindowBR appends the range-mode truss with bloomLen Bloom bytes: the given bits, or
+// zeros when bits is nil.
+func appendWindowBR(dst []byte, depth int, ckpt [8]byte, distance int, bits []byte, bloomLen int, ha []byte) []byte {
+	dst = binary.AppendUvarint(dst, uint64(depth))
+	dst = append(dst, ckpt[:]...)
+	dst = append(dst, byte(distance-1))
+	if bits != nil {
+		dst = append(dst, bits...)
+	} else {
+		dst = append(dst, make([]byte, bloomLen)...)
+	}
+	return append(dst, ha...)
 }

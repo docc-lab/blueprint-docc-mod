@@ -212,6 +212,8 @@ func TestStructuralBridgeFanOutTrusses(t *testing.T) {
 	// Three children start in order 1,2,3; child 2 ends before child 3 starts.
 	_, c1 := tracer.Start(sbChildContext(root, state), "c1", trace.WithSpanKind(trace.SpanKindClient))
 	_, c2 := tracer.Start(sbChildContext(root, state), "c2", trace.WithSpanKind(trace.SpanKindClient))
+	// Tomislav-RetCtx: the wire state is freed at OnEnd; read c2's payload first.
+	c2Emit := checkpointSpanAttribute(c2, AttrBREmit)
 	c2.End()
 	state.mu.Lock()
 	state.ends = append(state.ends, 2)
@@ -220,7 +222,11 @@ func TestStructuralBridgeFanOutTrusses(t *testing.T) {
 	_, c3 := tracer.Start(ctx3, "c3", trace.WithSpanKind(trace.SpanKindClient))
 
 	decode := func(span trace.Span, key attribute.Key) (int, [8]byte, int, []byte, []byte, structuralTail) {
-		raw, ok := decodeBR(checkpointSpanAttribute(span, key))
+		encoded := checkpointSpanAttribute(span, key)
+		if span == c2 && key == AttrBREmit {
+			encoded = c2Emit
+		}
+		raw, ok := decodeBR(encoded)
 		if !ok {
 			t.Fatalf("missing %s", key)
 		}

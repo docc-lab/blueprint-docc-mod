@@ -80,12 +80,8 @@ func TestSDKReturnsCheckpointWithoutDroppingSpan(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			provider, buffered := checkpointTestProvider(kind)
 			_, span := provider.Tracer("test").Start(checkpointParentContext(kind, 129), "leaf", trace.WithSpanKind(trace.SpanKindServer))
-			var expectedTruss []byte
-			for _, attr := range span.(sdktrace.ReadWriteSpan).Attributes() {
-				if attr.Key == AttrBREmit {
-					expectedTruss, _ = decodeBR(attr.Value.AsString())
-				}
-			}
+			// Tomislav-RetCtx: ranged bridges keep `_br` beside the span (wire_state.go).
+			expectedTruss, _ := decodeBR(checkpointSpanAttribute(span, AttrBREmit))
 			// Tomislav-RetCtx: the carrier comes back from PrepareCheckpoint now; it is
 			// no longer parked on the span as a __bag. attribute for the caller to find.
 			retCtx, _ := backend.PrepareCheckpoint(provider, span, "")

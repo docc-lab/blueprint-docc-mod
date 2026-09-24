@@ -539,13 +539,16 @@ func (p *PathBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWri
 
 // OnEnd implements SpanProcessor.OnEnd
 func (p *PathBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
-	// Tomislav-RetCtx: honor SDK rejection/receipt decisions at export.
-	p.routeToPipeline(s, isPathCheckpoint(s))
+	// Tomislav-RetCtx: honor SDK rejection/receipt decisions at export. One attribute read
+	// serves classification and conversion; the window's wire state is taken (and freed) here.
+	attrs := s.Attributes()
+	w := bridgeWires.take(s.SpanContext().SpanID())
+	p.routeToPipeline(s, attrs, w, pathCheckpoint(s.SpanKind(), attrs, w))
 }
 
 // routeToPipeline classifies and buffers the span, capturing the shared
 // Resource on first use and counting per-priority received totals.
-func (p *PathBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, highPriority bool) {
+func (p *PathBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWire, highPriority bool) {
 	atomic.AddInt64(&p.spansReceived, 1)
 	if highPriority {
 		atomic.AddInt64(&p.cpReceived, 1)
@@ -555,7 +558,7 @@ func (p *PathBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, highPrior
 	p.resourceOnce.Do(func() {
 		p.resource = p.convertResourceToProto(s.Resource())
 	})
-	spanProto := p.buildSpanProto(s, highPriority)
+	spanProto := p.buildSpanProto(s, attrs, w, highPriority)
 	entry := sbBufEntry{
 		span:         spanProto,
 		scope:        s.InstrumentationScope(),
@@ -577,7 +580,7 @@ func (p *PathBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, highPrior
 // The Resource and ScopeSpans envelopes are added at flush time so one
 // ResourceSpans wraps many spans. highPriority is threaded through to
 // convertAttributes which keeps `_br` iff highPriority and `_d` otherwise.
-func (p *PathBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, highPriority bool) *tracepb.Span {
+func (p *PathBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWire, highPriority bool) *tracepb.Span {
 	traceID := s.SpanContext().TraceID()
 	spanID := s.SpanContext().SpanID()
 
@@ -589,7 +592,7 @@ func (p *PathBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, highPriori
 		Name:              s.Name(),
 		Kind:              p.convertSpanKind(s.SpanKind()),
 		Status:            p.convertStatus(s.Status()),
-		Attributes:        p.convertAttributes(s.Attributes(), highPriority),
+		Attributes:        appendBridgeWire(p.convertAttributes(attrs, highPriority), w, highPriority),
 		Events:            p.convertEvents(s.Events()),
 		Links:             p.convertLinks(s.Links()),
 	}
