@@ -39,7 +39,8 @@ func wrapperBaggage(ctx context.Context, span trace.Span, seq int) map[string]st
 		baggage[k] = v
 	}
 	baggage["__seq"] = strconv.Itoa(seq)
-	if rw, ok := span.(sdktrace.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
+	backend.AppendSpanBaggage(span, baggage)
+	if rw, ok := span.(sdktrace.ReadWriteSpan); ok {
 		for _, attr := range rw.Attributes() {
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
@@ -163,3 +164,30 @@ func BenchmarkRequestPB(b *testing.B)          { benchRequest(b, "pb", false) }
 func BenchmarkRequestPBReverse(b *testing.B)   { benchRequest(b, "pb", true) }
 func BenchmarkRequestCGPBReverse(b *testing.B) { benchRequest(b, "cgpb", true) }
 func BenchmarkRequestSBReverse(b *testing.B)   { benchRequest(b, "sb", true) }
+
+// Tomislav-RetCtx: arbitrary baggage still propagates on bridge spans. The bridge's own `_br`
+// comes from its wire state (backend.AppendSpanBaggage); any other producer's "__bag." attribute
+// still reaches the outgoing baggage and "__bagdel." still removes an upstream key.
+func TestBridgeSpanKeepsArbitraryAttributeBaggage(t *testing.T) {
+	t.Setenv("REVERSE_TRUSS", "off")
+	for _, kind := range []string{"pb", "cgpb", "sb"} {
+		tp, _ := requestHarness(kind, false)
+		parent := backend.SetBaggageInContext(context.Background(), map[string]string{"upstream": "u", "gone": "g"})
+		ctx, span := tp.Tracer("t").Start(parent, "client", trace.WithSpanKind(trace.SpanKindClient))
+		span.SetAttributes(attribute.String("__bag.custom", "x"), attribute.Int("__bag.n", 7), attribute.Bool("__bagdel.gone", true))
+		got := wrapperBaggage(ctx, span, 1)
+		w := bridgeWires.load(span.SpanContext().SpanID())
+		if w == nil || got[BaggageBRKey] != w.prop || got["custom"] != "x" || got["n"] != "7" || got["upstream"] != "u" || got["__seq"] != "1" {
+			t.Fatalf("%s: baggage %v", kind, got)
+		}
+		if _, ok := got["gone"]; ok {
+			t.Fatalf("%s: __bagdel ignored: %v", kind, got)
+		}
+		// an explicit "__bag._br" attribute still wins over the SDK's entry, as before
+		span.SetAttributes(attribute.String("__bag._br", "override"))
+		if got := wrapperBaggage(ctx, span, 1); got[BaggageBRKey] != "override" {
+			t.Fatalf("%s: attribute baggage must take precedence: %v", kind, got)
+		}
+		span.End()
+	}
+}

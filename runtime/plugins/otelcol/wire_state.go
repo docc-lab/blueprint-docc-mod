@@ -39,14 +39,13 @@ type bridgeWire struct {
 // bridgeWires is process-wide: one bridge processor per service, and span IDs are unique.
 var bridgeWires = newWireTable()
 
-// The RPC wrappers take a bridge span's outgoing baggage from here instead of scanning its
-// attributes for __bag._br (backend.AppendSpanBaggage).
+// The RPC wrappers merge a bridge span's outgoing `_br` from here (backend.AppendSpanBaggage)
+// before applying the span's `__bag.` attributes, which bridges no longer set.
 func init() {
-	backend.RegisterSpanBaggageSource(func(sc trace.SpanContext) (string, string, bool) {
+	backend.RegisterSpanBaggageSource(func(sc trace.SpanContext, baggage map[string]string) {
 		if w := bridgeWires.load(sc.SpanID()); w != nil {
-			return BaggageBRKey, w.prop, true
+			baggage[BaggageBRKey] = w.prop
 		}
-		return "", "", false
 	})
 }
 

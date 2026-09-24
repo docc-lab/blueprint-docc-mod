@@ -382,9 +382,10 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	defer span.End()
 	
 	// Extract baggage from span attributes by casting to ReadWriteSpan
-	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
-	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
+	// Tomislav-RetCtx: baggage the SDK keeps beside the span first (runtime/core/backend/
+	// span_baggage.go), then the span's "__bag." attributes as always (they take precedence).
+	backend.AppendSpanBaggage(span, baggage)
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
 			if strings.HasPrefix(string(attr.Key), "__bag.") {
 				key := strings.TrimPrefix(string(attr.Key), "__bag.")
@@ -500,9 +501,10 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	defer span.End()
 	
 	// Extract baggage from span attributes by casting to ReadWriteSpan
-	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
-	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
+	// Tomislav-RetCtx: baggage the SDK keeps beside the span first (runtime/core/backend/
+	// span_baggage.go), then the span's "__bag." attributes as always (they take precedence).
+	backend.AppendSpanBaggage(span, baggage)
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
@@ -611,9 +613,10 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	defer span.End()
 
 	// Extract baggage from span attributes by casting to ReadWriteSpan
-	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
-	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
+	// Tomislav-RetCtx: baggage the SDK keeps beside the span first (runtime/core/backend/
+	// span_baggage.go), then the span's "__bag." attributes as always (they take precedence).
+	backend.AppendSpanBaggage(span, baggage)
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
@@ -718,9 +721,10 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	defer span.End()
 	
 	// Extract baggage from span attributes by casting to ReadWriteSpan
-	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
-	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
+	// Tomislav-RetCtx: baggage the SDK keeps beside the span first (runtime/core/backend/
+	// span_baggage.go), then the span's "__bag." attributes as always (they take precedence).
+	backend.AppendSpanBaggage(span, baggage)
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
@@ -825,9 +829,10 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	defer span.End()
 	
 	// Extract baggage from span attributes by casting to ReadWriteSpan
-	// Tomislav-RetCtx: the SDK hands over its propagation state directly when it keeps it
-	// beside the span (runtime/core/backend/span_baggage.go); scan attributes otherwise.
-	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok && !backend.AppendSpanBaggage(span, baggage) {
+	// Tomislav-RetCtx: baggage the SDK keeps beside the span first (runtime/core/backend/
+	// span_baggage.go), then the span's "__bag." attributes as always (they take precedence).
+	backend.AppendSpanBaggage(span, baggage)
+	if rwSpan, ok := span.({{$sdktrace}}.ReadWriteSpan); ok {
 		for _, attr := range rwSpan.Attributes() {
 			if backend.IsReverseBaggageKey(attr.Key) {
 				continue // Tomislav-RetCtx: reverse context travels on the RPC response only.
