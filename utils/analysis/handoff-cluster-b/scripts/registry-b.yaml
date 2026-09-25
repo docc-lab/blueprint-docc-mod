@@ -1,0 +1,41 @@
+# Tomislav-RetCtx: cluster B local registry, same image / port / NodePort 30000 as cluster A's registry/docker-registry;
+# storage is a hostPath on node-0 (A uses the nfs-client provisioner, absent on B).
+# apply:  sudo mkdir -p /storage/registry && kubectl apply -f /storage/retctx-handoff/scripts/registry-b.yaml
+apiVersion: v1
+kind: Namespace
+metadata: {name: registry}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: docker-registry, namespace: registry}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: docker-registry}}
+  template:
+    metadata: {labels: {app: docker-registry}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: node-0}
+      tolerations:
+      - {key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}
+      containers:
+      - name: registry
+        image: registry:2
+        env:
+        - {name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY, value: /var/lib/registry}
+        - {name: REGISTRY_HTTP_ADDR, value: ':5000'}
+        - {name: REGISTRY_STORAGE_DELETE_ENABLED, value: 'true'}
+        - {name: REGISTRY_HTTP_HEADERS, value: 'X-Content-Type-Options: [nosniff]'}
+        ports: [{containerPort: 5000}]
+        readinessProbe: {httpGet: {path: /v2/, port: 5000}, initialDelaySeconds: 5, periodSeconds: 5}
+        volumeMounts: [{name: registry-storage, mountPath: /var/lib/registry}]
+      volumes:
+      - name: registry-storage
+        hostPath: {path: /storage/registry, type: DirectoryOrCreate}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: docker-registry, namespace: registry}
+spec:
+  type: NodePort
+  selector: {app: docker-registry}
+  ports: [{name: registry, port: 30000, targetPort: 5000, nodePort: 30000}]
