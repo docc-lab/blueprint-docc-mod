@@ -30,6 +30,11 @@ const (
 type reversePolicy struct {
 	mode        string
 	probability float64
+	// Tomislav-RetCtx: reverse_passthrough (discovery key, default false). Off: a scheduled
+	// (cpd-assigned) checkpoint terminates every returned truss. On: it routes returned
+	// trusses like any other non-root span -- each segment is emitted there with the policy's
+	// probability (or at TTL 0) and otherwise travels on upstream. The root always terminates.
+	passthrough bool
 }
 
 func parseReversePolicy(config map[string]interface{}) (reversePolicy, error) {
@@ -40,6 +45,13 @@ func parseReversePolicy(config map[string]interface{}) (reversePolicy, error) {
 			return reversePolicy{}, fmt.Errorf("%w: reverse_policy must be a string", errInvalidReversePolicy)
 		}
 		policy.mode = mode
+	}
+	if value, present := config["reverse_passthrough"]; present {
+		passthrough, ok := value.(bool)
+		if !ok {
+			return reversePolicy{}, fmt.Errorf("%w: reverse_passthrough must be a boolean", errInvalidReversePolicy)
+		}
+		policy.passthrough = passthrough
 	}
 	value, hasProbability := config["reverse_probability"]
 	switch policy.mode {
@@ -107,6 +119,12 @@ func (p reversePolicy) probabilityAt(d, n uint64) float64 {
 	default:
 		return 0
 	}
+}
+
+// terminates reports whether a span absorbs every returned truss: the root always, a scheduled
+// checkpoint unless reverse_passthrough is on.
+func (p reversePolicy) terminates(scheduled, root bool) bool {
+	return root || (scheduled && !p.passthrough)
 }
 
 func (p reversePolicy) route(retCtx string, originalCheckpoint bool, depth uint64, draw func() float64) (string, string) {

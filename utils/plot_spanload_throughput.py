@@ -42,6 +42,11 @@ def main():
                         help='inches; 3.33 = one column of a two-column CS conference paper')
     parser.add_argument('--height', type=float, default=1.65)
     parser.add_argument('--fontsize', type=float, default=8)
+    # Tomislav-RetCtx (2026-09-25): a squished figure needs the legend in two columns so it stays below the plateaus
+    parser.add_argument('--legend-ncol', type=int, default=1)
+    parser.add_argument('--legend-panel', type=int, choices=(0, 1), default=0, help='panel that holds the legend')
+    parser.add_argument('--ylabel-break', action='store_true', help='y label on two lines (short figures)')
+    parser.add_argument('--xsteps', type=float, nargs=2, default=None, help='x tick step per panel (k spans/s), e.g. 500 50')
     parser.add_argument('--band', choices=('minmax', 'sd'), default='minmax',
                         help='shaded spread: min-to-max over repetitions (default; n=3 makes a '
                              'sample SD a weak statistic) or +/-1 SD')
@@ -86,12 +91,16 @@ def main():
         axis.set_xlim(left=0)
         axis.grid(alpha=.2)
         axis.spines[['right', 'top']].set_visible(False)
-    axes[0].set_ylabel('Throughput (k spans/s)')
+    if args.xsteps:
+        from matplotlib.ticker import MultipleLocator
+        for axis, step in zip(axes, args.xsteps):
+            axis.xaxis.set_major_locator(MultipleLocator(step))
+    axes[0].set_ylabel('Throughput\n(k spans/s)' if args.ylabel_break else 'Throughput (k spans/s)')
 
     # Legend inside the left panel, lower right: both curves plateau early, so that corner
     # is empty in each panel and the panel titles keep the top strip to themselves.
-    axes[0].legend(loc='lower right', frameon=False, handlelength=1.0, handletextpad=.4,
-                   labelspacing=.22, borderpad=.1, borderaxespad=.3)
+    axes[args.legend_panel].legend(loc='lower right', frameon=False, handlelength=1.0, handletextpad=.4,
+                   labelspacing=.22, borderpad=.1, borderaxespad=.3, ncol=args.legend_ncol, columnspacing=.8)
     band = (fs + 3) / 72 / args.height
     fig.tight_layout(pad=.35, w_pad=.9, rect=(0, band, 1, 1))
     mid = (axes[0].get_position().x0 + axes[1].get_position().x1) / 2

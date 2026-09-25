@@ -95,7 +95,13 @@ def finish_env(documents, kind):
             container['env'] = [e for e in container.get('env', []) if e['name'] not in strip]
 
 
-def prepare(root, collector_image, kinds, stamp):
+def prepare(root, collector_image, kinds, stamp, nowork=False):
+    # Tomislav-RetCtx: nowork = the zero-work variant (workflow/hotelnw, specs docker_<kind>_es_nw, app 'hotelnw':
+    # same topology / backends / instrumentation, no DB/cache/compute; nothing is seeded).
+    global APP, TRACKED_DIRS
+    if nowork:
+        APP = 'hotelnw'
+        TRACKED_DIRS = [d.replace('workflow/hotelreservation', 'workflow/hotelnw') for d in TRACKED_DIRS]
     app = APPS[APP]
     root.mkdir(parents=True)
     (root / 'logs').mkdir()
@@ -104,10 +110,10 @@ def prepare(root, collector_image, kinds, stamp):
     for kind in kinds:
         name = kind
         write_json(root / 'prepare-status.json', {'state': 'running', 'case': name})
-        spec = f'docker_{kind}_es'
+        spec = f'docker_{kind}_es' + ('_nw' if nowork else '')
         suffix = 'hotel_' + spec.removeprefix('docker_') + extra
         variant = suffix.replace('_', '-')
-        build = app_build = REPO / 'examples/dsb_hotel' / f'build_{kind}_hotel_{stamp}'
+        build = app_build = REPO / 'examples/dsb_hotel' / f'build_{kind}_{APP}_{stamp}'
         case = root / 'builds' / name
         case.mkdir(parents=True)
         pin_path = case / 'node-pinning.yaml'
@@ -172,6 +178,11 @@ def prepare(root, collector_image, kinds, stamp):
         'connection_schedule': 'connections = min(ceil(rps^2/20000), 2500); threads = ceil(connections/10) (SN rule)',
         'created': now(),
     }
+    if nowork:
+        plan['application'] = ('DSB HotelReservation, ZERO-WORK variant (examples/dsb_hotel/workflow/hotelnw): same '
+                               'services, interfaces, call graph and deployment; no database/cache/compute (backends '
+                               'wired, idle)')
+        plan['seeding'] = 'none (zero-work services touch no database)'
     write_json(root / 'plan.json', plan)
     # monitor script travels with a campaign; take the SN one (app-agnostic progress file writer)
     shutil.copy2(REPO / 'utils' / 'monitor_nw.py' if (REPO / 'utils/monitor_nw.py').exists()
@@ -186,11 +197,12 @@ if __name__ == '__main__':
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--collector-image', required=True, help='pinned otelcontribcol digest reference')
     parser.add_argument('--kinds', default=','.join(KINDS))
+    parser.add_argument('--nowork', action='store_true', help='zero-work variant (workflow/hotelnw)')
     args = parser.parse_args()
     assert '@sha256:' in args.collector_image
     stamp = args.out.name.rsplit('-', 1)[1].lower()
     try:
-        prepare(args.out.resolve(), args.collector_image, [k for k in args.kinds.split(',') if k], stamp)
+        prepare(args.out.resolve(), args.collector_image, [k for k in args.kinds.split(',') if k], stamp, nowork=args.nowork)
     except Exception as error:
         write_json(args.out / 'prepare-status.json', {'state': 'failed', 'error': str(error)})
         raise

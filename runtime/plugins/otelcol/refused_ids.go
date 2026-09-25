@@ -10,9 +10,25 @@
 // incomplete set), with no trace sampling involved. Everything downstream of the agents is
 // verified loss-free from collector counters (send_failed, enqueue_failed), so this census is
 // complete. Records are append-only so a "from" offset gives the delta between two fetches.
+//
+// Tomislav-RetCtx (2026-09-24): memory is bounded. Unbounded per-trace state was a leak under
+// sustained overload -- every refused trace ID stayed in a global map and slice for the pod's
+// life (hotel no-work vanilla frontend: live heap 82 -> 931 MB over four back-to-back ramps
+// against GOMEMLIMIT 1GiB, GC-bound by the fifth). The per-trace dedup is now a two-generation
+// window (rotated every refusedDedupWindow or refusedDedupCap traces, whichever comes first; a
+// trace's spans are refused within milliseconds of each other, so counts are unchanged in
+// practice), and nothing else is retained: the per-ID records go to an append-only file only when
+// RETCTX_REFUSED_RECORDS_FILE is set (buffered, flushed every second; for offline unions), or to
+// memory only with RETCTX_REFUSED_RECORDS=on (tests / legacy fetch). The campaign reads the
+// counters, which stay cumulative and exact.
+//
+// Tomislav-RetCtx (user 2026-09-24): the per-trace census is OFF by default ("no census stuff during these
+// runs"): a refused batch then only adds its span counts (spans_all / spans_hp: one lock per batch, no map, no
+// log). RETCTX_REFUSED_CENSUS=on restores the per-trace dedup and the traces_* counters for loss experiments.
 package otelcol
 
 import (
+	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"log/slog"
@@ -20,6 +36,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
@@ -35,18 +52,64 @@ type refusedRecord struct {
 	flags uint8
 }
 
-// RefusedTraceIDs is an append-only log of (trace ID, flags) with per-trace dedup.
+// Dedup window bounds: at most 2*refusedDedupCap trace IDs are held at any time.
+const (
+	refusedDedupWindow = 5 * time.Second
+	refusedDedupCap    = 1 << 16
+)
+
+// RefusedTraceIDs counts refused traces with a bounded per-trace dedup window and, optionally,
+// an append-only log of (trace ID, flags).
 type RefusedTraceIDs struct {
-	mu        sync.Mutex
-	seen      map[[16]byte]uint8
-	records   []refusedRecord
-	tracesHP  int
-	tracesAny int
-	spansHP   int64
-	spansAll  int64
+	mu          sync.Mutex
+	census      bool               // per-trace dedup + traces_* counters (RETCTX_REFUSED_CENSUS=on)
+	cur, prev   map[[16]byte]uint8 // two-generation dedup window
+	rotated     time.Time
+	keepRecords bool
+	records     []refusedRecord
+	file        *bufio.Writer // RETCTX_REFUSED_RECORDS_FILE: records appended here instead of memory
+	tracesHP    int
+	tracesAny   int
+	spansHP     int64
+	spansAll    int64
 }
 
-var refusedIDs = &RefusedTraceIDs{seen: map[[16]byte]uint8{}}
+func newRefusedTraceIDs(keepRecords bool) *RefusedTraceIDs {
+	return &RefusedTraceIDs{census: true, cur: map[[16]byte]uint8{}, prev: map[[16]byte]uint8{}, rotated: time.Now(), keepRecords: keepRecords}
+}
+
+var refusedIDs = func() *RefusedTraceIDs {
+	r := newRefusedTraceIDs(os.Getenv("RETCTX_REFUSED_RECORDS") == "on")
+	r.census = os.Getenv("RETCTX_REFUSED_CENSUS") == "on"
+	if !r.census {
+		r.keepRecords = false
+		return r
+	}
+	if path := os.Getenv("RETCTX_REFUSED_RECORDS_FILE"); path != "" {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			slog.Warn("retctx refused-trace record file not opened", "path", path, "error", err)
+			return r
+		}
+		r.file = bufio.NewWriterSize(f, 1<<16)
+		go func() { // periodic flush; the buffer bounds memory, the file holds the log
+			for range time.Tick(time.Second) {
+				r.mu.Lock()
+				_ = r.file.Flush()
+				r.mu.Unlock()
+			}
+		}()
+	}
+	return r
+}()
+
+// rotate retires the older generation once the window has elapsed or the current one is full.
+func (r *RefusedTraceIDs) rotate(now time.Time) {
+	if now.Sub(r.rotated) < refusedDedupWindow && len(r.cur) < refusedDedupCap {
+		return
+	}
+	r.prev, r.cur, r.rotated = r.cur, make(map[[16]byte]uint8, len(r.cur)/2), now
+}
 
 // recordRefused notes every trace ID in a dropped batch. isHP says the batch carried
 // high-priority spans (for vanilla every span is trace-critical, so callers pass true).
@@ -56,8 +119,26 @@ func recordRefused(events []*tracepb.ResourceSpans, isHP bool) {
 		flag |= refusedFlagHP
 	}
 	r := refusedIDs
+	if !r.census { // counters only
+		var n int64
+		for _, rs := range events {
+			if rs != nil {
+				for _, ss := range rs.ScopeSpans {
+					n += int64(len(ss.Spans))
+				}
+			}
+		}
+		r.mu.Lock()
+		r.spansAll += n
+		if isHP {
+			r.spansHP += n
+		}
+		r.mu.Unlock()
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.rotate(time.Now())
 	for _, rs := range events {
 		if rs == nil {
 			continue
@@ -73,8 +154,11 @@ func recordRefused(events []*tracepb.ResourceSpans, isHP bool) {
 				}
 				var id [16]byte
 				copy(id[:], s.TraceId)
-				have := r.seen[id]
+				have := r.cur[id] | r.prev[id]
 				if have&flag == flag {
+					if _, ok := r.cur[id]; !ok {
+						r.cur[id] = have // keep a recurring trace in the live generation
+					}
 					continue // nothing new for this trace
 				}
 				if have == 0 {
@@ -83,8 +167,14 @@ func recordRefused(events []*tracepb.ResourceSpans, isHP bool) {
 				if isHP && have&refusedFlagHP == 0 {
 					r.tracesHP++
 				}
-				r.seen[id] = have | flag
-				r.records = append(r.records, refusedRecord{id: id, flags: flag})
+				r.cur[id] = have | flag
+				if r.keepRecords {
+					r.records = append(r.records, refusedRecord{id: id, flags: flag})
+				}
+				if r.file != nil {
+					_, _ = r.file.Write(id[:])
+					_ = r.file.WriteByte(flag)
+				}
 			}
 		}
 	}
@@ -103,7 +193,8 @@ func (r *RefusedTraceIDs) snapshot(from int) (recs []refusedRecord, total int, s
 	recs = r.records[from:total] // append-only: the backing array keeps these elements valid
 	summary = map[string]int64{
 		"records": int64(total), "traces_hp": int64(r.tracesHP), "traces_any": int64(r.tracesAny),
-		"spans_hp": r.spansHP, "spans_all": r.spansAll,
+		"spans_hp": r.spansHP, "spans_all": r.spansAll, "dedup_traces": int64(len(r.cur) + len(r.prev)),
+		"census": map[bool]int64{false: 0, true: 1}[r.census],
 	}
 	return
 }

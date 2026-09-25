@@ -82,6 +82,17 @@ APPS = {
 }
 
 
+# Tomislav-RetCtx: zero-work HotelReservation (examples/dsb_hotel/workflow/hotelnw): same deployment,
+# workload, spans per request and checkpoint policy as 'hotel'; the services touch no database, so
+# nothing is seeded and check_initialized has nothing to verify.
+APPS['hotelnw'] = dict(APPS['hotel'], seed={})
+
+# Tomislav-RetCtx: REAL-WORK Social Network on the no-work tooling (prepare_dsb_sn_nw.py --realwork): same
+# deployment, workload and checkpoint policy as 'sn'; the runner seeds the social graph after every deploy
+# (DeathStarBench init_social_graph.py, as run_dsb_sn_e2e.deploy_seed does).
+APPS['snrw'] = dict(APPS['sn'], seed={}, social_graph=True)
+
+
 def app_name(record):
     """The app of a plan.json / case.json dict (older SN roots carry no field)."""
     return (record or {}).get('app', 'sn')

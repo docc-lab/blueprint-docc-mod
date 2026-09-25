@@ -154,10 +154,16 @@ def snapshot(namespace, variant, directory):
             # BRIDGE_KIND (run_dsb_sn_nw.verify_deployment asserts its absence there).
             has_sdk = any(e.get('name') == 'BRIDGE_KIND' for c in pod['spec']['containers'] for e in c.get('env', []))
             if ip and '-service-' in name and has_sdk:
-                jobs.append((pool.submit(get_bytes, f'http://{ip}:9464/retctx/refused'), 'refused-bin', name))
+                # Tomislav-RetCtx (user 2026-09-24): the full record log is downloaded only for loss experiments
+                # (RETCTX_REFUSED_BIN=on); every snapshot used to re-fetch the whole append-only log (up to ~250 MB per
+                # service), allocating it inside the app at the edges of each measurement window.
+                if os.environ.get('RETCTX_REFUSED_BIN') == 'on':
+                    jobs.append((pool.submit(get_bytes, f'http://{ip}:9464/retctx/refused'), 'refused-bin', name))
                 jobs.append((pool.submit(get_http, f'http://{ip}:9464/retctx/refused/summary'), 'refused', name))
             if '-service-' in name or name.startswith(('otelcol-', 'otelgw-', 'clickhouse-', 'jaeger-', 'elasticsearch-')):
-                jobs.append((pool.submit(kube, namespace, 'logs', name, '--tail=2000'), 'logs', name))
+                # Tomislav-RetCtx (2026-09-25): RETCTX_LOG_TAIL (default 2000; -1 = whole log) -- per-second SDK / agent
+                # counters over a whole 600 s bursty point need more than 2000 lines (error lines flood the tail)
+                jobs.append((pool.submit(kube, namespace, 'logs', name, f"--tail={os.environ.get('RETCTX_LOG_TAIL', '2000')}"), 'logs', name))
         for i in range(1, 10):
             node = f'node-{i}'
             jobs.append((pool.submit(kube, namespace, 'get', '--raw',

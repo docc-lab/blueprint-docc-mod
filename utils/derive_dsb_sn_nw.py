@@ -71,14 +71,14 @@ def storage_dirs(root):
 
 def retune_collectors(documents, kind, variant, profile, backend='jaeger', app='sn', priority_extra=None, gomaxprocs=None,
                       collector_image=None, priority_receiver=False, priority_queue=False, pprof=False,
-                      compression=None):
+                      compression=None, discovery=None):
     """Replace the collector ConfigMap and DaemonSet resources for a different profile.
     Tomislav-RetCtx: priority_extra / gomaxprocs ('auto' = the agent's CPU limit) / collector_image
     (a digest reference) are optional collector-behaviour switches; None leaves everything as before."""
     spec = COLLECTOR_PROFILES[profile]
     config = collector_config(kind, variant, profile, backend, app=app, priority_extra=priority_extra,
                               priority_receiver=priority_receiver, priority_queue=priority_queue, pprof=pprof,
-                              compression=compression)
+                              compression=compression, discovery=discovery)
     touched = []
     for doc in documents:
         if not doc:
@@ -106,7 +106,10 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
            gateway_cpu=None, store='nowork', collector_image=None, gomaxprocs=None, us_margin_mode=None,
            gateway_lp_refusal=None, sdk_retry=None, sdk_retry_delay_ms=None, priority_receiver=False,
            cpu_shed_threshold=None, gateway_cpu_shed_threshold=None, cpu_target=None, gateway_cpu_target=None,
-           priority_queue=False, gateway_priority_queue=False, pprof=False, agent_compression=None, app_pprof=False):
+           priority_queue=False, gateway_priority_queue=False, pprof=False, agent_compression=None, app_pprof=False,
+           app_gc_memlimit=None, app_gctrace=False, discovery_override=None, plateau_stop=False, knee_windows=False,
+           ramp_passes=None, pass_gap_seconds=60, first_pass=1, repeat_grid=False, seeds=None, trace_capture=True,
+           census=False):
     assert backend in BACKENDS, backend
     # Tomislav-RetCtx: which Jaeger+ES sizing (prepare_dsb_sn_nw.STORE_TUNINGS): the no-work
     # matrix's tuned store, or the SN real-work e2e campaign's (user 2026-09-23 for hotel).
@@ -170,7 +173,7 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
         app = app_name(entry)
         # Tomislav-RetCtx: memcached server arguments (dsb_apps cache_args; hotel only)
         caches = set_cache_args(documents, APPS[app])
-        assert caches == (3 if app == 'hotel' else 0), (app, caches)
+        assert caches == (3 if app in ('hotel', 'hotelnw') else 0), (app, caches)
         # Tomislav-RetCtx: collector-behaviour switches (all None = unchanged). The agents' priority
         # processor gets us_margin_mode; the gateway's gets us_margin_mode and lp_refusal_code.
         agent_extra = dict({'us_margin_mode': us_margin_mode} if us_margin_mode else {},
@@ -180,10 +183,12 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
                              **({'lp_refusal_code': gateway_lp_refusal} if gateway_lp_refusal else {}),
                              **({'cpu_shed_threshold': gateway_cpu_shed_threshold} if gateway_cpu_shed_threshold else {}),
                              **({'cpu_target': gateway_cpu_target} if gateway_cpu_target else {}))
+        # Tomislav-RetCtx: checkpoint-policy override (--reverse-policy / --cpd-min / --cpd-max) on the app's default.
+        discovery = dict(APPS[app]['discovery'], **discovery_override) if discovery_override else None
         config = retune_collectors(documents, entry['kind'], entry['variant'], profile, backend, app,
                                    priority_extra=agent_extra, gomaxprocs=gomaxprocs, collector_image=collector_image,
                                    priority_receiver=priority_receiver, priority_queue=priority_queue, pprof=pprof,
-                                   compression=agent_compression)
+                                   compression=agent_compression, discovery=discovery)
         if backend == 'clickhouse':
             # Tomislav-RetCtx: Jaeger+Elasticsearch out, gateway collector + ClickHouse + shim in.
             namespace = next(d['metadata']['namespace'] for d in documents if d and d.get('kind') == 'DaemonSet')
@@ -208,6 +213,28 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
                     for container in doc['spec']['template']['spec']['containers']:
                         environment(container, dict({'BRIDGES_RETRY': retry_mode},
                                                     **({'BRIDGES_RETRY_DELAY_MS': sdk_retry_delay_ms} if sdk_retry_delay_ms else {})))
+        # Tomislav-RetCtx: explicit memory-based GC policy for every application process (user
+        # 2026-09-24): GOGC=off + GOMEMLIMIT=<budget>, identical for every kind. Under the default
+        # GOGC=100 a process collects each time its heap doubles its live size, so GC frequency tracks
+        # live-heap size: the tiny-heap no-tracing compose-post (16 MB) collected several times as
+        # often as vanilla's (123 MB, SDK buffers), which made tracing look cheaper than no tracing.
+        # With a shared budget, GC runs when the heap nears the budget and tracing's extra heap
+        # costs headroom instead of buying fewer collections.
+        if app_gc_memlimit:
+            for doc in documents:
+                if doc and doc.get('kind') == 'Deployment' and '-service-' in doc['metadata']['name']:
+                    for container in doc['spec']['template']['spec']['containers']:
+                        environment(container, dict({'GOGC': 'off', 'GOMEMLIMIT': app_gc_memlimit},
+                                                    **({'GODEBUG': 'gctrace=1'} if app_gctrace else {})))
+        # Tomislav-RetCtx (2026-09-25): loss experiments switch the SDK refused-trace census on
+        # (runtime/plugins/otelcol/refused_ids.go; off by default in the final images, never on in performance runs).
+        if census:
+            for doc in documents:
+                if doc and doc.get('kind') == 'Deployment' and '-service-' in doc['metadata']['name']:
+                    for container in doc['spec']['template']['spec']['containers']:
+                        # RETCTX_REFUSED_RECORDS=on keeps the per-trace (ID, flags) records the runner fetches
+                        # (RETCTX_REFUSED_BIN=on) for the exact cross-service union; without it only counters exist
+                        environment(container, {'RETCTX_REFUSED_CENSUS': 'on', 'RETCTX_REFUSED_RECORDS': 'on'})
         # Tomislav-RetCtx: opt-in in-app CPU profiling (runtime/plugins/otelcol/pprof.go, BRIDGES_PPROF).
         if app_pprof:
             for doc in documents:
@@ -234,7 +261,9 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
                      gateway_cpu_shed_threshold=gateway_cpu_shed_threshold,
                      cpu_target=cpu_target, gateway_cpu_target=gateway_cpu_target, priority_queue=priority_queue,
                      gateway_priority_queue=gateway_priority_queue, pprof=pprof, agent_compression=agent_compression,
-                     app_pprof=app_pprof, collector_profile=profile, reverse_truss=reverse, derived_from=entry['case'])
+                     discovery=discovery,
+                     app_pprof=app_pprof, app_gc_memlimit=app_gc_memlimit, app_gctrace=app_gctrace, **({'census': True} if census else {}),
+                     collector_profile=profile, reverse_truss=reverse, derived_from=entry['case'])
         write_json(case / 'case.json', entry)
         cases.append(entry)
     assert cases, kinds
@@ -272,7 +301,8 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
                 gateway_cpu_shed_threshold=gateway_cpu_shed_threshold,
                 cpu_target=cpu_target, gateway_cpu_target=gateway_cpu_target, priority_queue=priority_queue,
                 gateway_priority_queue=gateway_priority_queue, agent_compression=agent_compression,
-                case_order_note='single kind; no rotation')
+                app_gc_memlimit=app_gc_memlimit, app_gctrace=app_gctrace, discovery_override=discovery_override,
+                **({'census': True} if census else {}), case_order_note='single kind; no rotation')
     # Tomislav-RetCtx: stationary / bursty runs override the inherited ramp grid. The
     # generator block is what run_wrk reads; peak_multiplier sizes the connection pool
     # for the largest epoch (cap / E[x] for the truncated Pareto), and the realised
@@ -287,6 +317,31 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
         plan['generator'] = dict(generator, peak_multiplier=cap / norm, min_multiplier=1 / norm,
                                  expected_x=norm, note='rate multiplier per epoch = truncated-Pareto(alpha) on '
                                  '[1,cap] / E[x]; E[g]=1 in expectation, realised mean varies per window')
+    # Tomislav-RetCtx (user 2026-09-24): per-kind plateau stop and adaptive knee windows (run_dsb_sn_nw.knee_windows)
+    if plateau_stop:
+        plan['plateau_stop'] = {'flat_points': 3, 'min_gain': 0.01}
+    if knee_windows:
+        plan['knee_windows'] = {'from_fraction': 0.7, 'min_windows': 2, 'max_windows': 8, 'ci': 0.15,
+                                'bootstrap': 200, 'settle_seconds': 30, 'gap_seconds': 8}
+    # Tomislav-RetCtx (user 2026-09-24): performance runs without trace sampling (loss evaluated separately)
+    if not trace_capture:
+        plan['trace_capture'] = False
+    # Tomislav-RetCtx: explicit per-repetition wrk2 seeds (e.g. extra fresh-deploy passes that must not reuse a seed)
+    if seeds:
+        assert len(seeds) == repetitions, (seeds, repetitions)
+        plan['seeds'] = list(seeds)
+    # Tomislav-RetCtx (user 2026-09-24): fresh deployment per repetition, repetition 1's plateau grid reused
+    if repeat_grid:
+        assert plateau_stop and repetitions > 1 and not ramp_passes, 'repeat_grid needs --plateau-stop, --repetitions > 1'
+        if len(plan['seeds']) < repetitions:  # one seed per repetition, spaced as the ramp-pass seeds (+1000)
+            plan['seeds'] = [plan['seeds'][0] + 1000 * k for k in range(repetitions)]
+        plan['repeat_grid'] = True
+    # Tomislav-RetCtx (user 2026-09-24): N back-to-back full ramps per deployment (run_dsb_sn_nw climb / passes)
+    if ramp_passes:
+        plan['ramp_passes'] = {'passes': ramp_passes, 'gap_seconds': pass_gap_seconds,
+                               'grid': 'pass 1 climbs to the plateau; passes 2..N re-run its rates, no redeploy'}
+        if first_pass != 1:
+            plan['ramp_passes'].update(first_pass=first_pass, grid='fixed --rates (top-up of an existing sweep whose ramp is pass 1)')
     write_json(root / 'plan.json', plan)
     write_json(root / 'prepare-status.json', {'state': 'complete', 'cases': len(cases), 'derived_from': str(source)})
     write_json(root / 'image-build-status.json', {'state': 'complete', 'reused': True,
@@ -346,6 +401,30 @@ if __name__ == '__main__':
                              "(batch per priority, exporter sending_queue off, dispatch_workers = its num_consumers)")
     parser.add_argument('--agent-compression', choices=('none', 'gzip', 'zstd', 'snappy'), default=None,
                         help="agents' OTLP exporter compression (collector default gzip); applies to every kind")
+    parser.add_argument('--app-gc-memlimit', default=None,
+                        help='GOGC=off + GOMEMLIMIT=<value> (e.g. 1GiB) on every application service, all kinds')
+    parser.add_argument('--plateau-stop', action='store_true',
+                        help='each kind stops after 3 points without >= 1 pct more delivered throughput (plan plateau_stop)')
+    parser.add_argument('--knee-windows', action='store_true',
+                        help='adaptive knee-region repeat windows per kind (plan knee_windows: from 0.7 x best, 2..8 windows, '
+                             'pooled-p99 bootstrap band within +-15 pct)')
+    parser.add_argument('--ramp-passes', type=int, default=None,
+                        help='N full ramps back to back in one deployment per kind (pass 1 fixes the grid via the plateau stop)')
+    parser.add_argument('--no-trace-capture', action='store_true', help='no per-point trace sampling (performance runs)')
+    parser.add_argument('--seeds', type=int, nargs='+', default=None, help='explicit wrk2 seed per repetition')
+    parser.add_argument('--repeat-grid', action='store_true',
+                        help='fresh deployment per repetition; repetition 1 stops at the plateau, later ones re-run its grid')
+    parser.add_argument('--first-pass', type=int, default=1, help='number of the first pass run here (2 = top up an n=1 sweep)')
+    parser.add_argument('--pass-gap-seconds', type=int, default=60, help='idle drain time between ramp passes')
+    parser.add_argument('--reverse-policy', default=None, help='override the app checkpoint policy reverse_policy (e.g. depth_cubic)')
+    parser.add_argument('--cpd-min', type=int, default=None, help='override the app checkpoint policy cpd_min')
+    parser.add_argument('--cpd-max', type=int, default=None, help='override the app checkpoint policy cpd_max')
+    parser.add_argument('--reverse-passthrough', action='store_true',
+                        help='discovery reverse_passthrough: true (scheduled checkpoints route returned trusses by the '
+                             'reverse policy instead of terminating them; the root still terminates)')
+    parser.add_argument('--app-gctrace', action='store_true', help='GODEBUG=gctrace=1 on every application service')
+    parser.add_argument('--census', action='store_true',
+                        help='RETCTX_REFUSED_CENSUS=on on every application service (refused-trace census; loss experiments only)')
     parser.add_argument('--app-pprof', action='store_true', help='BRIDGES_PPROF=:6060 on every service (in-app CPU profiling)')
     parser.add_argument('--pprof', action='store_true', help='pprof extension (:1777) on agents and gateway (profiling)')
     parser.add_argument('--sdk-retry', choices=('priority',), default=None,
@@ -374,5 +453,14 @@ if __name__ == '__main__':
                        gateway_cpu_shed_threshold=args.gateway_cpu_shed_threshold,
                        cpu_target=args.cpu_target, gateway_cpu_target=args.gateway_cpu_target,
                        priority_queue=args.priority_queue, gateway_priority_queue=args.gateway_priority_queue,
-                       pprof=args.pprof, agent_compression=args.agent_compression, app_pprof=args.app_pprof):
+                       pprof=args.pprof, agent_compression=args.agent_compression, app_pprof=args.app_pprof,
+                       app_gc_memlimit=args.app_gc_memlimit, app_gctrace=args.app_gctrace,
+                       discovery_override={k: v for k, v in (('reverse_policy', args.reverse_policy), ('cpd_min', args.cpd_min),
+                                                            ('cpd_max', args.cpd_max),
+                                                            ('reverse_passthrough', True if args.reverse_passthrough else None))
+                                           if v is not None} or None,
+                       plateau_stop=args.plateau_stop, knee_windows=args.knee_windows,
+                       ramp_passes=args.ramp_passes, pass_gap_seconds=args.pass_gap_seconds,
+                       first_pass=args.first_pass, repeat_grid=args.repeat_grid, seeds=args.seeds, census=args.census,
+                       trace_capture=not args.no_trace_capture):
         print(case['name'], case['case'])

@@ -30,5 +30,11 @@ func main() {
 		specs.DockerVES,
 		specs.DockerRCES,
 		specs.DockerNTES,
+		// Tomislav-RetCtx: zero-work variants (workflow/hotelnw)
+		specs.DockerVESNW,
+		specs.DockerPBESNW,
+		specs.DockerCGPBESNW,
+		specs.DockerSBESNW,
+		specs.DockerNTESNW,
 	)
 }

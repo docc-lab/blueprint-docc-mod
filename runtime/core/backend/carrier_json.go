@@ -63,7 +63,7 @@ func appendJSONString(dst []byte, s string) []byte {
 			start = i
 			continue
 		}
-		if r == ' ' || r == ' ' {
+		if r == '\u2028' || r == '\u2029' { // Tomislav-RetCtx: escapes, not literals (line-splitting tools eat U+2028/9)
 			dst = append(dst, s[start:i]...)
 			dst = append(dst, '\\', 'u', '2', '0', '2', hexDigits[r&0xF])
 			i += size

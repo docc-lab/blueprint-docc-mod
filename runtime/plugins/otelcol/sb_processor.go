@@ -1170,7 +1170,8 @@ func (p *StructuralBridgeProcessor) fetchFullConfig(ctx context.Context) error {
 		"config_keys", len(config),
 		"checkpoint_distance", cpd,
 		"cpd_min", rangeConfig.min, "cpd_max", rangeConfig.max,
-		"reverse_policy", policy.mode, "reverse_probability", policy.probability)
+		"reverse_policy", policy.mode, "reverse_probability", policy.probability,
+		"reverse_passthrough", policy.passthrough)
 	return nil
 }
 

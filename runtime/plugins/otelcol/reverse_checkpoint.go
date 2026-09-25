@@ -212,7 +212,7 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 		backend.CountTrussReceived()
 		var emitted string
 		if !forceLP {
-			emitted, returned = p.reversePolicy.route(returned, scheduled || root, depth, rand.Float64)
+			emitted, returned = p.reversePolicy.route(returned, p.reversePolicy.terminates(scheduled, root), depth, rand.Float64)
 		}
 		if emitted != "" {
 			s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, emitted))
@@ -221,7 +221,8 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 		}
 	}
 	// Only forced, unscheduled leaves may reject. Original checkpoints retain
-	// their own data and terminate every returned truss, regardless of policy.
+	// their own data; they terminate every returned truss unless reverse_passthrough
+	// is on (reversePolicy.terminates), in which case the policy routes it as above.
 	if s.SpanKind() == trace.SpanKindServer && !spanHasChildrenIn(attrs) && !forceLP && !scheduled && !root && p.leafRejectRate > 0 && len(truss) > 0 {
 		if rand.Float64() < p.leafRejectRate {
 			var own string

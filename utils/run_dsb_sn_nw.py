@@ -128,6 +128,56 @@ def verify_index(case, directory):
     return state
 
 
+def knee_windows(case, directory, plan, measured, seed, state, status_path):
+    """Tomislav-RetCtx (user 2026-09-24): adaptive repeat windows in THIS kind's knee region, after its climb.
+    Region: the measured rates from from_fraction x (its best delivered rate) up to and including the first rate that
+    delivered < 97 pct of offered. Per rate, 30 s windows (same deployment, new Lua seed per window, knee_gap_seconds
+    apart) are added until the bootstrap 5-95 pct band of the POOLED p99 (wrk2 HdrHistogram spectra merged, see
+    pool_latency.py) is within +-ci of the pooled value, with at least min_windows and at most max_windows (the
+    climb's window counts). Extra windows are wrk only (rate-XXXXX/window-N/); loss comes from the climb's window."""
+    import random
+    from pool_latency import spectrum, cdf
+    cfg = plan['knee_windows']
+    best = max(r['completed_rps'] for r in measured)
+    region = []
+    for r in measured:
+        if r['offered_rps'] >= cfg['from_fraction'] * best:
+            region.append(r['offered_rps'])
+            if r['completed_rps'] < 0.97 * r['offered_rps']:
+                break
+    rng = random.Random(seed)
+    def pooled_q(wins, q=0.99):
+        total = sum(n for _, n in wins)
+        grid = sorted({v for w, _ in wins for v, _ in w})
+        return next((x for x in grid if sum(n * cdf(w, x) for w, n in wins) / total >= q), grid[-1])
+    state.update(stage='knee-settle', updated=now()); write_json(status_path, state)
+    time.sleep(cfg.get('settle_seconds', 30))  # the climb ended past the plateau: let the backlog drain
+    summary = {}
+    for rate in region:
+        point = directory / f'rate-{rate:05d}'
+        wins, n, band = [spectrum(point / 'wrk.stdout')], 1, None
+        while True:
+            if n >= cfg['min_windows']:
+                pooled = pooled_q(wins)
+                boots = sorted(pooled_q([rng.choice(wins) for _ in wins]) for _ in range(cfg.get('bootstrap', 200)))
+                band = (boots[int(0.05 * len(boots))], boots[int(0.95 * len(boots)) - 1])
+                if (band[1] - band[0]) / 2 <= cfg['ci'] * pooled:
+                    break
+            if n >= cfg['max_windows']:
+                break
+            n += 1
+            state.update(stage='knee-windows', offered_rps=rate, window=n, updated=now()); write_json(status_path, state)
+            window = point / f'window-{n}'
+            result = run_wrk(window, rate, plan['seconds_per_rate'], seed + 100 * n, connections=connections_for(rate),
+                             app=app_name(case))
+            write_json(window / 'result.json', result)
+            wins.append(spectrum(window / 'wrk.stdout'))
+            time.sleep(cfg.get('gap_seconds', 8))
+        summary[str(rate)] = {'windows': n, 'pooled_p99_ms': pooled_q(wins), 'band_5_95_ms': band}
+        write_json(directory / 'knee-windows.json', {'region': region, 'best_delivered': best, 'config': cfg,
+                                                     'summary': summary, 'updated': now()})
+
+
 def backend_state(case, directory):
     jaeger, elastic = backend_pods(case)
     state = {'captured': now(), 'backend': case.get('backend', 'jaeger')}
@@ -221,7 +271,7 @@ def verify_deployment(case, directory):
                     assert container['image'] == case['collector_image_override'], (name, container['image'])
                 if kind in BRIDGES:
                     response = json.loads(get_http(f"http://{pod['status']['podIP']}:8080/getFullConfig"))
-                    assert response['config'] == app_of(case)['discovery'], response
+                    assert response['config'] == (case.get('discovery') or app_of(case)['discovery']), response
                     write_json(directory / f'discovery-{pod["spec"]["nodeName"]}.json', response)
 
 
@@ -236,6 +286,19 @@ def check_initialized(case, directory):
     duplicates rows), zero restarts on every pod, and one live request through the entry service
     that must return data. Written to init-check.json; raises on any mismatch."""
     app = app_of(case)
+    if app.get('social_graph'):
+        # Tomislav-RetCtx: real-work Social Network: seed the social graph exactly as run_dsb_sn_e2e.deploy_seed
+        # (962 users, 37624 follows through the wrk2api entry service); raise unless both counts come back.
+        import re, subprocess, sys as _sys
+        log = directory / 'seed.log'
+        with log.open('w') as out:
+            subprocess.run([_sys.executable, '/users/tomislav/blueprint-docc-mod/examples/dsb_sn/scripts/init_social_graph.py',
+                            '--ip', '10.10.1.1', '--port', str(app['nodeport']), '--limit', '200'],
+                           cwd='/users/tomislav/DeathStarBench/socialNetwork', timeout=900, stdout=out, stderr=subprocess.STDOUT, check=True)
+        text = log.read_text()
+        assert 'Failed:' not in text and re.findall(r'Succeeded:\s*(\d+)', text) == ['962', '37624'], text[-2000:]
+        write_json(directory / 'init-check.json', {'checked': now(), 'social_graph': 'users 962, follows 37624'})
+        return None
     if not app['seed']:
         return None
     namespace, variant = case['namespace'], case['variant']
@@ -437,36 +500,88 @@ def campaign(root, mode, skip_smoke=False):
                     time.sleep(15)  # first refresh of the fresh index
                     verify_index(case, directory)
             rates = [10] if mode == 'smoke' else plan['ramp_rates']
-            for rate in rates:
-                state.update(stage='measuring', offered_rps=rate, updated=now()); write_json(status_path, state)
-                point = directory / f'rate-{rate:05d}'
-                point.mkdir()
-                before = snapshot(case['namespace'], case['variant'], point / 'before')
-                # Tomislav-RetCtx: a bursty generator is sized for its PEAK epoch rate so the
-                # connection pool never throttles a spike; smoke stays fixed-interval.
-                generator = None if mode == 'smoke' else plan.get('generator')
-                peak = rate * (generator or {}).get('peak_multiplier', 1.0)
-                connections = 10 if mode == 'smoke' else connections_for(peak)
-                result = run_wrk(point, rate, 30 if mode == 'smoke' else plan['seconds_per_rate'], seed,
-                                 connections=connections, generator=generator, app=app_name(case))
-                after = snapshot(case['namespace'], case['variant'], point / 'after')
-                result['collector_deltas'], result['counter_resets'] = counter_deltas(before, after)
-                result['snapshot_errors'] = before['errors'] + after['errors']
-                result['restarts_changed'] = before['restarts'] != after['restarts']
-                result['connection_cap'] = CONNECTION_CAP
-                result.update(kind=case['kind'], case=name, sample_ratio=case['sample_ratio'], repetition=rep + 1)
-                write_json(point / 'result.json', result)
-                if mode == 'smoke':
-                    assert result['non_2xx_3xx'] == 0 and not any(result['socket_errors'].values()), result
-                    assert not result['snapshot_errors'], result['snapshot_errors']
-                    if case.get('backend_tuning') and case['kind'] != 'nt' \
-                            and case.get('collector_profile') != 'sink':
-                        time.sleep(15)
-                        verify_index(case, directory)
-                    write_json(point / 'smoke-checks.json', smoke_checks(case, point, after))
-                elif case['kind'] != 'nt' and case.get('collector_profile') != 'sink':
-                    capture_traces(case, point, result)
-            if mode == 'run' and case['kind'] != 'nt' and case.get('collector_profile') != 'sink':
+            # Tomislav-RetCtx (user 2026-09-24): every kind stops at ITS OWN plateau (plan['plateau_stop']) and then
+            # gets adaptive repeat windows in its knee region (plan['knee_windows']); both absent = the fixed ramp.
+            plateau = plan.get('plateau_stop') if mode == 'run' else None
+            # Tomislav-RetCtx (user 2026-09-24): or N full ramps back to back in the one deployment
+            # (plan['ramp_passes']): pass 1 climbs to the kind's plateau and fixes its grid, passes 2..N re-run exactly
+            # that grid (same number of trials at every point), gap_seconds apart so the overloaded tail drains. Pass 1
+            # is <case>/rate-*, pass k is <case>/pass-<kk>/rate-* (each laid out like a case directory).
+            passes = plan.get('ramp_passes') if mode == 'run' else None
+            assert not (passes and plan.get('knee_windows')), 'ramp_passes and knee_windows are alternatives'
+            # Tomislav-RetCtx (user 2026-09-24, SN real-work: fresh databases, caches and seeding every pass): every
+            # repetition is its own fresh deployment; repetition 1 fixes this kind's grid (its plateau stop), later
+            # repetitions re-run exactly that grid, so every point has the same number of trials.
+            if mode == 'run' and rep > 0 and plan.get('repeat_grid'):
+                first = root / mode / f'01-{name}'
+                assert (first / 'complete.json').exists(), f'repeat_grid: {first} not complete'
+                rates = sorted(json.loads(f.read_text())['offered_rps'] for f in first.glob('rate-*/result.json'))
+                assert rates, first
+                plateau = None
+
+            def climb(base, rates, seed, plateau, pass_no):
+                best, flat, measured = 0.0, 0, []
+                for rate in rates:
+                    state.update(stage='measuring', offered_rps=rate, updated=now(), **({'pass': pass_no} if passes else {}))
+                    write_json(status_path, state)
+                    point = base / f'rate-{rate:05d}'
+                    point.mkdir(parents=True)
+                    before = snapshot(case['namespace'], case['variant'], point / 'before')
+                    # Tomislav-RetCtx: a bursty generator is sized for its PEAK epoch rate so the
+                    # connection pool never throttles a spike; smoke stays fixed-interval.
+                    generator = None if mode == 'smoke' else plan.get('generator')
+                    peak = rate * (generator or {}).get('peak_multiplier', 1.0)
+                    connections = 10 if mode == 'smoke' else connections_for(peak)
+                    result = run_wrk(point, rate, 30 if mode == 'smoke' else plan['seconds_per_rate'], seed,
+                                     connections=connections, generator=generator, app=app_name(case))
+                    after = snapshot(case['namespace'], case['variant'], point / 'after')
+                    result['collector_deltas'], result['counter_resets'] = counter_deltas(before, after)
+                    result['snapshot_errors'] = before['errors'] + after['errors']
+                    result['restarts_changed'] = before['restarts'] != after['restarts']
+                    result['connection_cap'] = CONNECTION_CAP
+                    result.update(kind=case['kind'], case=name, sample_ratio=case['sample_ratio'], repetition=rep + 1,
+                                  **({'pass': pass_no} if passes else {}))
+                    write_json(point / 'result.json', result)
+                    if mode == 'smoke':
+                        assert result['non_2xx_3xx'] == 0 and not any(result['socket_errors'].values()), result
+                        assert not result['snapshot_errors'], result['snapshot_errors']
+                        if case.get('backend_tuning') and case['kind'] != 'nt' \
+                                and case.get('collector_profile') != 'sink':
+                            time.sleep(15)
+                            verify_index(case, directory)
+                        write_json(point / 'smoke-checks.json', smoke_checks(case, point, after))
+                    elif case['kind'] != 'nt' and case.get('collector_profile') != 'sink' and plan.get('trace_capture', True):
+                        capture_traces(case, point, result)
+                    measured.append(result)
+                    if plateau:
+                        if result['completed_rps'] >= best * (1 + plateau['min_gain']):
+                            best, flat = result['completed_rps'], 0
+                        else:
+                            flat += 1
+                        if flat >= plateau['flat_points']:
+                            write_json(base / 'plateau-stop.json', {'stopped_after': rate, 'best_delivered': best,
+                                                                    'rule': plateau, 'at': now()})
+                            break
+                return measured
+
+            # Tomislav-RetCtx: first_pass > 1 tops up an existing n=1 sweep (its ramp is pass 1): this root's case
+            # directory holds pass first_pass, pass-kk the rest, and every pass keeps the seed of its pass number.
+            first = (passes or {}).get('first_pass', 1)
+            measured = climb(directory, rates, seed + 1000 * (first - 1), plateau, first)
+            points = len(measured)
+            if passes:
+                grid = [r['offered_rps'] for r in measured]
+                for k in range(first + 1, first + passes['passes']):
+                    state.update(stage='pass-gap', updated=now()); write_json(status_path, state)
+                    time.sleep(passes['gap_seconds'])
+                    points += len(climb(directory / f'pass-{k:02d}', grid, seed + 1000 * (k - 1), None, k))
+                write_json(directory / 'ramp-passes.json', {'passes': passes['passes'], 'grid': grid, 'config': passes,
+                                                            'pass_seeds': [seed + 1000 * (k - 1) for k in range(first, first + passes['passes'])],
+                                                            'finished': now()})
+            if mode == 'run' and plan.get('knee_windows') and measured:
+                knee_windows(case, directory, plan, measured, seed, state, status_path)
+            # Tomislav-RetCtx (user 2026-09-24): plan trace_capture False = no trace sampling in performance runs
+            if mode == 'run' and case['kind'] != 'nt' and case.get('collector_profile') != 'sink' and plan.get('trace_capture', True):
                 state.update(stage='settle-trace-samples', updated=now()); write_json(status_path, state)
                 settle_trace_samples(case, directory)
             state.update(stage='capture-final', updated=now()); write_json(status_path, state)
@@ -474,9 +589,9 @@ def campaign(root, mode, skip_smoke=False):
             if case.get('backend_tuning') and case['kind'] != 'nt' \
                     and case.get('collector_profile') != 'sink':
                 backend_state(case, directory)
-            if mode == 'run' and case['kind'] != 'nt' and case.get('collector_profile') != 'sink':
+            if mode == 'run' and case['kind'] != 'nt' and case.get('collector_profile') != 'sink' and plan.get('trace_capture', True):
                 capture_traces(case, directory)
-            write_json(directory / 'complete.json', {'finished': now(), 'points': len(rates), 'seed': seed, 'repetition': rep + 1,
+            write_json(directory / 'complete.json', {'finished': now(), 'points': points, 'seed': seed, 'repetition': rep + 1,
                                                      'case': name, 'kind': case['kind'], 'sample_ratio': case['sample_ratio']})
     write_json(status_path, {'state': 'complete', 'updated': now(), 'runs': runs})
     write_json(root / f'{mode}-complete.json', {'passed': True, 'finished': now(), 'runs': runs})

@@ -151,7 +151,7 @@ def case_name(kind, ratio):
 
 
 def collector_config(kind, variant, profile='passthrough', backend='jaeger', app='sn', priority_extra=None,
-                     priority_receiver=False, priority_queue=False, pprof=False, compression=None):
+                     priority_receiver=False, priority_queue=False, pprof=False, compression=None, discovery=None):
     """Collector pipeline for a no-work case. See COLLECTOR_PROFILES for the two regimes.
     Tomislav-RetCtx: priority_extra (e.g. {'us_margin_mode': 'backlog'}) is merged into the
     bridges' priority processor config; None keeps the pre-existing config byte for byte."""
@@ -220,7 +220,8 @@ def collector_config(kind, variant, profile='passthrough', backend='jaeger', app
         # 61 % of a node agent's CPU and gunzip 39 % of the gateway's; the hop stays in-cluster.
         config['exporters']['otlp']['compression'] = compression
     if kind in BRIDGES:
-        config['receivers']['configdiscovery'] = {'endpoint': ':8080', 'config_map': dict(APPS[app]['discovery'])}
+        # Tomislav-RetCtx: discovery overrides the app's checkpoint policy (dsb_apps) when given.
+        config['receivers']['configdiscovery'] = {'endpoint': ':8080', 'config_map': dict(discovery or APPS[app]['discovery'])}
         config['exporters']['debug/config'] = {'verbosity': 'basic'}
         config['service']['pipelines']['logs/configdiscovery'] = {
             'receivers': ['configdiscovery'], 'processors': [], 'exporters': ['debug/config']}
@@ -585,7 +586,11 @@ def configure_manifests(documents, kind, ratio, variant, collector_image, namesp
     return out
 
 
-def prepare(root, namespace, collector_image, resume=False, kinds=None):
+def prepare(root, namespace, collector_image, resume=False, kinds=None, realwork=False, provenance=None):
+    """Tomislav-RetCtx: realwork = the REAL Social Network workflow (examples/dsb_sn/workflow/socialnetwork,
+    specs docker_<kind>_es, app 'snrw'; the runner seeds the social graph after every deploy) built with the
+    same tooling as the no-work campaigns, so it can take the same collector / backend / GC stack. The root is
+    self-contained (plan, application-source hashes, monitor copied from `provenance`, the no-work matrix)."""
     stamp = root.name.rsplit('-', 1)[1].lower()
     extra = 'x' + stamp
     cases = []
@@ -593,12 +598,13 @@ def prepare(root, namespace, collector_image, resume=False, kinds=None):
     selected = [(kind, ratio) for kind, ratio in CASES if not kinds or kind in kinds]
     for kind, ratio in selected:
         name = case_name(kind, ratio)
-        build_name = f'{kind}_nw_{stamp}'
+        build_name = f'{kind}_{"rw" if realwork else "nw"}_{stamp}'
         build = DSB / ('build_' + build_name)
         case = root / 'builds' / name
         write_json(root / 'prepare-status.json', {'state': 'running', 'case': name})
         if kind not in generated:
-            argv = [REPO / 'utils/build_deploy_dsb.sh', '-s', f'docker_{kind}_es_nw', '-n', build_name,
+            spec = f'docker_{kind}_es' + ('' if realwork else '_nw')
+            argv = [REPO / 'utils/build_deploy_dsb.sh', '-s', spec, '-n', build_name,
                     '--extra', extra, '--gc', 'natural', '--collector', 'passthrough',
                     '--anti-affinity', '--wrk2api-deploy', '--skip-build']
             if kind in BRIDGES:
@@ -616,21 +622,41 @@ def prepare(root, namespace, collector_image, resume=False, kinds=None):
                          for d in yaml.safe_load_all(p.read_text())]
             generated[kind] = (build, variant, documents)
         build, variant, documents = generated[kind]
-        configured = configure_manifests(documents, kind, ratio, variant, collector_image, namespace)
+        configured = configure_manifests(documents, kind, ratio, variant, collector_image, namespace,
+                                         app='snrw' if realwork else 'sn')
         case.mkdir(parents=True, exist_ok=resume)
         (case / 'manifest.yaml').write_text(yaml.safe_dump_all(configured, sort_keys=False))
         (case / 'collector.yaml').write_text(yaml.safe_dump(collector_config(kind, variant), sort_keys=False))
         command(['docker', 'run', '--rm', '-v', f'{case}/collector.yaml:/config.yaml:ro',
                  collector_image, 'validate', '--config=/config.yaml'])
         entry = {'name': name, 'kind': kind, 'sample_ratio': ratio, 'variant': variant,
-                 'spec': f'docker_{kind}_es_nw', 'build': str(build), 'case': str(case),
+                 'spec': f'docker_{kind}_es' + ('' if realwork else '_nw'), 'build': str(build), 'case': str(case),
+                 **({'app': 'snrw'} if realwork else {}),
                  'image_case': str(root / 'builds' / kind),
                  'collector_image': collector_image, 'namespace': namespace,
                  'backend_tuning': copy.deepcopy(BACKEND_TUNING)}
         write_json(case / 'case.json', entry)
         cases.append(entry)
         write_json(root / 'cases.json', cases)
+    if realwork:
+        import hashlib, shutil
+        tracked = ['examples/dsb_sn/workflow/socialnetwork', 'examples/dsb_sn/wiring/specs', 'runtime/plugins/otelcol',
+                   'runtime/core/backend', 'plugins/opentelemetry']
+        hashes = {str(p.relative_to(REPO)): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for d in tracked for p in sorted((REPO / d).glob('*.go')) if not p.name.endswith('_test.go')}
+        write_json(root / 'application-source-hashes.json', hashes)
+        plan = json.loads((provenance / 'plan.json').read_text())
+        plan.update(app='snrw', application='DSB Social Network, REAL-WORK Blueprint workflow (examples/dsb_sn/workflow/'
+                    'socialnetwork): MongoDB + Redis backends; social graph (962 users, 37624 follows) seeded by '
+                    'DeathStarBench init_social_graph.py after every deploy', created=datetime_now())
+        write_json(root / 'plan.json', plan)
+        shutil.copy2(provenance / 'monitor_nw.py', root)
     write_json(root / 'prepare-status.json', {'state': 'complete', 'cases': len(cases)})
+
+
+def datetime_now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 if __name__ == '__main__':
@@ -641,11 +667,14 @@ if __name__ == '__main__':
                         help='pinned otelcontribcol digest reference (reuse the validated e2e collector)')
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--kinds', help='comma-separated subset of nt,v,pb,cgpb,sb (default: all)')
+    parser.add_argument('--realwork', action='store_true', help='real Social Network workflow (app snrw)')
+    parser.add_argument('--provenance', type=Path, help='with --realwork: root whose plan.json / monitor_nw.py to copy')
     args = parser.parse_args()
     assert '@sha256:' in args.collector_image
     kinds = [k for k in (args.kinds or '').split(',') if k] or None
     try:
-        prepare(args.out.resolve(), args.namespace, args.collector_image, args.resume, kinds)
+        prepare(args.out.resolve(), args.namespace, args.collector_image, args.resume, kinds,
+                realwork=args.realwork, provenance=args.provenance.resolve() if args.provenance else None)
     except Exception as error:
         write_json(args.out / 'prepare-status.json', {'state': 'failed', 'error': str(error)})
         raise

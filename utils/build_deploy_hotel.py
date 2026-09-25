@@ -21,6 +21,8 @@ APP = REPO / "examples/dsb_hotel"
 SERVICES = ("frontend", "search", "geo", "rate", "profile", "recomd", "user", "reserv")
 SPECS = [f"docker_{kind}{storage}" for kind in ("pb", "cgpb", "sb", "v")
          for storage in ("", "_es")] + ["docker_rc_es", "docker_nt_es"]  # Tomislav-RetCtx: + no-tracing baseline
+# Tomislav-RetCtx: + zero-work variants (examples/dsb_hotel/workflow/hotelnw, wiring specs/docker_nw.go)
+SPECS += [f"docker_{kind}_es_nw" for kind in ("pb", "cgpb", "sb", "v", "nt")]
 
 
 def run(command, **kwargs):
