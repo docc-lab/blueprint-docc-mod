@@ -1,0 +1,63 @@
+{
+ "root": "/users/tomislav/deployments/dsb-sn/retctx-nwe2e-m5-on-r1-20260920T052509Z",
+ "kinds": {
+  "nt": {
+   "capacity_rps": 11962.68,
+   "rising_points": 28,
+   "tail_points": 0,
+   "total_points": 28
+  },
+  "v": {
+   "capacity_rps": 8996.38,
+   "rising_points": 28,
+   "tail_points": 0,
+   "total_points": 28
+  },
+  "PB path on": {
+   "capacity_rps": 7396.23,
+   "rising_points": 21,
+   "tail_points": 7,
+   "total_points": 28
+  },
+  "PB path off": {
+   "capacity_rps": 7799.5125,
+   "rising_points": 28,
+   "tail_points": 0,
+   "total_points": 28
+  },
+  "CGPB path on": {
+   "capacity_rps": 7378.4775,
+   "rising_points": 26,
+   "tail_points": 2,
+   "total_points": 28
+  },
+  "CGPB path off": {
+   "capacity_rps": 7813.215,
+   "rising_points": 28,
+   "tail_points": 0,
+   "total_points": 28
+  },
+  "SB path on": {
+   "capacity_rps": 6912.085,
+   "rising_points": 25,
+   "tail_points": 3,
+   "total_points": 28
+  },
+  "SB path off": {
+   "capacity_rps": 7254.1925,
+   "rising_points": 28,
+   "tail_points": 0,
+   "total_points": 28
+  }
+ },
+ "y_axis": "linear",
+ "y_ceiling_ms": null,
+ "repetitions": [
+  1,
+  4
+ ],
+ "repetition_filter": "all",
+ "spread": "shaded band = min to max over repetitions (a sample SD would be a weak statistic at n=3, and there is no band at all at n=1). Throughput spread is 0.09 % median / 2.7 % worst, so no x spread is drawn.",
+ "branch_rule": "rising branch = throughput still within 0.5 % of the best seen so far; post-saturation points drawn faint",
+ "note": "coordinated-omission-corrected latency from an open-loop generator; past saturation it includes generator queueing and is not a service-quality measurement"
+}

@@ -1,0 +1,32 @@
+{
+ "figures": [
+  "nwe2e-response-time",
+  "nwe2e-end-to-end",
+  "nwe2e-drop-rates",
+  "nwe2e-drop-rates-all",
+  "nwe2e-drop-rates-except-worst",
+  "nwe2e-drop-rates-worst"
+ ],
+ "generated": "2026-09-16T22:17:43Z",
+ "root": "/users/tomislav/deployments/dsb-sn/retctx-nwe2e-n3-cpd2-6-inverse-20260916T160407Z",
+ "regime": "no-work END-TO-END: admission-control collectors (priority processor for bridges, memory_limiter for vanilla/no-tracing), 1 CPU / 256Mi / GOMEMLIMIT 230MiB, soft 50 / hard 70, cp_safety_factor 1, force_gc",
+ "store": "Jaeger 12 cores, Elasticsearch 26 cores / 16 GiB heap, tags as object fields, 12 shards, 0 replicas, refresh 10s, async translog, merge threads 8, ES_BULK_WORKERS 24",
+ "design": "5 kinds (nt, v, pb, cgpb, sb) x 3 repetitions x 28 offered rates 500..14000, 30 s/point, 100% sampling, CPD 2-6 inverse_depth, leaf rejection",
+ "audit": "420/420 points verified, 0 HTTP/socket errors, 0 restarts, hp_refused = 0 over all 420 points",
+ "note": "distinct regime from nw-100pct-n3 (passthrough collectors); do not overlay the two",
+ "kinds_per_figure": {
+  "nwe2e-response-time": "nt, v, pb, cgpb, sb",
+  "nwe2e-end-to-end": "nt, v, pb, cgpb, sb",
+  "nwe2e-drop-rates": "v, pb, cgpb, sb (no-tracing has no SDK, so no drop rate exists)",
+  "nwe2e-drop-rates-all": "v, pb, cgpb, sb",
+  "nwe2e-drop-rates-except-worst": "v, pb, cgpb, sb",
+  "nwe2e-drop-rates-worst": "v, pb, cgpb, sb"
+ },
+ "drop_metric_definitions": {
+  "formula": "spans refused / spans handled, summed over the selected collectors (one formula for every variant)",
+  "all": "all 8 collectors",
+  "except_worst": "the 7 collectors left after removing the one with the highest rate for that metric",
+  "worst": "the single collector with the highest rate for that metric",
+  "note": "nwe2e-drop-rates.* is the layout matching the real-work campaign and mixes variants: total=all, checkpoint=worst, non-checkpoint=all"
+ }
+}

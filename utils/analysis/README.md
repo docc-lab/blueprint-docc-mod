@@ -19,3 +19,10 @@ Figures produced by these scripts: `~/deployments/dsb-sn/FIGURES-2026-09-2*`, `~
 (each has a README / `.runs.txt` naming its data roots). Loss experiments need three switches: services
 `RETCTX_REFUSED_CENSUS=on` and `RETCTX_REFUSED_RECORDS=on` (`derive_dsb_sn_nw.py --census`), runner `RETCTX_REFUSED_BIN=on`;
 whole pod logs for per-second timelines: runner `RETCTX_LOG_TAIL=-1`.
+
+## figures/
+Tomislav-RetCtx: every rendered figure (pdf / png / svg) from cluster A, same relative paths as under `~/deployments`:
+the `*/FIGURES-2026-09-*` folders whole (with their README.md, `.runs.txt`, summary / data JSON), plus loose figures
+kept inside experiment roots (e.g. `collector-load/spanload-dense-ramps-*/throughput-combined-squished.*`). Cluster B
+had no figure folders (its runs were copied to A and plotted there). Raw run data and census records are not archived
+(rerunnable from the chains in `scratchpad/` and `handoff-*`).

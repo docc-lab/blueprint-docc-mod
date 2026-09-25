@@ -1,0 +1,70 @@
+{
+ "source_root": "/users/tomislav/deployments/collector-load/spanload-dense-ramps-20260914T185629Z",
+ "repetitions": [
+  3
+ ],
+ "panels": {
+  "No semconv": {
+   "profile": "zero",
+   "rates": [
+    100000,
+    200000,
+    300000,
+    400000,
+    500000,
+    600000,
+    700000,
+    800000,
+    900000,
+    1000000,
+    1100000,
+    1200000,
+    1300000,
+    1400000,
+    1500000,
+    1600000
+   ]
+  },
+  "10 semconv": {
+   "profile": "semconv10-example",
+   "rates": [
+    10000,
+    20000,
+    30000,
+    40000,
+    50000,
+    60000,
+    70000,
+    80000,
+    90000,
+    100000,
+    110000,
+    120000,
+    130000,
+    140000,
+    150000,
+    160000,
+    170000,
+    180000,
+    190000,
+    200000
+   ]
+  }
+ },
+ "variants": [
+  "Vanilla",
+  "PB",
+  "CGPB",
+  "SB"
+ ],
+ "band": "min to max over repetitions",
+ "figure_inches": [
+  3.33,
+  1.2
+ ],
+ "fonts_points": {
+  "labels": 8,
+  "ticks": 7
+ },
+ "svg_text": "outlines (svg.fonttype=path), so no font substitution in viewers"
+}
