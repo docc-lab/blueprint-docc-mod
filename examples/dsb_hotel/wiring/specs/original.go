@@ -132,7 +132,9 @@ func applyDefaults(spec wiring.WiringSpec, serviceName string, collectorName str
 	procName := fmt.Sprintf("%s_proc", serviceName)
 	ctrName := fmt.Sprintf("%s_ctr", serviceName)
 	if instrument {
-		opentelemetry.Instrument(spec, serviceName, collectorName)
+		// Tomislav-RetCtx: gRPC services are traced with gRPC interceptors; build with
+		// OT_GRPC_MODE=wrapper to get the old wrapper services instead.
+		opentelemetry.InstrumentGRPC(spec, serviceName, collectorName)
 	}
 	grpc.DeployWithTimeout(spec, serviceName, *rpcTimeout)
 	goproc.CreateProcess(spec, procName, serviceName)
@@ -143,7 +145,8 @@ func applyHTTPDefaults(spec wiring.WiringSpec, serviceName string, collectorName
 	procName := fmt.Sprintf("%s_proc", serviceName)
 	ctrName := fmt.Sprintf("%s_ctr", serviceName)
 	if instrument {
-		opentelemetry.Instrument(spec, serviceName, collectorName)
+		// Tomislav-RetCtx: HTTP services are traced with HTTP middleware; OT_GRPC_MODE=wrapper for the old wrappers.
+		opentelemetry.InstrumentHTTP(spec, serviceName, collectorName)
 	}
 	http.Deploy(spec, serviceName)
 	goproc.CreateProcess(spec, procName, serviceName)

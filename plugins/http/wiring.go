@@ -58,7 +58,11 @@ func Deploy(spec wiring.WiringSpec, serviceName string) {
 		if err != nil {
 			return nil, blueprint.Errorf("HTTP client %s expected %s to be an address, but encountered %s", httpClient, clientNext, err)
 		}
-		return newGolangHttpClient(httpClient, addr)
+		middleware, err := getMiddleware[ClientMiddleware](ns, httpClient) // Tomislav-RetCtx: middleware.go
+		if err != nil {
+			return nil, err
+		}
+		return newGolangHttpClient(httpClient, addr, middleware)
 	})
 
 	// Add the server-side modifier, which is an address that PointsTo the grpcServer
@@ -69,7 +73,12 @@ func Deploy(spec wiring.WiringSpec, serviceName string) {
 			return nil, blueprint.Errorf("HTTP server %s expected %s to be a golang.Service, but encountered %s", httpServer, serverNext, err)
 		}
 
-		server, err := newGolangHttpServer(httpServer, wrapped)
+		middleware, err := getMiddleware[ServerMiddleware](ns, httpServer) // Tomislav-RetCtx: middleware.go
+		if err != nil {
+			return nil, err
+		}
+
+		server, err := newGolangHttpServer(httpServer, wrapped, middleware)
 		if err != nil {
 			return nil, err
 		}

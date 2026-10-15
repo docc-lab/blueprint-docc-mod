@@ -153,7 +153,7 @@ func testReversePolicyTree(t *testing.T, policy reversePolicy) {
 			rejected := map[trace.SpanID]backend.ReturnedCheckpoint{}
 			start := func(ctx context.Context, spanKind trace.SpanKind) trace.Span {
 				parent := trace.SpanContextFromContext(ctx).SpanID()
-				raw, _ := decodeBR(backend.GetBaggageFromContext(ctx)[BaggageBRKey])
+				raw, _ := parsePropBR(backend.GetBaggageFromContext(ctx)[BaggageBRKey])
 				original := !parent.IsValid() || (len(raw) > 0 && raw[0] == 0)
 				_, span := tp.Tracer("tree").Start(ctx, "node", trace.WithSpanKind(spanKind))
 				mu.Lock()

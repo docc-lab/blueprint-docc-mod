@@ -3,6 +3,7 @@ package otelcol
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,8 +67,12 @@ func checkpointParentContext(kind string, depth int) context.Context {
 	case "sb":
 		br = packStructuralBR(depth, [8]byte{}, 3, checkpointBlooms[2].emptyBytes(), nil, structuralTail{})
 	}
+	bagBR := encodeBR(br) // these PB/CGPB run in the legacy fixed-cpd mode: `_br` as text
+	if kind == "sb" {
+		bagBR = propBR(br) // SB keeps its state beside the span: raw bytes (pack.go)
+	}
 	return backend.SetBaggageInContext(context.Background(), map[string]string{
-		reverseDepthBaggageKey: strconv.Itoa(depth), BaggageBRKey: encodeBR(br),
+		reverseDepthBaggageKey: strconv.Itoa(depth), BaggageBRKey: bagBR,
 	})
 }
 
@@ -252,7 +257,9 @@ func TestSDKUpstreamReverseCheckpointPriority(t *testing.T) {
 					exported = attr.Value.GetStringValue()
 				}
 			}
-			if exported != retCtx {
+			// Tomislav-RetCtx: exported as the text it always was (RawURL base64), although
+			// the carrier is raw bytes in the process.
+			if exported != backend.RetCtxText(retCtx) || exported != base64.RawURLEncoding.EncodeToString([]byte(retCtx)) {
 				t.Fatal("upstream checkpoint export lost the returned truss")
 			}
 		})

@@ -26,6 +26,29 @@ func decodeBR(s string) ([]byte, bool) {
 	return b, true
 }
 
+// propBR is how the bridges that keep their state beside the span (ranged PB/CGPB windows,
+// checkpoint_window.go; SB, sb_processor.go) put their outgoing `_br` into the baggage: the raw
+// packed bytes in a Go string, which may hold any bytes.  Tomislav-RetCtx: it used to be encodeBR
+// (base64 text), which every span then encoded and the next span decoded again (parsePropBR),
+// and the gRPC interceptors' binary carrier carried the text form, a third bigger than the bytes.
+// The places that need text deal with it themselves: the wrappers' JSON carrier sends values
+// that are not valid UTF-8 as base64 (runtime/core/backend/carrier_json.go, "baggage_bin"), and
+// nothing puts the baggage `_br` on a span attribute.  (encodeBR stays for attributes: OTLP string
+// values must be valid UTF-8.)  The legacy fixed-cpd PB/CGPB still carry `_br` as text, via their
+// `__bag._br` attribute.
+func propBR(packed []byte) string {
+	return string(packed)
+}
+
+// parsePropBR reverses propBR: a private copy of the bytes, as decodeBR returned one (the bloom
+// filter may be built over the slice and then written).  Returns nil/false for "".
+func parsePropBR(s string) ([]byte, bool) {
+	if s == "" {
+		return nil, false
+	}
+	return []byte(s), true
+}
+
 // decodeBRDepth extracts only the depth field (the leading varint) from
 // an encoded BR payload string, without unpacking the full message.
 // Lets OnEnd recover OnStart's depth decision without having to keep

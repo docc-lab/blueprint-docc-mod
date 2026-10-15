@@ -141,6 +141,17 @@ type (
 		// by the node, e.g. they can be instantiated if the node is [Instantiable].
 		AddToWorkspace(WorkspaceBuilder) error
 	}
+
+	// Tomislav-RetCtx: a [Node] can implement TypedInstance to say what Go type its runtime instance has.
+	//
+	// When another node's constructor takes this node as an argument, the generated code fetches the
+	// instance into a local variable.  For services that variable gets the service's interface type; for
+	// any other node it defaults to `string`, which is right for addresses and config values.  Nodes whose
+	// instance is something else (e.g. a gRPC interceptor, which is a function value) implement this so
+	// the variable gets the right type.
+	TypedInstance interface {
+		InstanceType() gocode.TypeName
+	}
 )
 
 type (

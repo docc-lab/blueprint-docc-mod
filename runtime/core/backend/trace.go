@@ -37,6 +37,9 @@ type traceCtxWithBaggage struct {
 	TraceCtx traceCtx `json:"trace_ctx"`
 	// Baggage for propagating arbitrary key-value pairs across service boundaries
 	Baggage map[string]string `json:"baggage,omitempty"`
+	// Tomislav-RetCtx: baggage values that are not valid UTF-8, base64 (carrier_json.go,
+	// splitBinaryBaggage).
+	BaggageBin map[string]string `json:"baggage_bin,omitempty"`
 }
 
 // Utility function to convert an encoded string into a Span Context
@@ -67,13 +70,17 @@ func GetSpanContext(encoded_string string) (trace.SpanContextConfig, map[string]
 	if err != nil {
 		return trace.SpanContextConfig{}, nil, err
 	}
+	baggage, err := mergeBinaryBaggage(tCtx.Baggage, tCtx.BaggageBin) // carrier_json.go
+	if err != nil {
+		return trace.SpanContextConfig{}, nil, err
+	}
 	return trace.SpanContextConfig{
 		TraceID:    tid,
 		SpanID:     sid,
 		TraceFlags: tFlags,
 		TraceState: tState,
 		Remote:     tCtx.TraceCtx.Remote,
-	}, tCtx.Baggage, nil
+	}, baggage, nil
 }
 
 // AddBaggageToTraceContext takes an already JSON-ified trace context string and adds baggage to it
@@ -83,9 +90,13 @@ func AddBaggageToTraceContext(traceContextJSON string, baggage map[string]string
 		return out, nil
 	}
 	// Construct the combined JSON directly
+	text, bin := splitBinaryBaggage(baggage) // carrier_json.go
 	combined := map[string]interface{}{
 		"trace_ctx": json.RawMessage(traceContextJSON),
-		"baggage":   baggage,
+		"baggage":   text,
+	}
+	if bin != nil {
+		combined["baggage_bin"] = bin
 	}
 
 	result, err := json.Marshal(combined)
@@ -94,6 +105,14 @@ func AddBaggageToTraceContext(traceContextJSON string, baggage map[string]string
 	}
 
 	return string(result), nil
+}
+
+// IsBaggageKey says whether key is the context key under which GetBaggageFromContext looks up the
+// baggage (a map[string]string).  Tomislav-RetCtx: for context types that answer several keys from
+// one layer instead of adding one layer per value.
+func IsBaggageKey(key any) bool {
+	_, ok := key.(baggageKey)
+	return ok
 }
 
 // SetBaggageInContext adds baggage to the Go context for the span processor to read

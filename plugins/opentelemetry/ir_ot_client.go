@@ -540,6 +540,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
+		retCtx = backend.RetCtxFromText(retCtx) // Tomislav-RetCtx: the response field is text; raw in the process
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}
@@ -652,6 +653,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
+		retCtx = backend.RetCtxFromText(retCtx) // Tomislav-RetCtx: the response field is text; raw in the process
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}
@@ -760,6 +762,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
+		retCtx = backend.RetCtxFromText(retCtx) // Tomislav-RetCtx: the response field is text; raw in the process
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}
@@ -869,6 +872,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Tomislav-RetCtx: hand the response to the live span for SDK TTL routing.
 	// Only the unconsumed output joins the enclosing server's fan-in.
 	if retCtx != "" {
+		retCtx = backend.RetCtxFromText(retCtx) // Tomislav-RetCtx: the response field is text; raw in the process
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}

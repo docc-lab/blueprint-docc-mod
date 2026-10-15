@@ -654,10 +654,10 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		for _, s := range kept {
 			buf = binary.AppendUvarint(buf, uint64(s))
 		}
-		// Base64 the bytes because OTel attributes don't expose a
-		// native []byte type; this is the SDK's only string round
-		// trip on the DEE path, paid once per server-OnEnd.
-		span.SetAttributes(attribute.String("remEndEvents", base64.RawURLEncoding.EncodeToString(buf)))
+		// Tomislav-RetCtx: the raw bytes in a string (OTel attributes have no []byte
+		// type).  The SB processor reads them at OnEnd in this process and never
+		// exports the attribute, so the base64 it used to take was decoded right away.
+		span.SetAttributes(attribute.String("remEndEvents", string(buf)))
 	}
 
 	// Tomislav-RetCtx: finalize merged returns after child/event counts settle.
@@ -668,6 +668,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}
+		// Tomislav-RetCtx: raw in the process; the response field needs text.
+		retCtx = backend.RetCtxText(retCtx)
 	}
 	return
 }
@@ -796,6 +798,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}
+		// Tomislav-RetCtx: raw in the process; the response field needs text.
+		retCtx = backend.RetCtxText(retCtx)
 	}
 	return
 }
@@ -926,6 +930,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}
+		// Tomislav-RetCtx: raw in the process; the response field needs text.
+		retCtx = backend.RetCtxText(retCtx)
 	}
 	return
 }
@@ -1056,6 +1062,8 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
 			retCtx = out
 		}
+		// Tomislav-RetCtx: raw in the process; the response field needs text.
+		retCtx = backend.RetCtxText(retCtx)
 	}
 	return
 }

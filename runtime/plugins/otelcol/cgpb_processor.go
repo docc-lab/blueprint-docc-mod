@@ -436,6 +436,10 @@ func (p *CallGraphBridgeProcessor) sendData(events []*tracepb.ResourceSpans, isH
 	return nil
 }
 
+// Tomislav-RetCtx: startAttributeBaggage tells NewOTCollectorTracer (trace.go) whether OnStart
+// adds "__bag." attributes: as for PB, only the legacy fixed-cpd mode does.
+func (p *CallGraphBridgeProcessor) startAttributeBaggage() bool { return !p.checkpointRange.enabled() }
+
 // OnStart implements SpanProcessor.OnStart
 func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 	// Tomislav-RetCtx: ranged windows preserve Bloom and trailing HA boundaries.
@@ -443,6 +447,15 @@ func (p *CallGraphBridgeProcessor) OnStart(parent context.Context, s sdktrace.Re
 		onStartCheckpointWindow(parent, s, p.checkpointRange, true)
 		return
 	}
+	p.onStartFixed(parent, s)
+}
+
+// onStartFixed is OnStart for the legacy fixed-cpd configuration.  Tomislav-RetCtx: it is its own
+// function only to keep OnStart's stack frame small.  Go sizes a function's frame for everything in
+// it, so while this code was inline, every span start in ranged mode (which returns above) also
+// reserved its 1.3 KB, and on goroutines that start with a small stack that is what made the stack
+// grow (be copied) during the span start (utils/grpc_interceptors/README.md, "Stack growth").
+func (p *CallGraphBridgeProcessor) onStartFixed(parent context.Context, s sdktrace.ReadWriteSpan) {
 	// Canonical call-graph path bridge (CGPRB = full-width-ckpt-anchored PCRB + a window-
 	// local hash array). Decode inbound baggage `_br` =
 	// varint(absolute depth) || ckpt(8) || propagated bloom (fixed ceil(m/8)) || HA.

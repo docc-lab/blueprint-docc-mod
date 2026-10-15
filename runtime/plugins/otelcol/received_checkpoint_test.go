@@ -16,15 +16,21 @@ import (
 func checkpointSpanAttribute(span trace.Span, key attribute.Key) string {
 	for _, attr := range span.(sdktrace.ReadOnlySpan).Attributes() {
 		if attr.Key == key {
+			if key == backend.ReverseTrussCheckpointKey {
+				// Tomislav-RetCtx: `_rc` is exported as text; tests compare reverse contexts
+				// in their in-process (raw) form.
+				return backend.RetCtxFromText(attr.Value.AsString())
+			}
 			return attr.Value.AsString()
 		}
 	}
 	// Tomislav-RetCtx: the ranged PB/CGPB window keeps `_br` / `_d` beside the span
-	// (wire_state.go) until OnEnd; report them in their former carrier encoding.
+	// (wire_state.go) until OnEnd; report them in their former carrier encoding (base64 text;
+	// the baggage `_br` itself is raw bytes now: baggageBR below).
 	if w := bridgeWires.load(span.SpanContext().SpanID()); w != nil {
 		switch key {
 		case AttrBR:
-			return w.prop
+			return encodeBR([]byte(w.prop))
 		case AttrBREmit:
 			return encodeBR(w.emit)
 		case AttrD:
@@ -32,6 +38,16 @@ func checkpointSpanAttribute(span trace.Span, key attribute.Key) string {
 		}
 	}
 	return ""
+}
+
+// baggageBR is the `_br` a child of span finds in its baggage: the raw bytes (pack.go, propBR)
+// for bridges that keep their state beside the span, the `__bag._br` attribute's text for the
+// legacy fixed-cpd PB/CGPB.
+func baggageBR(span trace.Span) string {
+	if w := bridgeWires.load(span.SpanContext().SpanID()); w != nil {
+		return w.prop
+	}
+	return checkpointSpanAttribute(span, AttrBR)
 }
 
 func exportedCheckpoint(t *testing.T, span *tracepb.Span) string {
@@ -42,7 +58,8 @@ func exportedCheckpoint(t *testing.T, span *tracepb.Span) string {
 			t.Fatalf("SDK leaked reverse carrier: %s", attr.Key)
 		}
 		if attr.Key == backend.ReverseTrussCheckpointKey {
-			checkpoint = attr.Value.GetStringValue()
+			// Tomislav-RetCtx: exported as text, compared in the in-process (raw) form.
+			checkpoint = backend.RetCtxFromText(attr.Value.GetStringValue())
 		}
 	}
 	return checkpoint

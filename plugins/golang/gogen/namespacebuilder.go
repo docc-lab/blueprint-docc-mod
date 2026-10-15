@@ -196,6 +196,10 @@ func (namespace *NamespaceBuilderImpl) DeclareConstructor(name string, construct
 
 		if argIface, err := golang.GetGoInterface(namespace.Module(), args[i]); err == nil {
 			arg.NodeType = &argIface.UserType
+		} else if typed, isTyped := args[i].(golang.TypedInstance); isTyped {
+			// Tomislav-RetCtx: not a service, but the node says what its instance is (e.g. a gRPC
+			// interceptor function), so fetch it into a variable of that type instead of a string.
+			arg.NodeType = typed.InstanceType()
 		}
 
 		templateArgs.NodesToGet = append(templateArgs.NodesToGet, arg)

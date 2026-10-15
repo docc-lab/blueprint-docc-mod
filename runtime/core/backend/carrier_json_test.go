@@ -4,16 +4,39 @@ package backend
 // encoding/json path produced, for every input the wrappers can hand it.
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"math/rand"
 	"testing"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/trace"
 )
 
+// reflectCarrier is the reference: what encoding/json produces for the carrier.  Values that
+// are not valid UTF-8 go base64 (RawURL) into "baggage_bin" instead of "baggage" (written out
+// here on its own, not with the code under test), and "baggage_bin" is left out when there are
+// none, so carriers without such values are what they always were.
 func reflectCarrier(sc trace.SpanContext, baggage map[string]string) string {
 	tc, _ := sc.MarshalJSON()
-	combined := map[string]interface{}{"trace_ctx": json.RawMessage(tc), "baggage": baggage}
+	text, bin := baggage, map[string]string{}
+	for k, v := range baggage {
+		if !utf8.ValidString(v) {
+			bin[k] = base64.RawURLEncoding.EncodeToString([]byte(v))
+		}
+	}
+	if len(bin) > 0 {
+		text = map[string]string{}
+		for k, v := range baggage {
+			if _, isBin := bin[k]; !isBin {
+				text[k] = v
+			}
+		}
+	}
+	combined := map[string]interface{}{"trace_ctx": json.RawMessage(tc), "baggage": text}
+	if len(bin) > 0 {
+		combined["baggage_bin"] = bin
+	}
 	out, _ := json.Marshal(combined)
 	return string(out)
 }
@@ -50,10 +73,18 @@ func TestEncodeTraceCarrierMatchesReflection(t *testing.T) {
 		if got, err := AddBaggageToTraceContext(string(tc), baggage); err != nil || got != want {
 			t.Fatalf("AddBaggageToTraceContext\n got %s\nwant %s (%v)", got, want, err)
 		}
-		// and it still round-trips through the receiver
+		// and it still round-trips through the receiver, every value exactly (binary ones too)
 		cfg2, bag2, err := GetSpanContext(want)
 		if err != nil || cfg2.TraceID != tid || cfg2.SpanID != sid || len(bag2) != len(baggage) {
 			t.Fatalf("round trip: %v %v %v", err, cfg2, bag2)
+		}
+		for k, v := range baggage {
+			if !utf8.ValidString(k) {
+				continue // JSON has always mangled such keys (U+FFFD); keys are names written in code
+			}
+			if bag2[k] != v {
+				t.Fatalf("round trip changed baggage %q: %q -> %q", k, v, bag2[k])
+			}
 		}
 	}
 	// a non-compact trace context takes the reflection path and is compacted as before
@@ -99,6 +130,14 @@ func TestParseCarrierFastMatchesUnmarshal(t *testing.T) {
 		for k, v := range want.Baggage {
 			if got.Baggage[k] != v {
 				t.Fatalf("baggage %q mismatch for %q", k, s)
+			}
+		}
+		if len(got.BaggageBin) != len(want.BaggageBin) {
+			t.Fatalf("baggage_bin mismatch for %q:\n got %v\nwant %v", s, got.BaggageBin, want.BaggageBin)
+		}
+		for k, v := range want.BaggageBin {
+			if got.BaggageBin[k] != v {
+				t.Fatalf("baggage_bin %q mismatch for %q", k, s)
 			}
 		}
 	}

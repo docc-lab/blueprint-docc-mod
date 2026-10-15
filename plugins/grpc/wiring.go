@@ -77,6 +77,52 @@ func Deploy(spec wiring.WiringSpec, serviceName string) {
 	DeployWithTimeout(spec, serviceName, "1s")
 }
 
+// Tomislav-RetCtx: property under which interceptor node names are recorded on a service's gRPC
+// server node (serviceName.grpc_server) and gRPC client node (serviceName.grpc_client).
+const interceptorsProp = "grpc.interceptors"
+
+// [AddServerInterceptor] installs a unary server interceptor on the gRPC server of serviceName.
+//
+// interceptorName is the name of another node in the wiring spec.  That node must implement
+// [ServerInterceptor], i.e. its runtime instance is a grpc.UnaryServerInterceptor.
+//
+// The interceptor is only recorded here; the gRPC server picks it up when it is built.  So this can be
+// called before or after [Deploy].  Interceptors run in the order they were added: the first one added
+// is the outermost, i.e. it sees the call first and the response last.
+func AddServerInterceptor(spec wiring.WiringSpec, serviceName string, interceptorName string) {
+	spec.AddProperty(serviceName+".grpc_server", interceptorsProp, interceptorName)
+}
+
+// [AddClientInterceptor] installs a unary client interceptor on every gRPC client of serviceName,
+// i.e. on the caller side of calls to serviceName.
+//
+// interceptorName is the name of another node in the wiring spec.  That node must implement
+// [ClientInterceptor], i.e. its runtime instance is a grpc.UnaryClientInterceptor.
+//
+// Like [AddServerInterceptor], this can be called before or after [Deploy], and the first interceptor
+// added is the outermost.
+func AddClientInterceptor(spec wiring.WiringSpec, serviceName string, interceptorName string) {
+	spec.AddProperty(serviceName+".grpc_client", interceptorsProp, interceptorName)
+}
+
+// Tomislav-RetCtx: looks up the interceptor nodes recorded on nodeName (see [AddServerInterceptor] and
+// [AddClientInterceptor]).  T is [ServerInterceptor] or [ClientInterceptor].
+func getInterceptors[T ir.IRNode](namespace wiring.Namespace, nodeName string) ([]T, error) {
+	var names []string
+	if err := namespace.GetProperties(nodeName, interceptorsProp, &names); err != nil {
+		return nil, blueprint.Errorf("unable to read the gRPC interceptors of %s: %s", nodeName, err)
+	}
+	var interceptors []T
+	for _, name := range names {
+		var interceptor T
+		if err := namespace.Get(name, &interceptor); err != nil {
+			return nil, blueprint.Errorf("gRPC node %s expected %s to be a gRPC interceptor, but encountered %s", nodeName, name, err)
+		}
+		interceptors = append(interceptors, interceptor)
+	}
+	return interceptors, nil
+}
+
 // Tomislav-RetCtx: DeployWithTimeout makes deep topology deadlines configurable;
 // Deploy retains its existing one-second default. An earlier deadline in the
 // caller's context still takes precedence over the configured call timeout.
@@ -106,7 +152,11 @@ func DeployWithTimeout(spec wiring.WiringSpec, serviceName, requestTimeout strin
 		if err != nil {
 			return nil, blueprint.Errorf("GRPC client %s expected %s to be an address, but encountered %s", grpcClient, clientNext, err)
 		}
-		return newGolangClient(grpcClient, addr, requestTimeout)
+		interceptors, err := getInterceptors[ClientInterceptor](namespace, grpcClient)
+		if err != nil {
+			return nil, err
+		}
+		return newGolangClient(grpcClient, addr, requestTimeout, interceptors)
 	})
 
 	// Add the server-side modifier, which is an address that PointsTo the grpcServer
@@ -117,7 +167,12 @@ func DeployWithTimeout(spec wiring.WiringSpec, serviceName, requestTimeout strin
 			return nil, blueprint.Errorf("GRPC server %s expected %s to be a golang.Service, but encountered %s", grpcServer, serverNext, err)
 		}
 
-		server, err := newGolangServer(grpcServer, wrapped)
+		interceptors, err := getInterceptors[ServerInterceptor](namespace, grpcServer)
+		if err != nil {
+			return nil, err
+		}
+
+		server, err := newGolangServer(grpcServer, wrapped, interceptors)
 		if err != nil {
 			return nil, err
 		}

@@ -75,7 +75,7 @@ func onStartCheckpointWindow(parent context.Context, s sdktrace.ReadWriteSpan, r
 		parentHA    []byte
 	)
 	if bag := backend.GetBaggageFromContext(parent); bag != nil {
-		if raw, valid := decodeBR(bag[BaggageBRKey]); valid {
+		if raw, valid := parsePropBR(bag[BaggageBRKey]); valid { // pack.go
 			parentTTL, raw = r.unwrap(raw)
 			var ok bool
 			parentDepth, anchor, distance, inherited, parentHA, ok = unpackCheckpointWindowBR(raw)
@@ -108,7 +108,7 @@ func onStartCheckpointWindow(parent context.Context, s sdktrace.ReadWriteSpan, r
 	// Tomislav-RetCtx: nothing goes on the OTel span. The outgoing propagation reaches the RPC
 	// wrappers through backend.AppendSpanBaggage; the export payload, depth and scheduling
 	// decision stay beside the span as raw bytes (wire_state.go).
-	bridgeWires.store(sid, &bridgeWire{emit: emit, depth: depth, priority: isCheckpoint, prop: encodeBR(wrapped)})
+	bridgeWires.store(sid, &bridgeWire{emit: emit, depth: depth, priority: isCheckpoint, prop: propBR(wrapped)})
 }
 
 // encodeWindowPayloads builds the span's export payload (the window it inherited) and its

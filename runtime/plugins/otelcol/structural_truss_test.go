@@ -3,7 +3,6 @@ package otelcol
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/binary"
 	"math/rand/v2"
 	"reflect"
@@ -195,7 +194,7 @@ type sbRequestState struct {
 
 func sbChildContext(parentSpan trace.Span, state *sbRequestState) context.Context {
 	ctx := trace.ContextWithSpanContext(context.Background(), parentSpan.SpanContext())
-	ctx = backend.SetBaggageInContext(ctx, map[string]string{BaggageBRKey: checkpointSpanAttribute(parentSpan, AttrBR)})
+	ctx = backend.SetBaggageInContext(ctx, map[string]string{BaggageBRKey: baggageBR(parentSpan)})
 	ctx = context.WithValue(ctx, "childCount", &state.children)
 	ctx = context.WithValue(ctx, "endEvents", &state.ends)
 	ctx = context.WithValue(ctx, "childrenMutex", &state.mu)
@@ -281,7 +280,7 @@ func TestStructuralBridgeFanOutTrusses(t *testing.T) {
 	summary = binary.AppendUvarint(summary, 2)
 	summary = binary.AppendUvarint(summary, 2)
 	summary = binary.AppendUvarint(summary, 1)
-	root.SetAttributes(attribute.String("remEndEvents", base64.RawURLEncoding.EncodeToString(summary)))
+	root.SetAttributes(attribute.String("remEndEvents", string(summary))) // Tomislav-RetCtx: raw bytes
 	root.End()
 	// The next outgoing span of this process carries the delayed truss.
 	_, next := tracer.Start(context.Background(), "next-request", trace.WithSpanKind(trace.SpanKindServer))
@@ -347,7 +346,7 @@ func TestStructuralBridgeFixedDistance(t *testing.T) {
 			t.Fatalf("ordinary span at %d lost anchor or ordinals: %+v", depth, tail)
 		}
 		ctx = backend.SetBaggageInContext(trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
-			map[string]string{BaggageBRKey: checkpointSpanAttribute(span, AttrBR)})
+			map[string]string{BaggageBRKey: baggageBR(span)})
 		span.End()
 	}
 	if len(p.hpBuf) != 3 || len(p.lpBuf) != 4 {

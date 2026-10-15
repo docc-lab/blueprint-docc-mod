@@ -56,18 +56,15 @@ type {{.Name}} struct {
 	Timeout time.Duration
 }
 
-// Tomislav-RetCtx: optional wiring timeout; existing two-argument calls keep 1s.
-func New_{{.Name}}(ctx context.Context, serverAddress string, timeout ...string) (*{{.Name}}, error) {
+// Tomislav-RetCtx: timeout is the per-call deadline from the wiring spec (empty means 1s).
+// interceptors are unary client interceptors, outermost first (may be empty).
+func New_{{.Name}}(ctx context.Context, serverAddress string, timeout string, interceptors ...grpc.UnaryClientInterceptor) (*{{.Name}}, error) {
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if len(timeout) > 1 {
-		return nil, fmt.Errorf("expected at most one gRPC timeout")
+	if timeout == "" {
+		timeout = "1s"
 	}
-	timeoutValue := "1s"
-	if len(timeout) == 1 {
-		timeoutValue = timeout[0]
-	}
-	duration, err := time.ParseDuration(timeoutValue)
+	duration, err := time.ParseDuration(timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +72,10 @@ func New_{{.Name}}(ctx context.Context, serverAddress string, timeout ...string)
 		return nil, fmt.Errorf("gRPC timeout must be positive")
 	}
 	opts = append(opts, grpc.WithTimeout(duration))
+	// With no interceptors the connection is dialed exactly as before.
+	if len(interceptors) > 0 {
+		opts = append(opts, grpc.WithChainUnaryInterceptor(interceptors...))
+	}
 	conn, err := grpc.Dial(serverAddress, opts...)
 	if err != nil {
 		return nil, err

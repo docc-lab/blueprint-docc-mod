@@ -23,6 +23,8 @@ type golangHttpServer struct {
 	InstanceName string
 	Bind         *address.BindConfig
 	Wrapped      golang.Service
+	// Tomislav-RetCtx: middleware installed on this server, outermost first (see AddServerMiddleware).
+	Middleware []ServerMiddleware
 
 	outputPackage string
 }
@@ -41,7 +43,7 @@ func (i *HttpInterface) GetMethods() []service.Method {
 	return i.Wrapped.GetMethods()
 }
 
-func newGolangHttpServer(name string, wrapped ir.IRNode) (*golangHttpServer, error) {
+func newGolangHttpServer(name string, wrapped ir.IRNode, middleware []ServerMiddleware) (*golangHttpServer, error) {
 	service, is_service := wrapped.(golang.Service)
 	if !is_service {
 		return nil, blueprint.Errorf("HTTP server %s expected %s to be a golang service, but got %s", name, wrapped.Name(), reflect.TypeOf(wrapped).String())
@@ -50,12 +52,17 @@ func newGolangHttpServer(name string, wrapped ir.IRNode) (*golangHttpServer, err
 	node := &golangHttpServer{}
 	node.InstanceName = name
 	node.Wrapped = service
+	node.Middleware = middleware
 	node.outputPackage = "http"
 	return node, nil
 }
 
 func (n *golangHttpServer) String() string {
-	return n.InstanceName + " = HTTPServer(" + n.Wrapped.Name() + ", " + n.Bind.Name() + ")"
+	args := n.Wrapped.Name() + ", " + n.Bind.Name()
+	for _, m := range n.Middleware {
+		args += ", " + m.Name()
+	}
+	return n.InstanceName + " = HTTPServer(" + args + ")"
 }
 
 func (n *golangHttpServer) Name() string {
@@ -95,10 +102,16 @@ func (node *golangHttpServer) AddInstantiation(builder golang.NamespaceBuilder) 
 				{Name: "ctx", Type: &gocode.UserType{Package: "context", Name: "Context"}},
 				{Name: "service", Type: iface},
 				{Name: "serverAddr", Type: &gocode.BasicType{Name: "string"}},
+				// Tomislav-RetCtx: one argument per installed middleware (none is fine).
+				{Name: "middleware", Type: &gocode.Ellipsis{EllipsisOf: serverMiddlewareType}},
 			},
 		},
 	}
-	return builder.DeclareConstructor(node.InstanceName, constructor, []ir.IRNode{node.Wrapped, node.Bind})
+	args := []ir.IRNode{node.Wrapped, node.Bind}
+	for _, m := range node.Middleware {
+		args = append(args, m)
+	}
+	return builder.DeclareConstructor(node.InstanceName, constructor, args)
 }
 
 func (node *golangHttpServer) GetInterface(ctx ir.BuildContext) (service.ServiceInterface, error) {

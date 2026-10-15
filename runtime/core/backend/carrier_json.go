@@ -15,6 +15,7 @@ package backend
 // reflection encoder.
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"slices"
 	"unicode/utf8"
@@ -100,6 +101,63 @@ func appendJSONStringMap(dst []byte, m map[string]string) []byte {
 	return append(dst, '}')
 }
 
+// splitBinaryBaggage separates baggage values that are not valid UTF-8 from the rest.
+// Tomislav-RetCtx: the bridges keep their propagation state (`_br`) in the baggage as raw bytes
+// (runtime/plugins/otelcol/pack.go, propBR): the gRPC interceptors' binary carrier takes them as
+// they are, but a JSON string cannot hold them (encoding/json replaces such bytes with U+FFFD).
+// So in the JSON carrier they travel base64 (RawURL) in a separate "baggage_bin" object, which is
+// only present when there are such values: every other carrier is byte for byte what it was.
+// text is baggage itself when nothing is binary (no copy); bin is nil then.  Keys are assumed to
+// be text (they are names chosen in code).
+func splitBinaryBaggage(baggage map[string]string) (text, bin map[string]string) {
+	for _, v := range baggage {
+		if !utf8.ValidString(v) {
+			text, bin = make(map[string]string, len(baggage)), map[string]string{}
+			for k, v := range baggage {
+				if utf8.ValidString(v) {
+					text[k] = v
+				} else {
+					bin[k] = base64.RawURLEncoding.EncodeToString([]byte(v))
+				}
+			}
+			return text, bin
+		}
+	}
+	return baggage, nil
+}
+
+// mergeBinaryBaggage puts the values of a carrier's "baggage_bin" object back into its baggage
+// as the raw bytes they were (splitBinaryBaggage above).  Called by GetSpanContext (trace.go).
+func mergeBinaryBaggage(baggage, bin map[string]string) (map[string]string, error) {
+	if len(bin) == 0 {
+		return baggage, nil
+	}
+	if baggage == nil {
+		baggage = make(map[string]string, len(bin))
+	}
+	for k, v := range bin {
+		raw, err := base64.RawURLEncoding.DecodeString(v)
+		if err != nil {
+			return nil, err
+		}
+		baggage[k] = string(raw)
+	}
+	return baggage, nil
+}
+
+// appendBaggageJSON appends the carrier's baggage member(s): `"baggage":{...}` and, when some
+// values are binary, `,"baggage_bin":{...}` (keys in encoding/json's sorted order for a map).
+func appendBaggageJSON(dst []byte, baggage map[string]string) []byte {
+	text, bin := splitBinaryBaggage(baggage)
+	dst = append(dst, `"baggage":`...)
+	dst = appendJSONStringMap(dst, text)
+	if bin != nil {
+		dst = append(dst, `,"baggage_bin":`...)
+		dst = appendJSONStringMap(dst, bin)
+	}
+	return dst
+}
+
 // appendSpanContextJSON appends sc exactly as trace.SpanContext.MarshalJSON encodes it.
 func appendSpanContextJSON(dst []byte, sc trace.SpanContext) []byte {
 	tid, sid, flags := sc.TraceID(), sc.SpanID(), sc.TraceFlags()
@@ -125,8 +183,8 @@ func appendSpanContextJSON(dst []byte, sc trace.SpanContext) []byte {
 // AddBaggageToTraceContext(string(sc.MarshalJSON()), baggage).
 func EncodeTraceCarrier(sc trace.SpanContext, baggage map[string]string) string {
 	buf := make([]byte, 0, 160+64*len(baggage))
-	buf = append(buf, `{"baggage":`...)
-	buf = appendJSONStringMap(buf, baggage)
+	buf = append(buf, '{')
+	buf = appendBaggageJSON(buf, baggage)
 	buf = append(buf, `,"trace_ctx":`...)
 	buf = appendSpanContextJSON(buf, sc)
 	return string(append(buf, '}'))
@@ -146,8 +204,8 @@ func addBaggageFast(traceContextJSON string, baggage map[string]string) (string,
 		}
 	}
 	buf := make([]byte, 0, 32+n+64*len(baggage))
-	buf = append(buf, `{"baggage":`...)
-	buf = appendJSONStringMap(buf, baggage)
+	buf = append(buf, '{')
+	buf = appendBaggageJSON(buf, baggage)
 	buf = append(buf, `,"trace_ctx":`...)
 	buf = append(buf, traceContextJSON...)
 	return string(append(buf, '}')), true
@@ -219,6 +277,26 @@ func parseCarrierFast(s string) (traceCtxWithBaggage, bool) {
 				if !lit(",") {
 					return out, false
 				}
+			}
+		}
+	}
+	if lit(`,"baggage_bin":{`) {
+		out.BaggageBin = map[string]string{}
+		for {
+			k, ok := str()
+			if !ok || !lit(":") {
+				return out, false
+			}
+			v, ok := str()
+			if !ok {
+				return out, false
+			}
+			out.BaggageBin[k] = v
+			if lit("}") {
+				break
+			}
+			if !lit(",") {
+				return out, false
 			}
 		}
 	}

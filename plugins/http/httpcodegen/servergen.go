@@ -26,7 +26,8 @@ func GenerateServerHandler(builder golang.ModuleBuilder, service *gocode.Service
 		Imports: gogen.NewImports(pkg.Name),
 	}
 
-	server.Imports.AddPackages("context", "encoding/json", "net/http", "github.com/gorilla/mux")
+	server.Imports.AddPackages("context", "encoding/json", "net/http", "github.com/gorilla/mux",
+		"github.com/blueprint-uservices/blueprint/runtime/plugins/httpmiddleware")
 
 	slog.Info(fmt.Sprintf("Generating %v/%v_HTTPServer.go", server.Package.PackageName, service.BaseName))
 	outputFile := filepath.Join(server.Package.Path, service.BaseName+"_HTTPServer.go")
@@ -51,13 +52,24 @@ package {{.Package.ShortName}}
 type {{.Name}} struct {
 	Service {{.Imports.NameOf .Service.UserType}}
 	Address string
+	// Tomislav-RetCtx: middleware around every method's handler, outermost first (may be empty).
+	Middleware []httpmiddleware.ServerMiddleware
 }
 
-func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserType}}, serverAddress string) (*{{.Name}}, error) {
+func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserType}}, serverAddress string, middleware ...httpmiddleware.ServerMiddleware) (*{{.Name}}, error) {
 	handler := &{{.Name}}{}
 	handler.Service = service
 	handler.Address = serverAddress
+	handler.Middleware = middleware
 	return handler, nil
+}
+
+// Tomislav-RetCtx: wrap puts the middleware around the handler of one method, outermost first.
+func (handler *{{.Name}}) wrap(method string, h http.Handler) http.Handler {
+	for i := len(handler.Middleware) - 1; i >= 0; i-- {
+		h = handler.Middleware[i]("{{.Service.Name}}", method, h)
+	}
+	return h
 }
 
 // Blueprint: Run is called automatically in a separate goroutine by runtime/plugins/golang/di.go
@@ -65,7 +77,7 @@ func (handler *{{.Name}}) Run(ctx context.Context) error {
 	router := mux.NewRouter()
 	// Add paths for the mux router
 	{{ range $_, $f := .Service.Methods }}
-	router.Path("/{{$f.Name}}").HandlerFunc(handler.{{$f.Name}})
+	router.Path("/{{$f.Name}}").Handler(handler.wrap("{{$f.Name}}", http.HandlerFunc(handler.{{$f.Name}})))
 	{{end}}
 	srv := &http.Server {
 		Addr: handler.Address,
@@ -104,9 +116,12 @@ func (handler *{{$receiver}}) {{$f.Name -}}
 	}
 	{{- end}}
 	{{end}}
-	ctx := context.Background()
+	// Tomislav-RetCtx: the service gets the values middleware put on the request's context, but not
+	// its cancellation (it used to get context.Background(), so it runs on if the caller goes away).
+	ctx := context.WithoutCancel(r.Context())
 	{{RetVars $f "err"}} {{HasNewReturnVars $f}} handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 	if err != nil {
+		httpmiddleware.RecordError(w, err) // Tomislav-RetCtx: the error itself, for middleware that wants it
 		http.Error(w, err.Error(), 500)
 		return
 	}

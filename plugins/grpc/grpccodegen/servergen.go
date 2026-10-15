@@ -29,7 +29,7 @@ func GenerateServerHandler(builder golang.ModuleBuilder, service *gocode.Service
 	}
 
 	server.Imports.AddPackages(
-		"context", "net",
+		"context", "net", "os", "runtime", "strconv",
 		"google.golang.org/grpc",
 	)
 
@@ -57,12 +57,15 @@ type {{.Name}} struct {
 	Unimplemented{{.Service.Name}}Server
 	Service {{.Imports.NameOf .Service.UserType}}
 	Address string
+	// Tomislav-RetCtx: unary interceptors installed on the server, outermost first (may be empty).
+	Interceptors []grpc.UnaryServerInterceptor
 }
 
-func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserType}}, serverAddress string) (*{{.Name}}, error) {
+func New_{{.Name}}(ctx context.Context, service {{.Imports.NameOf .Service.UserType}}, serverAddress string, interceptors ...grpc.UnaryServerInterceptor) (*{{.Name}}, error) {
 	handler := &{{.Name}}{}
 	handler.Service = service
 	handler.Address = serverAddress
+	handler.Interceptors = interceptors
 	return handler, nil
 }
 
@@ -73,7 +76,33 @@ func (handler *{{.Name}}) Run(ctx context.Context) error {
 		return err
 	}
 
-	s := grpc.NewServer()
+	var opts []grpc.ServerOption
+	if len(handler.Interceptors) > 0 {
+		opts = append(opts, grpc.ChainUnaryInterceptor(handler.Interceptors...))
+	}
+	// Tomislav-RetCtx: stream workers.  By default gRPC runs every incoming call on a new
+	// goroutine.  A new goroutine starts with a small stack, and every time the call goes deeper
+	// than the stack allows (gRPC's receive path, interceptors, the service, its own calls), the
+	// runtime copies the whole stack to one twice the size, adjusting every frame on it.  Workers
+	// are goroutines gRPC reuses from call to call, so their stacks stay grown.  When every worker
+	// is busy, gRPC runs the call on a new goroutine as before: the number only limits how many
+	// calls get a reused stack, never how many run at once.
+	// GRPC_STREAM_WORKERS sets the number of workers; 0 turns them off (gRPC's default).  Unset,
+	// it is 32, or GOMAXPROCS if that is more (gRPC's own suggestion is GOMAXPROCS, but a handler
+	// waiting for its downstream calls holds its worker, so more calls are open than CPUs; on SN, 8
+	// and 32 workers saved the same, 2 less: utils/grpc_interceptors/README.md, "Stack growth").  A
+	// value that does not parse also turns them off.
+	workers := uint64(32)
+	if n := uint64(runtime.GOMAXPROCS(0)); n > workers {
+		workers = n
+	}
+	if v, set := os.LookupEnv("GRPC_STREAM_WORKERS"); set {
+		workers, _ = strconv.ParseUint(v, 10, 32)
+	}
+	if workers > 0 {
+		opts = append(opts, grpc.NumStreamWorkers(uint32(workers)))
+	}
+	s := grpc.NewServer(opts...)
 	Register{{.Service.Name}}Server(s, handler)
 
 	go func() {

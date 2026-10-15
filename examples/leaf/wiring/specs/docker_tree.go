@@ -44,13 +44,15 @@ func makeTreeSpec(spec wiring.WiringSpec, suffix string, nodes int) ([]string, e
 	trace_collector := otelcol.Collector(spec, sn("otelcol"), jaeger_collector, 8080, "jaeger")
 
 	grpcNode := func(name string) string {
-		opentelemetry.Instrument(spec, name, trace_collector)
+		// Tomislav-RetCtx: traced with gRPC interceptors; OT_GRPC_MODE=wrapper for the old wrappers.
+		opentelemetry.InstrumentGRPC(spec, name, trace_collector)
 		grpc.Deploy(spec, name)
 		goproc.Deploy(spec, name)
 		return linuxcontainer.Deploy(spec, name)
 	}
 	httpNode := func(name string) string {
-		opentelemetry.Instrument(spec, name, trace_collector)
+		// Tomislav-RetCtx: HTTP services are traced with HTTP middleware; OT_GRPC_MODE=wrapper for the old wrappers.
+		opentelemetry.InstrumentHTTP(spec, name, trace_collector)
 		http.Deploy(spec, name)
 		goproc.Deploy(spec, name)
 		return linuxcontainer.Deploy(spec, name)

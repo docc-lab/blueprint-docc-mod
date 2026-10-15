@@ -30,3 +30,14 @@ func AppendSpanBaggage(span trace.Span, baggage map[string]string) {
 		f(span.SpanContext(), baggage)
 	}
 }
+
+// AttributeBaggageReporter is implemented by a tracer (a [Tracer]) that knows whether anything in
+// its SDK adds "__bag." attributes to a span while the span starts (span processors' OnStart, the
+// sampler).  Tomislav-RetCtx: the gRPC interceptors (runtime/plugins/opentelemetry/interceptors)
+// turn a new span's "__bag." attributes into baggage right after starting the span, before any
+// application code can touch it, so at that point only the SDK can have written them.  When the
+// tracer reports false they skip reading the span's attributes (a lock and a copy of the attribute
+// list per span).  A tracer that does not implement this is assumed to write them.
+type AttributeBaggageReporter interface {
+	StartAttributeBaggage() bool
+}

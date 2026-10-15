@@ -237,10 +237,14 @@ func makeFanoutSpec(spec wiring.WiringSpec, topology FanoutTopology, kind string
 		} else {
 			service = workflow.Service[*leaf.FanoutNodeImpl](spec, serviceName(name), args...)
 		}
-		opentelemetry.Instrument(spec, service, collector)
 		if name == topology.Root {
+			// Tomislav-RetCtx: HTTP services are traced with HTTP middleware; OT_GRPC_MODE=wrapper for the old wrappers.
+			opentelemetry.InstrumentHTTP(spec, service, collector)
 			http.Deploy(spec, service)
 		} else {
+			// Tomislav-RetCtx: gRPC nodes are traced with gRPC interceptors; build with
+			// OT_GRPC_MODE=wrapper to get the old wrapper services instead.
+			opentelemetry.InstrumentGRPC(spec, service, collector)
 			grpc.DeployWithTimeout(spec, service, rpcTimeout)
 		}
 		goproc.Deploy(spec, service)

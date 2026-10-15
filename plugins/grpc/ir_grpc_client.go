@@ -26,11 +26,13 @@ type golangClient struct {
 	ServerAddr   *address.Address[*golangServer]
 	// Tomislav-RetCtx: carry the validated wiring deadline into client generation.
 	RequestTimeout string
+	// Tomislav-RetCtx: interceptors installed on this client, outermost first (see AddClientInterceptor).
+	Interceptors []ClientInterceptor
 
 	outputPackage string
 }
 
-func newGolangClient(name string, addr *address.Address[*golangServer], requestTimeout string) (*golangClient, error) {
+func newGolangClient(name string, addr *address.Address[*golangServer], requestTimeout string, interceptors []ClientInterceptor) (*golangClient, error) {
 	if duration, err := time.ParseDuration(requestTimeout); err != nil || duration <= 0 {
 		return nil, fmt.Errorf("gRPC timeout must be a positive duration, got %q", requestTimeout)
 	}
@@ -38,13 +40,18 @@ func newGolangClient(name string, addr *address.Address[*golangServer], requestT
 	node.InstanceName = name
 	node.ServerAddr = addr
 	node.RequestTimeout = requestTimeout
+	node.Interceptors = interceptors
 	node.outputPackage = "grpc"
 
 	return node, nil
 }
 
 func (n *golangClient) String() string {
-	return n.InstanceName + " = GRPCClient(" + n.ServerAddr.Dial.Name() + ")"
+	args := n.ServerAddr.Dial.Name()
+	for _, interceptor := range n.Interceptors {
+		args += ", " + interceptor.Name()
+	}
+	return n.InstanceName + " = GRPCClient(" + args + ")"
 }
 
 func (n *golangClient) Name() string {
@@ -119,13 +126,21 @@ func (node *golangClient) AddInstantiation(builder golang.NamespaceBuilder) erro
 			Arguments: []gocode.Variable{
 				{Name: "ctx", Type: &gocode.UserType{Package: "context", Name: "Context"}},
 				{Name: "addr", Type: &gocode.BasicType{Name: "string"}},
-				{Name: "timeout", Type: &gocode.Ellipsis{EllipsisOf: &gocode.BasicType{Name: "string"}}},
+				// Tomislav-RetCtx: the timeout used to be variadic; it is always passed, so it is now a
+				// plain argument and the variadic slot holds one argument per installed interceptor.
+				{Name: "timeout", Type: &gocode.BasicType{Name: "string"}},
+				{Name: "interceptors", Type: &gocode.Ellipsis{EllipsisOf: unaryClientInterceptorType}},
 			},
 		},
 	}
 
+	args := []ir.IRNode{node.ServerAddr.Dial, &ir.IRValue{Value: node.RequestTimeout}}
+	for _, interceptor := range node.Interceptors {
+		args = append(args, interceptor)
+	}
+
 	slog.Info(fmt.Sprintf("Instantiating GRPCClient %v in %v/%v", node.InstanceName, builder.Info().Package.PackageName, builder.Info().FileName))
-	return builder.DeclareConstructor(node.InstanceName, constructor, []ir.IRNode{node.ServerAddr.Dial, &ir.IRValue{Value: node.RequestTimeout}})
+	return builder.DeclareConstructor(node.InstanceName, constructor, args)
 }
 
 func (node *golangClient) ImplementsGolangNode()    {}

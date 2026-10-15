@@ -165,7 +165,9 @@ func makeDockerSpec(spec wiring.WiringSpec, suffix, configPath string, useES boo
 
 	applyDockerDefaults := func(serviceName string) string {
 		retries.AddRetries(spec, serviceName, 3)
-		opentelemetry.Instrument(spec, serviceName, trace_collector)
+		// Tomislav-RetCtx: gRPC services are traced with gRPC interceptors; build with
+		// OT_GRPC_MODE=wrapper to get the old wrapper services instead.
+		opentelemetry.InstrumentGRPC(spec, serviceName, trace_collector)
 		grpc.Deploy(spec, serviceName)
 		goproc.Deploy(spec, serviceName)
 		return linuxcontainer.Deploy(spec, serviceName)
@@ -174,7 +176,8 @@ func makeDockerSpec(spec wiring.WiringSpec, suffix, configPath string, useES boo
 	applyHTTPDefaults := func(serviceName string, collector string) string {
 		retries.AddRetries(spec, serviceName, 3)
 		clientpool.Create(spec, serviceName, 100)
-		opentelemetry.Instrument(spec, serviceName, collector)
+		// Tomislav-RetCtx: HTTP services are traced with HTTP middleware; OT_GRPC_MODE=wrapper for the old wrappers.
+		opentelemetry.InstrumentHTTP(spec, serviceName, collector)
 		http.Deploy(spec, serviceName)
 		goproc.Deploy(spec, serviceName)
 		return linuxcontainer.Deploy(spec, serviceName)

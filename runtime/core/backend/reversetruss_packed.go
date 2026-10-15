@@ -33,10 +33,21 @@ package backend
 // therefore checkpoint-only by construction, and decodePackedRetCtx refuses
 // anything it does not fully understand so a mixed bundle can never be
 // silently truncated.
+//
+// Tomislav-RetCtx (2026-10-14): in the process the packed envelope is its raw
+// bytes in a Go string, not their base64.  The text form used to be decoded and
+// re-encoded at every step of a hop with nothing changed in between: each child
+// added to the fan-in (the whole accumulator each time), each checkpoint
+// preparation, and twice more by the gRPC interceptors to put it in a header.
+// Text is made only where text has to travel (RetCtxText / RetCtxFromText below):
+// the wrappers' response field, and the exported `_rc` attribute, whose format is
+// unchanged.  A raw envelope starts with the version byte 0x01, which no base64
+// alphabet contains, so raw and text forms cannot be confused.
 
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"unsafe"
 
 	"go.opentelemetry.io/otel/trace"
 )
@@ -101,24 +112,47 @@ func encodePackedRetCtx(segments []TrussSegment) string {
 	for _, segment := range segments {
 		buf = appendPackedSegment(buf, segment)
 	}
-	return base64.RawURLEncoding.EncodeToString(buf)
+	return unsafe.String(unsafe.SliceData(buf), len(buf)) // buf is never written again
 }
 
-// packedRecords returns the record region of a packed envelope: everything after
-// the version byte. Merging two envelopes is appending one region to the other,
-// so this is all a fan-in needs -- no segment is materialised.
+// packedRecords returns the record region of a raw packed envelope: everything
+// after the version byte. Merging two envelopes is appending one region to the
+// other, so this is all a fan-in needs -- no segment is materialised.  The result
+// is a read-only view of s (strings cannot be written); decodePackedRetCtx copies.
 func packedRecords(s string) ([]byte, bool) {
-	if s == "" {
+	if len(s) == 0 || s[0] != packedRetCtxVersion {
 		return nil, false
+	}
+	raw := unsafe.Slice(unsafe.StringData(s), len(s))[1:]
+	if !validPackedRecords(raw) {
+		return nil, false
+	}
+	return raw, true
+}
+
+// RetCtxText returns a reverse context as text, for carriers that can only hold
+// text: the wrappers' response field (a protobuf string, or JSON over HTTP) and the
+// exported `_rc` span attribute.  A packed envelope becomes RawURL base64 (what
+// those carriers have always held); anything else is already text.
+func RetCtxText(retCtx string) string {
+	if len(retCtx) == 0 || retCtx[0] != packedRetCtxVersion {
+		return retCtx
+	}
+	return base64.RawURLEncoding.EncodeToString(unsafe.Slice(unsafe.StringData(retCtx), len(retCtx)))
+}
+
+// RetCtxFromText reverses RetCtxText: the wrappers' client side calls it on the
+// reverse context a response brought.  Text that is not a packed envelope (the
+// JSON envelope, StdEncoding) stays as it is.
+func RetCtxFromText(s string) string {
+	if len(s) == 0 || s[0] == packedRetCtxVersion {
+		return s
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil || len(raw) == 0 || raw[0] != packedRetCtxVersion {
-		return nil, false
+		return s
 	}
-	if !validPackedRecords(raw[1:]) {
-		return nil, false
-	}
-	return raw[1:], true
+	return unsafe.String(unsafe.SliceData(raw), len(raw)) // raw is never written again
 }
 
 // validPackedRecords walks the framing without building anything, so a malformed
@@ -149,10 +183,12 @@ func validPackedRecords(raw []byte) bool {
 }
 
 func decodePackedRetCtx(s string) (trussData, bool) {
-	raw, ok := packedRecords(s)
+	view, ok := packedRecords(s)
 	if !ok {
 		return trussData{}, false
 	}
+	// The segments' Data alias this copy, so callers may keep or change them.
+	raw := append([]byte(nil), view...)
 	var t trussData
 	var fingerprints []byte
 	for len(raw) > 0 {
@@ -181,20 +217,15 @@ func decodePackedRetCtx(s string) (trussData, bool) {
 }
 
 // mergePackedRetCtx concatenates two packed envelopes without decoding a single
-// segment: both record regions are appended and re-framed. This is the operation
-// every fan-in performs, and it is why the envelope must be concatenative.
+// segment: the second one's record region is appended to the first envelope. This
+// is the operation every fan-in performs, and it is why the envelope must be
+// concatenative.
 func mergePackedRetCtx(a, b string) (string, bool) {
-	left, ok := packedRecords(a)
-	if !ok {
+	if _, ok := packedRecords(a); !ok {
 		return "", false
 	}
-	right, ok := packedRecords(b)
-	if !ok {
+	if _, ok := packedRecords(b); !ok {
 		return "", false
 	}
-	buf := make([]byte, 0, 1+len(left)+len(right))
-	buf = append(buf, packedRetCtxVersion)
-	buf = append(buf, left...)
-	buf = append(buf, right...)
-	return base64.RawURLEncoding.EncodeToString(buf), true
+	return a + b[1:], true
 }

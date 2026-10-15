@@ -26,6 +26,7 @@ func GenerateClient(builder golang.ModuleBuilder, service *gocode.ServiceInterfa
 
 	client.Imports.AddPackages(
 		"net/http", "encoding/json", "context", "net/url", "fmt", "io", "errors",
+		"github.com/blueprint-uservices/blueprint/runtime/plugins/httpmiddleware",
 	)
 
 	slog.Info(fmt.Sprintf("Generating %v/%v.go", client.Package.PackageName, client.Name))
@@ -51,7 +52,8 @@ type {{.Name}} struct {
 	ServerAddress string
 }
 
-func New_{{.Name}}(ctx context.Context, serverAddress string) (*{{.Name}}, error) {
+// Tomislav-RetCtx: middleware wraps the client's transport, outermost first (may be empty).
+func New_{{.Name}}(ctx context.Context, serverAddress string, middleware ...httpmiddleware.ClientMiddleware) (*{{.Name}}, error) {
 	defaultRoundTripper := http.DefaultTransport
 	defaultTransportPointer, ok := defaultRoundTripper.(*http.Transport)
 	if !ok {
@@ -61,8 +63,12 @@ func New_{{.Name}}(ctx context.Context, serverAddress string) (*{{.Name}}, error
 	defaultTransport.MaxIdleConns = 60000
 	defaultTransport.MaxIdleConnsPerHost = 60000
 	defaultTransport.MaxConnsPerHost = 10000
+	var transport http.RoundTripper = &defaultTransport
+	for i := len(middleware) - 1; i >= 0; i-- {
+		transport = middleware[i]("{{.Service.Name}}", transport)
+	}
 	client := &http.Client{
-		Transport: &defaultTransport,
+		Transport: transport,
 	}
 	c := &{{.Name}}{}
 	c.Client = client
@@ -93,7 +99,13 @@ func (client *{{$receiver}}) {{SignatureWithRetVars $f}} {
 	}
 	encoded_url.RawQuery = vals.Encode()
 
-	resp, err := client.Client.Get(encoded_url.String())
+	// Tomislav-RetCtx: the request carries the caller's context values (for middleware), but not its
+	// cancellation, which the request did not have before either (it was sent with Client.Get).
+	http_request, err := http.NewRequestWithContext(context.WithoutCancel(ctx), "GET", encoded_url.String(), nil)
+	if err != nil {
+		return
+	}
+	resp, err := client.Client.Do(http_request)
 	if err != nil {
 		return
 	}

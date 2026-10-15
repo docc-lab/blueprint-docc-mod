@@ -21,21 +21,28 @@ type GolangHttpClient struct {
 
 	InstanceName string
 	ServerAddr   *address.Address[*golangHttpServer]
+	// Tomislav-RetCtx: middleware installed on this client, outermost first (see AddClientMiddleware).
+	Middleware []ClientMiddleware
 
 	outputPackage string
 }
 
-func newGolangHttpClient(name string, addr *address.Address[*golangHttpServer]) (*GolangHttpClient, error) {
+func newGolangHttpClient(name string, addr *address.Address[*golangHttpServer], middleware []ClientMiddleware) (*GolangHttpClient, error) {
 	node := &GolangHttpClient{}
 	node.InstanceName = name
 	node.ServerAddr = addr
+	node.Middleware = middleware
 	node.outputPackage = "http"
 
 	return node, nil
 }
 
 func (n *GolangHttpClient) String() string {
-	return n.InstanceName + " = HTTPClient(" + n.ServerAddr.Dial.Name() + ")"
+	args := n.ServerAddr.Dial.Name()
+	for _, m := range n.Middleware {
+		args += ", " + m.Name()
+	}
+	return n.InstanceName + " = HTTPClient(" + args + ")"
 }
 
 func (n *GolangHttpClient) Name() string {
@@ -94,11 +101,16 @@ func (node *GolangHttpClient) AddInstantiation(builder golang.NamespaceBuilder) 
 			Arguments: []gocode.Variable{
 				{Name: "ctx", Type: &gocode.UserType{Package: "context", Name: "Context"}},
 				{Name: "addr", Type: &gocode.BasicType{Name: "string"}},
+				// Tomislav-RetCtx: one argument per installed middleware (none is fine).
+				{Name: "middleware", Type: &gocode.Ellipsis{EllipsisOf: clientMiddlewareType}},
 			},
 		},
 	}
-
-	return builder.DeclareConstructor(node.InstanceName, constructor, []ir.IRNode{node.ServerAddr.Dial})
+	args := []ir.IRNode{node.ServerAddr.Dial}
+	for _, m := range node.Middleware {
+		args = append(args, m)
+	}
+	return builder.DeclareConstructor(node.InstanceName, constructor, args)
 }
 
 func (node *GolangHttpClient) ImplementsGolangNode()    {}

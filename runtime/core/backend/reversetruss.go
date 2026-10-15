@@ -114,11 +114,14 @@ func decodeTruss(s string) (trussData, bool) {
 	if s == "" {
 		return t, false
 	}
-	// Packed envelopes are RawURLEncoding and start with a version byte; JSON
-	// envelopes are StdEncoding and start with '{'. Neither can be mistaken for
-	// the other, so both wire formats decode without sniffing.
+	// Packed envelopes are raw bytes starting with a version byte (or, as text,
+	// their RawURLEncoding: RetCtxText); JSON envelopes are StdEncoding and start
+	// with '{'. None can be mistaken for another, so all decode without sniffing.
 	if packed, ok := decodePackedRetCtx(s); ok {
 		return packed, true
+	}
+	if raw := RetCtxFromText(s); raw != s { // reversetruss_packed.go
+		return decodePackedRetCtx(raw)
 	}
 	raw, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
@@ -369,17 +372,28 @@ func MergeRetCtx(a, b string) string {
 
 // Per-request fan-in accumulator
 type retMergeKey struct{}
-type retMerge struct {
+
+// IsRetMergeKey says whether key is the context key under which AddToMerge and MergedChildren look
+// up the accumulator (a *RetMerge).  For context types that answer several keys from one layer.
+func IsRetMergeKey(key any) bool {
+	_, ok := key.(retMergeKey)
+	return ok
+}
+
+// RetMerge is the per-request fan-in accumulator.  Exported (Tomislav-RetCtx) so that a tracer can
+// keep it inside its own per-request context value and answer the key with IsRetMergeKey, instead of
+// adding a separate context layer with WithRetMerge.  Its zero value is ready to use.
+type RetMerge struct {
 	mu sync.Mutex
 	s  string
 }
 
 func WithRetMerge(ctx context.Context) context.Context {
-	return context.WithValue(ctx, retMergeKey{}, &retMerge{})
+	return context.WithValue(ctx, retMergeKey{}, &RetMerge{})
 }
 
 func AddToMerge(ctx context.Context, child string) {
-	if m, ok := ctx.Value(retMergeKey{}).(*retMerge); ok {
+	if m, ok := ctx.Value(retMergeKey{}).(*RetMerge); ok {
 		m.mu.Lock()
 		m.s = MergeRetCtx(m.s, child)
 		m.mu.Unlock()
@@ -387,7 +401,7 @@ func AddToMerge(ctx context.Context, child string) {
 }
 
 func MergedChildren(ctx context.Context) string {
-	if m, ok := ctx.Value(retMergeKey{}).(*retMerge); ok {
+	if m, ok := ctx.Value(retMergeKey{}).(*RetMerge); ok {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		return m.s
@@ -475,5 +489,5 @@ func SampleLogCheckpoint(retCtx string) {
 		locations = append(locations, fmt.Sprintf("%s:%s@%d", cp.Kind, cp.SpanID, cp.Depth))
 	}
 	slog.Info("BRIDGES_CKPT", "fp", fp, "parent", parent, "m", m, "k", k,
-		"amq_segments", len(amqs), "locations", locations, "decode_error", err, "retctx", retCtx)
+		"amq_segments", len(amqs), "locations", locations, "decode_error", err, "retctx", RetCtxText(retCtx))
 }

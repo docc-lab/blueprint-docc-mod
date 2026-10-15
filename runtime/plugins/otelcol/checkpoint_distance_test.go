@@ -54,16 +54,14 @@ func ttlTestProvider(t *testing.T, kind string, r checkpointRange) (trace.Tracer
 // Copy the carrier through JSON, as the instrumentation wrappers do across RPCs.
 func ttlChildContext(t *testing.T, span trace.Span) context.Context {
 	t.Helper()
-	bag := map[string]string{BaggageBRKey: checkpointSpanAttribute(span, AttrBR)}
+	bag := map[string]string{BaggageBRKey: baggageBR(span)}
 	if depth := checkpointSpanAttribute(span, reverseDepthAttribute); depth != "" {
 		bag[reverseDepthBaggageKey] = depth
 	}
-	wire, err := json.Marshal(bag)
+	// The wrappers' own carrier code (runtime/core/backend/carrier_json.go): plain encoding/json
+	// would mangle the raw-bytes `_br` (pack.go, propBR), which the carrier sends as base64.
+	_, decoded, err := backend.GetSpanContext(backend.EncodeTraceCarrier(span.SpanContext(), bag))
 	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded map[string]string
-	if err := json.Unmarshal(wire, &decoded); err != nil {
 		t.Fatal(err)
 	}
 	ctx := trace.ContextWithRemoteSpanContext(context.Background(), span.SpanContext())
@@ -186,7 +184,7 @@ func TestCheckpointTTLConcurrentFanout(t *testing.T) {
 			_, root := tp.Tracer("ttl").Start(context.Background(), "root")
 			parent := ttlChildContext(t, root)
 			original := backend.GetBaggageFromContext(parent)[BaggageBRKey]
-			raw, _ := decodeBR(original)
+			raw, _ := parsePropBR(original)
 			var wg sync.WaitGroup
 			for i := 1; i <= 64; i++ {
 				wg.Add(1)

@@ -544,6 +544,10 @@ func (p *StructuralBridgeProcessor) sendData(events []*tracepb.ResourceSpans, is
 	return nil
 }
 
+// Tomislav-RetCtx: startAttributeBaggage tells NewOTCollectorTracer (trace.go) whether OnStart
+// adds "__bag." attributes.  SB keeps its state beside the span and adds at most "padding".
+func (p *StructuralBridgeProcessor) startAttributeBaggage() bool { return false }
+
 // OnStart implements SpanProcessor.OnStart
 func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 	// Tomislav-RetCtx: S-Bridge = CG-Bridge window core (anchor, absolute depth,
@@ -560,7 +564,7 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 		tail        structuralTail
 	)
 	if bag := backend.GetBaggageFromContext(parent); bag != nil {
-		if raw, valid := decodeBR(bag[BaggageBRKey]); valid {
+		if raw, valid := parsePropBR(bag[BaggageBRKey]); valid { // pack.go
 			parentTTL, raw = p.checkpointRange.unwrap(raw)
 			var ok bool
 			parentDepth, anchor, distance, inherited, parentHA, tail, ok = unpackStructuralBR(raw)
@@ -664,7 +668,7 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 	// wrappers through backend.AppendSpanBaggage; the export payload, ordinal, depth and
 	// scheduling decision stay beside the span (wire_state.go).
 	bridgeWires.store(sid, &bridgeWire{emit: emit, depth: depth, priority: priority == 1, structural: true, ordinal: seqNum,
-		prop: encodeBR(p.checkpointRange.wrap(outgoingTTL, propagation))})
+		prop: propBR(p.checkpointRange.wrap(outgoingTTL, propagation))})
 	if spanPadding != "" {
 		// Artificial per-span byte inflation (SPAN_PADDING_BYTES env).
 		// Goes on the wire — convertAttributes does not strip it.
@@ -699,7 +703,8 @@ func (p *StructuralBridgeProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 		if attr.Key != "remEndEvents" {
 			continue
 		}
-		if summary, ok := decodeBR(attr.Value.AsString()); ok && len(summary) > 0 {
+		// Tomislav-RetCtx: raw bytes (the wrapper and the interceptor write them unencoded).
+		if summary := []byte(attr.Value.AsString()); len(summary) > 0 {
 			d, valid := structuralDelayedFromServer(s.SpanContext().TraceID(), s.SpanContext().SpanID(), summary)
 			if !valid || len(d.ends) == 0 {
 				continue

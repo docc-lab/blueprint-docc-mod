@@ -215,7 +215,8 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 			emitted, returned = p.reversePolicy.route(returned, p.reversePolicy.terminates(scheduled, root), depth, rand.Float64)
 		}
 		if emitted != "" {
-			s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, emitted))
+			// Tomislav-RetCtx: exported as before, as text (the carrier is raw in the process).
+			s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, backend.RetCtxText(emitted)))
 			backend.CountCheckpoint()
 			backend.SampleLogCheckpoint(emitted)
 		}

@@ -58,7 +58,7 @@ func TestCheckpointWindowChangesGeometryAtCheckpoint(t *testing.T) {
 				ctx := trace.ContextWithRemoteSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
 					TraceID: trace.TraceID{1}, SpanID: parentID, TraceFlags: trace.FlagsSampled,
 				}))
-				ctx = backend.SetBaggageInContext(ctx, map[string]string{BaggageBRKey: encodeBR(append([]byte{0}, inbound...))})
+				ctx = backend.SetBaggageInContext(ctx, map[string]string{BaggageBRKey: propBR(append([]byte{0}, inbound...))})
 				ctx = context.WithValue(ctx, "seqNum", 1)
 				_, span := tp.Tracer("window").Start(ctx, "checkpoint", trace.WithSpanKind(trace.SpanKindServer))
 				span.SetAttributes(attribute.Bool("hasChildren", true))
@@ -127,7 +127,7 @@ func TestCheckpointWindowConcurrentTransitions(t *testing.T) {
 			_, root := tp.Tracer("window").Start(context.Background(), "root")
 			parent := ttlChildContext(t, root)
 			carrier := backend.GetBaggageFromContext(parent)[BaggageBRKey]
-			rootRaw, _ := decodeBR(carrier)
+			rootRaw, _ := parsePropBR(carrier)
 			_, _, rootDistance, _, _, _ := unpackCheckpointWindowBR(rootRaw[1:])
 			var expectedHP atomic.Int64
 			expectedHP.Store(1)

@@ -25,6 +25,8 @@ type golangServer struct {
 	InstanceName string
 	Bind         *address.BindConfig
 	Wrapped      golang.Service
+	// Tomislav-RetCtx: interceptors installed on this server, outermost first (see AddServerInterceptor).
+	Interceptors []ServerInterceptor
 
 	outputPackage string
 }
@@ -43,16 +45,21 @@ func (grpc *gRPCInterface) GetMethods() []service.Method {
 	return grpc.Wrapped.GetMethods()
 }
 
-func newGolangServer(name string, service golang.Service) (*golangServer, error) {
+func newGolangServer(name string, service golang.Service, interceptors []ServerInterceptor) (*golangServer, error) {
 	node := &golangServer{}
 	node.InstanceName = name
 	node.Wrapped = service
+	node.Interceptors = interceptors
 	node.outputPackage = "grpc"
 	return node, nil
 }
 
 func (n *golangServer) String() string {
-	return n.InstanceName + " = GRPCServer(" + n.Wrapped.Name() + ", " + n.Bind.Name() + ")"
+	args := n.Wrapped.Name() + ", " + n.Bind.Name()
+	for _, interceptor := range n.Interceptors {
+		args += ", " + interceptor.Name()
+	}
+	return n.InstanceName + " = GRPCServer(" + args + ")"
 }
 
 func (n *golangServer) Name() string {
@@ -106,12 +113,19 @@ func (node *golangServer) AddInstantiation(builder golang.NamespaceBuilder) erro
 				{Name: "ctx", Type: &gocode.UserType{Package: "context", Name: "Context"}},
 				{Name: "service", Type: iface},
 				{Name: "serverAddr", Type: &gocode.BasicType{Name: "string"}},
+				// Tomislav-RetCtx: one argument per installed interceptor (none is fine).
+				{Name: "interceptors", Type: &gocode.Ellipsis{EllipsisOf: unaryServerInterceptorType}},
 			},
 		},
 	}
 
+	args := []ir.IRNode{node.Wrapped, node.Bind}
+	for _, interceptor := range node.Interceptors {
+		args = append(args, interceptor)
+	}
+
 	slog.Info(fmt.Sprintf("Instantiating GRPCServer %v in %v/%v", node.InstanceName, builder.Info().Package.PackageName, builder.Info().FileName))
-	return builder.DeclareConstructor(node.InstanceName, constructor, []ir.IRNode{node.Wrapped, node.Bind})
+	return builder.DeclareConstructor(node.InstanceName, constructor, args)
 }
 
 func (node *golangServer) GetInterface(ctx ir.BuildContext) (service.ServiceInterface, error) {

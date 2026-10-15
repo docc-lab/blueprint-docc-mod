@@ -56,6 +56,9 @@ const BridgeKindEnv = "BRIDGE_KIND"
 // REQUIRED: A functional backend running the OpenTelemetry collector.
 type OTCollectorTracer struct {
 	tp trace.TracerProvider
+	// Tomislav-RetCtx: whether the bridge processor adds "__bag." attributes in OnStart (see
+	// StartAttributeBaggage below).
+	startAttrBaggage bool
 }
 
 // NewOTCollectorTracer returns a new instance of OTCollectorTracer.
@@ -75,6 +78,14 @@ func NewOTCollectorTracer(ctx context.Context, addr string, additionalPort strin
 	}
 	slog.Info("✅ OTCollectorTracer initialized", "bridge_kind", resolvedKind, "addr", addr)
 
+	// Tomislav-RetCtx: processors that know they never add "__bag." attributes in OnStart say so
+	// (startAttributeBaggage, next to each processor's OnStart); every other processor is assumed
+	// to.  Asked before the reverse-checkpoint wrapper goes around it, which adds none itself.
+	startAttrBaggage := true
+	if r, ok := spanProcessor.(interface{ startAttributeBaggage() bool }); ok {
+		startAttrBaggage = r.startAttributeBaggage()
+	}
+
 	// Tomislav-RetCtx: expose SDK finalization to wrappers before Span.End.
 	spanProcessor = wrapReverseCheckpointProcessor(spanProcessor)
 	tp := tracesdk.NewTracerProvider(
@@ -82,9 +93,9 @@ func NewOTCollectorTracer(ctx context.Context, addr string, additionalPort strin
 		tracesdk.WithSpanProcessor(spanProcessor),
 	)
 	if preparer, ok := spanProcessor.(backend.CheckpointPreparer); ok {
-		return &OTCollectorTracer{&checkpointTracerProvider{tp, preparer}}, nil
+		return &OTCollectorTracer{&checkpointTracerProvider{tp, preparer}, startAttrBaggage}, nil
 	}
-	return &OTCollectorTracer{tp}, nil
+	return &OTCollectorTracer{tp, startAttrBaggage}, nil
 }
 
 // newBridgeProcessor dispatches on the BRIDGE_KIND value. Returns the
@@ -149,6 +160,11 @@ func newBridgeProcessor(ctx context.Context, kind, addr, port string) (tracesdk.
 		return p, "pb (fallback)", nil
 	}
 }
+
+// StartAttributeBaggage implements backend.AttributeBaggageReporter
+// (runtime/core/backend/span_baggage.go).  The sampler (headSampler above) adds no attributes, so
+// only the bridge processor decides.
+func (t *OTCollectorTracer) StartAttributeBaggage() bool { return t.startAttrBaggage }
 
 // Implements the backend/trace interface.
 func (t *OTCollectorTracer) GetTracerProvider(ctx context.Context) (trace.TracerProvider, error) {

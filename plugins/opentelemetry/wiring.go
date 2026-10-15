@@ -53,11 +53,15 @@
 package opentelemetry
 
 import (
+	"os"
+
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/coreplugins/pointer"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/ir"
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/wiring"
 	"github.com/blueprint-uservices/blueprint/plugins/golang"
 	"github.com/blueprint-uservices/blueprint/plugins/goproc"
+	"github.com/blueprint-uservices/blueprint/plugins/grpc"
+	"github.com/blueprint-uservices/blueprint/plugins/http"
 	"golang.org/x/exp/slog"
 )
 
@@ -117,6 +121,91 @@ func Instrument(spec wiring.WiringSpec, serviceName string, collectorName string
 		return newOpenTelemetryServerWrapper(serverWrapper, wrapped, collectorClient)
 	})
 
+}
+
+// Tomislav-RetCtx: [InstrumentGRPC] traces `serviceName` with gRPC interceptors instead of wrappers.
+//
+// The service must also be deployed with grpc.Deploy (before or after this call, either works).  Its
+// interface is left unchanged; a server interceptor on its gRPC server and a client interceptor on
+// its gRPC clients do what the wrappers of [Instrument] do, and the trace context travels in gRPC
+// metadata.  The interceptor code is in runtime/plugins/opentelemetry/interceptors.
+//
+// Like the wrapper templates, the bridge kind is read from the OT_BRIDGE environment variable at
+// build time (v, pb, cgpb, sb; empty means pb).
+//
+// Setting OT_GRPC_MODE=wrapper at build time makes this call fall back to [Instrument], so the same
+// wiring spec can be built either way for comparison.
+//
+// Services deployed over HTTP use [InstrumentHTTP].  The two work together: an HTTP service traced
+// with middleware (or with wrappers) can call interceptor-traced gRPC services.
+func InstrumentGRPC(spec wiring.WiringSpec, serviceName string, collectorName string) {
+	if os.Getenv("OT_GRPC_MODE") == "wrapper" {
+		Instrument(spec, serviceName, collectorName)
+		return
+	}
+
+	serverInterceptor := serviceName + ".server.ot_interceptor"
+	clientInterceptor := serviceName + ".client.ot_interceptor"
+
+	spec.Define(serverInterceptor, &OpenTelemetryServerInterceptor{}, func(namespace wiring.Namespace) (ir.IRNode, error) {
+		var collector OpenTelemetryCollectorInterface
+		if err := namespace.Get(collectorName, &collector); err != nil {
+			return nil, err
+		}
+		return &OpenTelemetryServerInterceptor{InterceptorName: serverInterceptor, Collector: collector, BridgeKind: os.Getenv("OT_BRIDGE")}, nil
+	})
+
+	spec.Define(clientInterceptor, &OpenTelemetryClientInterceptor{}, func(namespace wiring.Namespace) (ir.IRNode, error) {
+		var collector OpenTelemetryCollectorInterface
+		if err := namespace.Get(collectorName, &collector); err != nil {
+			return nil, err
+		}
+		return &OpenTelemetryClientInterceptor{InterceptorName: clientInterceptor, Collector: collector, BridgeKind: os.Getenv("OT_BRIDGE")}, nil
+	})
+
+	grpc.AddServerInterceptor(spec, serviceName, serverInterceptor)
+	grpc.AddClientInterceptor(spec, serviceName, clientInterceptor)
+}
+
+// Tomislav-RetCtx: [InstrumentHTTP] traces `serviceName` with HTTP middleware instead of wrappers:
+// the HTTP counterpart of [InstrumentGRPC].
+//
+// The service must also be deployed with http.Deploy (before or after this call, either works).  Its
+// interface is left unchanged; a middleware around its HTTP server's handlers and one around the
+// transport of its HTTP clients do what the wrappers of [Instrument] do.  The forward context travels
+// in a request header and the reverse context in a response header.  The middleware code is in
+// runtime/plugins/opentelemetry/interceptors (http_server.go, http_client.go).
+//
+// The bridge kind comes from OT_BRIDGE at build time, as for [InstrumentGRPC], and
+// OT_GRPC_MODE=wrapper (the name predates HTTP support) makes this call fall back to [Instrument]
+// too, so one build is traced with wrappers everywhere.
+func InstrumentHTTP(spec wiring.WiringSpec, serviceName string, collectorName string) {
+	if os.Getenv("OT_GRPC_MODE") == "wrapper" {
+		Instrument(spec, serviceName, collectorName)
+		return
+	}
+
+	serverMiddleware := serviceName + ".server.ot_http_middleware"
+	clientMiddleware := serviceName + ".client.ot_http_middleware"
+
+	spec.Define(serverMiddleware, &OpenTelemetryHTTPServerMiddleware{}, func(namespace wiring.Namespace) (ir.IRNode, error) {
+		var collector OpenTelemetryCollectorInterface
+		if err := namespace.Get(collectorName, &collector); err != nil {
+			return nil, err
+		}
+		return &OpenTelemetryHTTPServerMiddleware{MiddlewareName: serverMiddleware, Collector: collector, BridgeKind: os.Getenv("OT_BRIDGE")}, nil
+	})
+
+	spec.Define(clientMiddleware, &OpenTelemetryHTTPClientMiddleware{}, func(namespace wiring.Namespace) (ir.IRNode, error) {
+		var collector OpenTelemetryCollectorInterface
+		if err := namespace.Get(collectorName, &collector); err != nil {
+			return nil, err
+		}
+		return &OpenTelemetryHTTPClientMiddleware{MiddlewareName: clientMiddleware, Collector: collector, BridgeKind: os.Getenv("OT_BRIDGE")}, nil
+	})
+
+	http.AddServerMiddleware(spec, serviceName, serverMiddleware)
+	http.AddClientMiddleware(spec, serviceName, clientMiddleware)
 }
 
 // [Logger] can be used by wiring specs to install a process-level ot logger for process `processName` to be used in tandem with an OT Tracer. Replaces the existing logger installed for the process.

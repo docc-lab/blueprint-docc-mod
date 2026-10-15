@@ -390,6 +390,10 @@ func (p *VanillaProcessor) sendData(events []*tracepb.ResourceSpans) error {
 	return nil
 }
 
+// Tomislav-RetCtx: startAttributeBaggage tells NewOTCollectorTracer (trace.go) whether OnStart
+// adds "__bag." attributes.  Vanilla adds at most "padding".
+func (p *VanillaProcessor) startAttributeBaggage() bool { return false }
+
 // OnStart implements SpanProcessor.OnStart
 func (p *VanillaProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
 	if spanPadding != "" {
