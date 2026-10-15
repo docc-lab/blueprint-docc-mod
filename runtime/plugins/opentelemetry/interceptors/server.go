@@ -35,7 +35,7 @@ func serverInterceptor(tp trace.TracerProvider, v variant, attrBaggage bool) grp
 	// (The body is in this closure itself, not in a method it calls: a method call, or a method
 	// value like c.intercept, would add one more frame under everything the call does.)
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx, state, sampled := s.prepare(ctx) // below: steps 1-3
+		ctx, state, sampled := s.prepare(ctx, incomingTraceCtx(ctx)) // below: steps 1-3
 		if !sampled {
 			// Unsampled upstream: ctx only carries the remote IDs; no span, no tracing work.
 			return handler(ctx, req)
@@ -72,16 +72,12 @@ type serverCall struct {
 	state *requestState // bridges: per-request state (child counter, SB end events)
 }
 
-// prepare does steps 1-3 for a gRPC call: the carrier comes from the request metadata.
-func (s *serverSide) prepare(ctx context.Context) (context.Context, *requestState, bool) {
-	return s.prepareCarrier(ctx, incomingTraceCtx(ctx)) // below
-}
-
-// prepareCarrier does steps 1-3: decode the caller's carrier ("" if it sent none) and build the
-// per-request state the span starts with.  It returns sampled=false for an unsampled trace, in
-// which case ctx is all the service needs and state is nil.  Used by prepare (gRPC) and the HTTP
-// server middleware (http_server.go).
-func (s *serverSide) prepareCarrier(ctx context.Context, carrier string) (context.Context, *requestState, bool) {
+// prepare does steps 1-3: decode the caller's carrier ("" if it sent none) and build the per-request
+// state the span starts with.  It returns sampled=false for an unsampled trace, in which case ctx is
+// all the service needs and state is nil.  Each transport passes the carrier it received: the gRPC
+// interceptor from the request metadata (incomingTraceCtx), the HTTP middleware from the request
+// header (http_server.go).
+func (s *serverSide) prepare(ctx context.Context, carrier string) (context.Context, *requestState, bool) {
 	state := &requestState{children: s.v.countChildren, hasEndEvents: s.v.endEvents}
 
 	// 1. The caller's carrier.  An unsampled trace (head sampling) only needs its IDs passed on,

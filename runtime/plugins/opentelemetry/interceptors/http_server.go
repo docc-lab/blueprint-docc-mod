@@ -53,7 +53,7 @@ type httpServerHandler struct {
 }
 
 func (h *httpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx, state, sampled := h.s.prepareCarrier(r.Context(), headerValue(r.Header, traceCtxHeader)) // server.go: steps 1-3; below
+	ctx, state, sampled := h.s.prepare(r.Context(), headerValue(r.Header, traceCtxHeader)) // server.go: steps 1-3; below
 	if !sampled {
 		// Unsampled upstream: ctx only carries the remote IDs; no span, no tracing work.
 		h.next.ServeHTTP(w, r.WithContext(ctx))
