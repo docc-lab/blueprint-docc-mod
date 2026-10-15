@@ -1527,6 +1527,32 @@ alike. Not chased further. Note
 that the wrapper builds got today's backend changes too (raw `_br`, raw reverse context), so this
 is not a comparison against yesterday's wrappers.
 
+### 2026-10-15: Committed; one prepare and one finish step for both transports
+
+Committed as `b943cec7` and pushed to `origin/retctx-grpc-interceptors` (asked by the user).
+
+Cleanup asked for afterwards: the server side had `prepare` (gRPC: read the carrier from the
+metadata) calling `prepareCarrier` (the work, also called by the HTTP middleware), and `finish`
+(gRPC: put the reverse context in the trailer) calling `finishCall` (the work, also called by the
+HTTP middleware): leftovers of splitting the steps for HTTP while keeping the tuned gRPC per-call
+function untouched. Now one `prepare(ctx, carrier)` and one `finish(call, err)` that returns the
+reverse context, and each transport reads and sends its values itself (commits `1e77b28a`,
+`b08a2940`). The gRPC per-call frames are unchanged (server 256 bytes, client 288); all tests
+pass with `-race`.
+
+Did it buy anything? Not measurable in the app (a few calls fewer per server call; a profile samples
+every 10 ms). Measured instead with the server interceptor called directly (a temporary benchmark,
+no transport, PB, 8 alternating pairs per order, pinned to one CPU): before (the package as of
+`b943cec7`) vs after: -151 ns per call with "before" first, -89 ns with "after" first, at ~4.4
+microseconds per call; same allocations (13 per call, 1,344 bytes). Control: the same code built
+under two package paths differs by -32 ns (pairs -99 to +12), so code layout alone moves results by
+that much. So 0-100 ns per server call, under 0.05% of a request's CPU: a cleanup, not an
+optimization.
+
+(A first attempt checked out the old commit as a git worktree for this and filled the disk: the
+repository tracks large generated build directories. Git removed the partial checkout itself; the
+old package was then copied alone instead.)
+
 ### Open items
 
 * (Done: the measurement lock, see the testing section.)

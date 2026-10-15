@@ -109,7 +109,7 @@ func (r *tracedResponse) finish(status int) {
 		return
 	}
 	r.finished = true
-	retCtx := r.s.finishCall(r.call, r.err) // server.go
+	retCtx := r.s.finish(r.call, r.err) // server.go
 	if retCtx != "" && status < 300 {
 		r.ResponseWriter.Header()[retCtxHTTPKey] = []string{retCtxHeader(retCtx)} // header.go
 	}

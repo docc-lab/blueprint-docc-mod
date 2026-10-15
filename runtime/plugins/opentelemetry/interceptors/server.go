@@ -51,7 +51,9 @@ func serverInterceptor(tp trace.TracerProvider, v variant, attrBaggage bool) grp
 
 		// 7. The service itself.
 		resp, err := handler(call.ctx, req)
-		s.finish(&call, err) // below: steps 8-9
+		if retCtx := s.finish(&call, err); retCtx != "" { // below: steps 8-9
+			setRetCtxTrailer(call.ctx, retCtx) // below
+		}
 		return resp, err
 	}
 }
@@ -124,18 +126,11 @@ func (s *serverSide) setup(call *serverCall, ctx context.Context) {
 	call.ctx = ctx
 }
 
-// finish does what comes after the service for a gRPC call: steps 8-9, the reverse context going
-// back in the response trailer.  The span itself is ended by the interceptor's defer.
-func (s *serverSide) finish(call *serverCall, err error) {
-	if retCtx := s.finishCall(call, err); retCtx != "" {
-		setRetCtxTrailer(call.ctx, retCtx) // below
-	}
-}
-
-// finishCall does what comes after the service on any transport: record an error, steps 8-9, and
-// return the reverse context to send back to the caller ("" for none).  Used by finish (gRPC) and
-// the HTTP server middleware (http_server.go).
-func (s *serverSide) finishCall(call *serverCall, err error) string {
+// finish does what comes after the service: record an error, steps 8-9, and return the reverse
+// context to send back to the caller ("" for none); each transport sends it its own way (gRPC: the
+// response trailer, setRetCtxTrailer; HTTP: a response header, http_server.go).  The span itself is
+// ended by the caller's defer.
+func (s *serverSide) finish(call *serverCall, err error) string {
 	if err != nil {
 		call.span.RecordError(err)
 	}
