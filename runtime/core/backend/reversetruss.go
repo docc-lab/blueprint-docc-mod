@@ -299,7 +299,7 @@ func DecodeRetCtx(s string) (fp, parent string, m uint64, k uint, amqs [][]byte)
 			amqs = append(amqs, seg.Data)
 		}
 	}
-	return t.FP, t.Par, t.M, t.K, amqs
+	return t.fingerprint(), t.Par, t.M, t.K, amqs // reversetruss_packed.go
 }
 
 // BuildRetCtx creates this node's truss: an ancestry Bloom (self + parent
@@ -355,12 +355,12 @@ func MergeRetCtx(a, b string) string {
 	if m == 0 {
 		m, k = tb.M, tb.K
 	}
-	fp := ta.FP
-	if tb.FP != "" {
+	fp := ta.fingerprint() // reversetruss_packed.go
+	if fpb := tb.fingerprint(); fpb != "" {
 		if fp != "" {
 			fp += ","
 		}
-		fp += tb.FP
+		fp += fpb
 	}
 	par := ta.Par
 	if par == "" {
@@ -469,11 +469,22 @@ func CountLocalCheckpoint() { installCounterDump(); rtLocal.Add(1) }
 
 var rtSample atomic.Uint64
 
+// rtSampleN is the sampling period of SampleLogCheckpoint.  Tomislav-RetCtx: RT_SAMPLE is read once,
+// on first use, and fixed for the life of the process (like REVERSE_TRUSS); it used to be read and
+// parsed from the environment on every checkpoint (os.Getenv takes a lock and scans the environment).
+var (
+	rtSampleOnce   sync.Once
+	rtSamplePeriod uint64
+)
+
 func rtSampleN() uint64 {
-	if n, err := strconv.Atoi(os.Getenv("RT_SAMPLE")); err == nil && n > 0 {
-		return uint64(n)
-	}
-	return 500
+	rtSampleOnce.Do(func() {
+		rtSamplePeriod = 500
+		if n, err := strconv.Atoi(os.Getenv("RT_SAMPLE")); err == nil && n > 0 {
+			rtSamplePeriod = uint64(n)
+		}
+	})
+	return rtSamplePeriod
 }
 
 // SampleLogCheckpoint logs ~1/RT_SAMPLE checkpoints with their original

@@ -142,7 +142,9 @@ func benchRequest(b *testing.B, kind string, reverse bool) {
 	b.Setenv("RT_ROOT", "off")
 	b.Setenv("RT_LEAF_REJECT", "1")
 	b.Setenv(SampleRatioEnv, "1")
-	b.Setenv("RT_SAMPLE", "1000000000") // keep the sampled BRIDGES_CKPT log out of the timing
+	// Keep the sampled BRIDGES_CKPT log out of the timing.  (RT_SAMPLE is read once per process, on
+	// first use: this takes effect when the benchmark runs on its own, -run '^$'.)
+	b.Setenv("RT_SAMPLE", "1000000000")
 	tp, inner := requestHarness(kind, reverse)
 	retCtx := ""
 	if reverse {

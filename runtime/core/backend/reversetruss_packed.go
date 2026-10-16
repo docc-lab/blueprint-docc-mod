@@ -190,7 +190,6 @@ func decodePackedRetCtx(s string) (trussData, bool) {
 	// The segments' Data alias this copy, so callers may keep or change them.
 	raw := append([]byte(nil), view...)
 	var t trussData
-	var fingerprints []byte
 	for len(raw) > 0 {
 		tag := raw[0]
 		size, n := binary.Uvarint(raw[1:])
@@ -203,17 +202,33 @@ func decodePackedRetCtx(s string) (trussData, bool) {
 		}
 		segment.Data = body
 		t.Segs = append(t.Segs, segment)
-		// fp is not transmitted: it is the span ID that already heads Data.
+		raw = raw[uint64(1+n)+size:]
+	}
+	// fp is not transmitted: it is the span IDs that already head each segment's Data.
+	// Tomislav-RetCtx: it is derived where it is read (fingerprint, below), not on every decode:
+	// routing decodes on every hop and never reads it.
+	return t, true
+}
+
+// fingerprint returns t.FP, or for a packed envelope (which does not carry one) the span IDs at
+// the head of its segments, comma-separated, as decodePackedRetCtx used to fill it in.
+func (t *trussData) fingerprint() string {
+	if t.FP != "" || len(t.Segs) == 0 {
+		return t.FP
+	}
+	fingerprints := make([]byte, 0, 17*len(t.Segs))
+	for _, segment := range t.Segs {
+		if len(segment.Data) < 8 {
+			continue
+		}
 		var id trace.SpanID
-		copy(id[:], body[:8])
+		copy(id[:], segment.Data[:8])
 		if len(fingerprints) > 0 {
 			fingerprints = append(fingerprints, ',')
 		}
 		fingerprints = append(fingerprints, id.String()...)
-		raw = raw[uint64(1+n)+size:]
 	}
-	t.FP = string(fingerprints)
-	return t, true
+	return string(fingerprints)
 }
 
 // mergePackedRetCtx concatenates two packed envelopes without decoding a single
