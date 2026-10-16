@@ -1584,6 +1584,81 @@ overload step and flags:
 The summary lists what it left out. Recomputed for the earlier sets, nothing changes except CGPB's
 warm-up CPU (its run 6 had a stalled warm-up): +0.2% becomes -0.0%.
 
+### 2026-10-16: Where tracing costs CPU, and fixes in our own code (branch `perf-own-code`)
+
+**Profiles** (`~/grpc-interceptors-work/r14_ineff.sh`, `prof/ineff/`): no tracing (a new
+`docker_nt_es_nw` build), vanilla, PB and SB, 700 req/s, 30 s CPU and allocation profiles, two runs
+each in mirrored order. CPU per request: none 3.612 ms, vanilla 4.280 (+18.5%), PB 4.843, SB 4.994
+(the no-tracing binaries have no profiling endpoint; that comparison is CPU only).
+
+* Vanilla's 0.67 ms per request: the OpenTelemetry SDK starting and ending spans (~4% of CPU), the
+  interceptors' own code (3.2%), the processor's conversion of each ended span to its protobuf form
+  (1.3%) and the export (1.7%, mostly protobuf's reflective marshalling), plus indirect costs (GC
+  of tracing's allocations, header compression). Every span is copied twice at its end: the SDK's
+  snapshot, then our `buildSpanProto`.
+* What the bridges add (per 30 s profile, PB / SB): processor `OnStart` +1.4 / +5.6 s, reverse path
+  +2.0 / +1.8 s, interceptors' own code +1.9 / +2.3 s, `OnEnd` +1.2 / +1.5 s, header compression
+  +1.4 s, allocation and GC +3-4 s.
+* SB's `OnStart`: its stack frame was 1,472 bytes (PB's 64): 2.8 of the 3.0 s spent in
+  `GetBaggageFromContext` was goroutine stack growth triggered under it. Each span decoded its
+  parent's whole tail (Lehmer codes included) and encoded it again, twice. Every Lehmer group
+  allocated (`mixedRadixChunks` 45 objects per request, `lehmerDigits` 29).
+* Reverse path (`PrepareCheckpoint`, ~2 s): routing 30%, reading the span's attributes back (a
+  locked copy through a map) 10%, writing `_rc` 8%, `RT_SAMPLE` read from the environment on every
+  checkpoint 4%; every decode built a hex string of all span IDs that routing never used.
+* The processors' diagnostic counters: ~0.05% of CPU (measured per instruction, both at 2 and 4
+  cores per service); no measurable lock contention. `GOMAXPROCS=4` instead of 2 costs 15-17% more
+  CPU per request (runtime: scheduler, futex, GC on 56 logical processors for 6 cores).
+
+**Changes** (only our own code; the OpenTelemetry SDK stays; branch `perf-own-code`, worktree
+`/users/tomislav/blueprint-perf`):
+
+* `c85c2ded`: `RT_SAMPLE` read once per process; reverse-context fingerprints derived only where
+  read (`trussData.fingerprint`).
+* `c869767c`: SB `OnStart` in two steps (context lookups in a small frame: lookups now at 584 bytes
+  of depth instead of 1,472); the inherited tail is validated and copied as bytes
+  (`scanStructuralBR`, `appendChildTail`), built once for both payloads; no TTL-wrap copy, no copy of
+  the parent's `_br`, no Bloom allocation for a checkpoint's new window; Lehmer groups without
+  allocations for bounds up to 64. Also a fix: `unpackEndGroup` could be made to panic by a corrupt
+  `_br` (a huge count reached `make`). Tests (`structural_raw_test.go`): byte-identical to the old
+  code in every case (Lehmer 20,000 groups; scan vs decode 20,000 payloads, half corrupted; child
+  tails 20,000; the whole new `OnStart` against the old algorithm in fixed, 2-6 and 3-3 CPD modes,
+  9,000 spans).
+* `0c2a8a67`: `backend.PrepareServerCheckpoint`: the server side (interceptors and wrapper server
+  templates) passes the child count instead of the SDK reading it back off the span; for bridge
+  spans with wire state, `_rc` and a leaf's rejection are kept in the per-span state and exported
+  from there. SB still reads attributes in `PrepareCheckpoint`: `force_lp` may be set at any time
+  (`TestReverseTTLRespectsSyntheticForceLP`).
+
+All otelcol, backend and interceptor tests pass with `-race`; gRPC per-call frames unchanged.
+`TestGeneratedReverseCheckpointWrappers` (plugins) compiles the changed wrapper templates and fails
+exactly as before (same five failure messages, same counts) at this branch, at `8d343578`,
+`b943cec7`, `7abfa16e` and the original base `d0f40602`. (The 2026-10-13 note on that test quoted
+only the first of its five failure messages.)
+
+Not done: writing the OTLP export bytes directly. The batches go out through OpenTelemetry's
+`otlptracegrpc` exporter client, which takes protobuf objects; bypassing it is a decision for the
+user.
+
+**Validation** (`r15_perf_own.sh`, `ab_trio.sh`, fixed config, 2000 requests per run, `runs_r15/`):
+each new build (`{pb,sb,cgpb}_interceptor_perf`) against the current one, since none of the
+changes may alter an exported trace. PB: 2000/2000 identical, TVD 0.000. SB: 2000/2000
+structurally identical, beyond the noise only `_o` (the start-ordinal race). CGPB: 2000/2000
+identical; `_br`/`_rc` lengths of ComposePost's concurrent children differ by TVD up to 0.32
+(same build twice: 0.088): still only the two race outcomes (30 / 48 bytes), and the split
+between them drifts between sessions on its own: on 2026-10-14 (`runs_r8`) the current build
+itself had Text at 30 bytes in 71-83% of traces, the new build has 80% here.
+
+**Peak throughput**, current build ("old") vs `perf-own-code` ("new"), both orders (`perf/`):
+
+| | old first | new first | warm-up CPU per request |
+|---|---|---|---|
+| SB | **+2.3%** (rounds +2.6, +1.6; one starved new run left out; with it +0.9%) | **+2.9%** (rounds +2.9, +2.8; every new run above every old run) | -0.8% / **-2.0%** |
+| PB | **+1.1%** (rounds +0.9, +1.3) | **+0.6%** (rounds +0.6, +0.6; every new run above every old run) | -1.25% / -0.9% |
+
+So SB gains about 2.6% peak throughput and 1-2% CPU per request, PB about 0.8% and 1%, in line
+with the profile estimates (CGPB shares PB's reverse-path changes and was not measured).
+
 ### Open items
 
 * (Done: the measurement lock, see the testing section.)
