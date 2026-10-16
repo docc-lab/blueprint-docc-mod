@@ -3,6 +3,7 @@ package otelcol
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -549,10 +550,67 @@ func (p *StructuralBridgeProcessor) sendData(events []*tracepb.ResourceSpans, is
 func (p *StructuralBridgeProcessor) startAttributeBaggage() bool { return false }
 
 // OnStart implements SpanProcessor.OnStart
+//
+// Tomislav-RetCtx: S-Bridge = CG-Bridge window core (anchor, absolute depth, window Bloom, fan-out
+// witnesses) + vertical start ordinals + orthogonal end events (paper §3.4). Wire layout:
+// structural_truss.go.
+//
+// Two steps.  structuralInputsFrom does every context lookup (they walk the context chain, which
+// goes deep) in a small stack frame; startStructural then does the window work, which needs a large
+// frame but calls nothing deep.  It used to be one function with a 1,472-byte frame sitting under
+// every lookup, and the app's fresh goroutines had to grow their stacks right there (about 1.5 s of
+// CPU per 30 s profile at 700 req/s, 95% of SB's baggage lookup; utils/grpc_interceptors/README.md).
 func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
-	// Tomislav-RetCtx: S-Bridge = CG-Bridge window core (anchor, absolute depth,
-	// window Bloom, fan-out witnesses) + vertical start ordinals + orthogonal end
-	// events (paper §3.4). Wire layout: structural_truss.go.
+	in := structuralInputsFrom(parent)
+	p.startStructural(s, &in)
+	if spanPadding != "" {
+		// Artificial per-span byte inflation (SPAN_PADDING_BYTES env).
+		// Goes on the wire — convertAttributes does not strip it.
+		s.SetAttributes(attribute.String("padding", spanPadding))
+	}
+}
+
+// structuralInputs is what a span's S-Bridge window needs from its parent's context.
+type structuralInputs struct {
+	br       string       // the parent's outgoing `_br` (raw bytes, pack.go), "" if none
+	seqNum   int          // this span's start ordinal among its siblings
+	ends     []int        // the siblings that had ended before it started, in end order (a copy)
+	parentID trace.SpanID // the parent span, for the fan-out witness of the second child
+}
+
+// structuralInputsFrom reads the window's inputs from the parent's context.
+func structuralInputsFrom(parent context.Context) (in structuralInputs) {
+	if bag := backend.GetBaggageFromContext(parent); bag != nil {
+		in.br = bag[BaggageBRKey]
+	}
+	in.seqNum, _ = parent.Value("seqNum").(int)
+	if in.seqNum == 2 {
+		in.parentID = trace.SpanFromContext(parent).SpanContext().SpanID()
+	}
+	// Orthogonal truss: the parent's end events observed so far (sibling start
+	// ordinals in end order) are recorded by this child at its start.
+	if eePtr, ok := parent.Value("endEvents").(*[]int); ok && eePtr != nil {
+		mu, _ := parent.Value("childrenMutex").(*sync.Mutex)
+		if mu != nil {
+			mu.Lock()
+		}
+		if len(*eePtr) > 0 {
+			in.ends = append([]int(nil), (*eePtr)...)
+		}
+		if mu != nil {
+			mu.Unlock()
+		}
+	}
+	return in
+}
+
+// startStructural computes the span's window and stores its wire state (export payload and
+// outgoing propagation) beside the span.
+//
+// The parent's tail is not decoded: the child's tail is the parent's bytes plus one entry
+// (appendChildTail, structural_truss.go), built once and shared by both payloads, which differ
+// only in their window core (the export payload has the Bloom before this span was added).
+func (p *StructuralBridgeProcessor) startStructural(s sdktrace.ReadWriteSpan, in *structuralInputs) {
 	var (
 		hasParent   bool
 		parentTTL   byte
@@ -561,15 +619,13 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 		distance    int
 		inherited   []byte
 		parentHA    []byte
-		tail        structuralTail
+		tail        rawStructuralTail
 	)
-	if bag := backend.GetBaggageFromContext(parent); bag != nil {
-		if raw, valid := parsePropBR(bag[BaggageBRKey]); valid { // pack.go
-			parentTTL, raw = p.checkpointRange.unwrap(raw)
-			var ok bool
-			parentDepth, anchor, distance, inherited, parentHA, tail, ok = unpackStructuralBR(raw)
-			hasParent = ok && (!p.checkpointRange.enabled() || int(parentTTL) < distance)
-		}
+	if raw := viewPropBR(in.br); raw != nil { // pack.go: read-only, nothing below writes to it
+		parentTTL, raw = p.checkpointRange.unwrap(raw)
+		var ok bool
+		parentDepth, anchor, distance, inherited, parentHA, tail, ok = scanStructuralBR(raw)
+		hasParent = ok && (!p.checkpointRange.enabled() || int(parentTTL) < distance)
 	}
 	cpd := int(p.checkpointDistance)
 	if cpd < 1 {
@@ -592,88 +648,73 @@ func (p *StructuralBridgeProcessor) OnStart(parent context.Context, s sdktrace.R
 		if p.checkpointRange.enabled() {
 			distance = int(outgoingTTL) + 1
 		}
-		inherited, parentHA, tail = nil, nil, structuralTail{}
+		inherited, parentHA, tail = nil, nil, rawStructuralTail{}
 	}
 	geometry := checkpointBlooms[distance-1]
-	filter := bloom.NewFromBytes(inherited, geometry.m, geometry.k)
+	filter := bloom.NewFromBytes(inherited, geometry.m, geometry.k) // copies inherited
 
 	// CG core: fan-out witnesses follow the CGPB rule. The first-started child
 	// inherits the parent's window HA, the second records one
 	// (parent_span_id || depth) witness, later children carry none.
-	seqNum, _ := parent.Value("seqNum").(int)
 	var ha []byte
-	if hasParent && seqNum == 1 {
+	if hasParent && in.seqNum == 1 {
 		ha = append([]byte(nil), parentHA...)
-	} else if hasParent && seqNum == 2 {
-		ha = haAppendEntry(nil, trace.SpanFromContext(parent).SpanContext().SpanID().String(), depth)
+	} else if hasParent && in.seqNum == 2 {
+		ha = haAppendEntry(nil, in.parentID.String(), depth)
 	}
 
-	// Orthogonal truss: the parent's end events observed so far (sibling start
-	// ordinals in end order) are recorded by this child at its start.
-	var ends []int
-	if eePtr, ok := parent.Value("endEvents").(*[]int); ok && eePtr != nil {
-		mu, _ := parent.Value("childrenMutex").(*sync.Mutex)
-		if mu != nil {
-			mu.Lock()
-		}
-		if len(*eePtr) > 0 {
-			ends = append([]int(nil), (*eePtr)...)
-		}
-		if mu != nil {
-			mu.Unlock()
-		}
-	}
 	// Delayed orthogonal trusses left by earlier requests in this service
 	// instance attach to this outgoing span and ride vertically until a
 	// checkpoint captures them. The drain is bounded by the channel depth.
-	delayed := tail.delayed
+	var drained []structuralDelayed
 	queue := p.delayedQueue()
 	for draining := true; draining; {
 		select {
 		case entry := <-queue:
-			delayed = append(delayed, entry)
+			drained = append(drained, entry)
 		default:
 			draining = false
 		}
 	}
-	emitTail := structuralTail{
-		ordinals:  append(append([]int(nil), tail.ordinals...), seqNum),
-		endEvents: append(append([][]int(nil), tail.endEvents...), ends),
-		delayed:   delayed,
-	}
 
 	// Emitted payload (kept iff this span ends as a checkpoint or leaf): the
 	// INHERITED pre-self window plus this span's own ordinal and end-event group.
-	emit := packStructuralBR(depth, anchor, distance, filter.Bytes(), ha, emitTail)
+	headerLen := varintLen(depth) + 9 + geometry.bytes + varintLen(len(ha)) + len(ha)
+	tailCap := 24 + len(tail.entries) + len(tail.delayed) + (in.seqNum+7)/8 + 4*len(in.ends) + 48*len(drained)
+	emit := appendStructuralHeader(make([]byte, 0, headerLen+tailCap), depth, anchor, distance, filter.Bytes(), ha)
+	tailStart := len(emit)
+	emit = appendChildTail(emit, tail, in.seqNum, in.ends, drained)
+	childTail := emit[tailStart:]
 
-	priority := 0
+	// Outgoing propagation, built with the range mode's TTL byte in front (checkpointRange.wrap
+	// would copy it all into a new buffer).
 	sid := s.SpanContext().SpanID()
-	propTail := emitTail
+	var prop []byte
+	if p.checkpointRange.enabled() {
+		prop = append(make([]byte, 0, 1+headerLen+len(childTail)), outgoingTTL)
+	}
 	if isCheckpoint {
-		priority = 1
-		anchor = [8]byte(sid)
+		// The checkpoint persisted everything above: re-anchor on this span with an empty window.
 		if p.checkpointRange.enabled() {
 			distance = int(outgoingTTL) + 1
 			geometry = checkpointBlooms[distance-1]
 		}
-		filter = bloom.New(geometry.m, geometry.k)
-		ha = nil
-		propTail = structuralTail{} // the checkpoint persisted everything above
+		prop = binary.AppendUvarint(prop, uint64(maxInt(depth, 0)))
+		prop = append(prop, sid[:]...)
+		prop = append(prop, byte(distance-1))
+		prop = append(prop, make([]byte, geometry.bytes)...) // a new Bloom is all zeros
+		prop = append(prop, 0, 0, 0)                         // no HA, no entries, no delayed entries
 	} else {
 		filter.AddPrehashed(sid[:])
+		prop = appendStructuralHeader(prop, depth, anchor, distance, filter.Bytes(), ha)
+		prop = append(prop, childTail...)
 	}
-	propagation := packStructuralBR(depth, anchor, distance, filter.Bytes(), ha, propTail)
 
 	// Tomislav-RetCtx: nothing goes on the OTel span. The outgoing propagation reaches the RPC
 	// wrappers through backend.AppendSpanBaggage; the export payload, ordinal, depth and
 	// scheduling decision stay beside the span (wire_state.go).
-	bridgeWires.store(sid, &bridgeWire{emit: emit, depth: depth, priority: priority == 1, structural: true, ordinal: seqNum,
-		prop: propBR(p.checkpointRange.wrap(outgoingTTL, propagation))})
-	if spanPadding != "" {
-		// Artificial per-span byte inflation (SPAN_PADDING_BYTES env).
-		// Goes on the wire — convertAttributes does not strip it.
-		s.SetAttributes(attribute.String("padding", spanPadding))
-	}
+	bridgeWires.store(sid, &bridgeWire{emit: emit, depth: depth, priority: isCheckpoint, structural: true, ordinal: in.seqNum,
+		prop: propBROwned(prop)})
 }
 
 // delayedQueue returns the process-wide delayed-truss queue, creating it for

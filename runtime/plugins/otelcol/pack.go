@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"unsafe"
 )
 
 // encodeBR wraps a packed _br payload as a base64-URL-no-pad string suitable
@@ -38,6 +39,22 @@ func decodeBR(s string) ([]byte, bool) {
 // `__bag._br` attribute.
 func propBR(packed []byte) string {
 	return string(packed)
+}
+
+// viewPropBR is parsePropBR without the copy: a read-only view of the bytes in s (nil for ""), for
+// callers that only read them (Go strings must never be written).  Tomislav-RetCtx: the S-Bridge
+// reads its parent's `_br` only to copy parts of it (sb_processor.go, startStructural).
+func viewPropBR(s string) []byte {
+	if s == "" {
+		return nil
+	}
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+// propBROwned is propBR without the copy, for a buffer the caller hands over: it must never be
+// written again.  Tomislav-RetCtx.
+func propBROwned(packed []byte) string {
+	return unsafe.String(unsafe.SliceData(packed), len(packed))
 }
 
 // parsePropBR reverses propBR: a private copy of the bytes, as decodeBR returned one (the bloom

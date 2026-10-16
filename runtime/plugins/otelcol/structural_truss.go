@@ -2,6 +2,7 @@ package otelcol
 
 import (
 	"encoding/binary"
+	"math/bits"
 	"sort"
 )
 
@@ -104,12 +105,52 @@ func mixedRadixChunks(n int) [][2]int {
 	return chunks
 }
 
+// mixedRadixChunkEnd returns where the chunk starting at digit position start ends: the same
+// boundaries as mixedRadixChunks, one at a time and without allocating, and the chunk's radix
+// product (every word of the chunk is below it).  Tomislav-RetCtx.
+func mixedRadixChunkEnd(n, start int) (end int, product uint64) {
+	product = 1
+	for i := start; i < n; i++ {
+		radix := uint64(n - i)
+		if radix > mixedRadixLimit/product && i > start {
+			return i, product
+		}
+		product *= radix
+	}
+	return n, product
+}
+
 func packLehmer(out []byte, digits []int) []byte {
 	n := len(digits)
-	for _, chunk := range mixedRadixChunks(n) {
+	for start, end := 0, 0; start < n; start = end {
+		end, _ = mixedRadixChunkEnd(n, start)
 		word := uint64(0)
-		for i := chunk[0]; i < chunk[1]; i++ {
+		for i := start; i < end; i++ {
 			word = word*uint64(n-i) + uint64(digits[i])
+		}
+		out = binary.AppendUvarint(out, word)
+	}
+	return out
+}
+
+// appendLehmerSmall packs the Lehmer code of perm, distinct values in 1..64, without allocating:
+// digit i (the rank of perm[i] among the values not yet placed) is the number of remaining values
+// below it, counted in a 64-bit set.  Same bytes as packLehmer(out, lehmerDigits(perm)).
+// Tomislav-RetCtx.
+func appendLehmerSmall(out []byte, perm []int) []byte {
+	var remaining uint64
+	for _, v := range perm {
+		remaining |= 1 << uint(v-1)
+	}
+	n, i := len(perm), 0
+	for start, end := 0, 0; start < n; start = end {
+		end, _ = mixedRadixChunkEnd(n, start)
+		word := uint64(0)
+		for ; i < end; i++ {
+			bit := uint64(1) << uint(perm[i]-1)
+			digit := bits.OnesCount64(remaining & (bit - 1))
+			remaining &^= bit
+			word = word*uint64(n-i) + uint64(digit)
 		}
 		out = binary.AppendUvarint(out, word)
 	}
@@ -118,13 +159,14 @@ func packLehmer(out []byte, digits []int) []byte {
 
 func unpackLehmer(buf []byte, n int) (digits []int, rest []byte, ok bool) {
 	digits = make([]int, n)
-	for _, chunk := range mixedRadixChunks(n) {
+	for start, end := 0, 0; start < n; start = end {
+		end, _ = mixedRadixChunkEnd(n, start)
 		word, read := binary.Uvarint(buf)
 		if read <= 0 {
 			return nil, nil, false
 		}
 		buf = buf[read:]
-		for i := chunk[1] - 1; i >= chunk[0]; i-- {
+		for i := end - 1; i >= start; i-- {
 			radix := uint64(n - i)
 			digits[i] = int(word % radix)
 			word /= radix
@@ -173,11 +215,15 @@ func packEndGroup(out []byte, ends []int, bound int) []byte {
 	}
 	if lehmerEnabled && lehmerApplicable(ends, bound) {
 		out = binary.AppendUvarint(out, uint64(len(ends))<<1|1)
-		bitmap := make([]byte, (bound+7)/8)
+		// Tomislav-RetCtx: the bitmap is written in place (append of a make is not an allocation).
+		at := len(out)
+		out = append(out, make([]byte, (bound+7)/8)...)
 		for _, e := range ends {
-			bitmap[(e-1)/8] |= 1 << uint((e-1)%8)
+			out[at+(e-1)/8] |= 1 << uint((e-1)%8)
 		}
-		out = append(out, bitmap...)
+		if bound <= 64 {
+			return appendLehmerSmall(out, ends)
+		}
 		return packLehmer(out, lehmerDigits(ends))
 	}
 	out = binary.AppendUvarint(out, uint64(len(ends))<<1)
@@ -198,6 +244,11 @@ func unpackEndGroup(buf []byte, bound int) (ends []int, rest []byte, ok bool) {
 		return nil, buf, header&1 == 0
 	}
 	if header&1 == 0 {
+		// Tomislav-RetCtx: every value takes at least one byte; a larger count is corrupt (it used to
+		// reach make() and panic: a malformed `_br` from the network could crash the service).
+		if count > len(buf) {
+			return nil, nil, false
+		}
 		ends = make([]int, 0, count)
 		for i := 0; i < count; i++ {
 			v, n := binary.Uvarint(buf)
@@ -349,6 +400,167 @@ func unpackStructuralBR(raw []byte) (depth int, ckpt [8]byte, distance int, bloo
 		return 0, ckpt, 0, nil, nil, structuralTail{}, false
 	}
 	return int(d), ckpt, distance, bloomBytes, ha, tail, true
+}
+
+// Tomislav-RetCtx: a child's payload copies its parent's tail and adds one entry, so the inherited
+// part is copied as bytes instead of being decoded and encoded again on every span (it used to be:
+// unpackStructuralBR, then packStructuralBR twice per span, Lehmer codes included).  The scan below
+// validates exactly what unpackStructuralTail validates, without building anything.
+
+// rawStructuralTail is a packed tail split into its two lists, as bytes.
+type rawStructuralTail struct {
+	n       uint64 // (ordinal, end group) entries ...
+	entries []byte // ... and their bytes
+	m       uint64 // delayed entries ...
+	delayed []byte // ... and their bytes
+}
+
+// skipEndGroup returns what follows one end-event group, accepting exactly what unpackEndGroup
+// accepts: for a Lehmer group, a bitmap with count bits set and words that decode completely
+// (each below its chunk's radix product; their digits then always form a permutation).
+func skipEndGroup(buf []byte, bound int) (rest []byte, ok bool) {
+	header, read := binary.Uvarint(buf)
+	if read <= 0 {
+		return nil, false
+	}
+	buf = buf[read:]
+	count := int(header >> 1)
+	if count == 0 {
+		return buf, header&1 == 0
+	}
+	if header&1 == 0 {
+		for i := 0; i < count; i++ {
+			_, n := binary.Uvarint(buf)
+			if n <= 0 {
+				return nil, false
+			}
+			buf = buf[n:]
+		}
+		return buf, true
+	}
+	if bound <= 0 || count > bound {
+		return nil, false
+	}
+	width := (bound + 7) / 8
+	if len(buf) < width {
+		return nil, false
+	}
+	set := 0
+	for i, b := range buf[:width] {
+		if i == width-1 && bound%8 != 0 {
+			b &= byte(1)<<uint(bound%8) - 1 // bits above bound are not read by unpackEndGroup
+		}
+		set += bits.OnesCount8(b)
+	}
+	if set != count {
+		return nil, false
+	}
+	buf = buf[width:]
+	for start, end := 0, 0; start < count; start = end {
+		var product uint64
+		end, product = mixedRadixChunkEnd(count, start)
+		word, n := binary.Uvarint(buf)
+		if n <= 0 || word >= product {
+			return nil, false
+		}
+		buf = buf[n:]
+	}
+	return buf, true
+}
+
+// scanStructuralTail splits a packed tail (the whole remainder of a payload) into its two lists.
+func scanStructuralTail(buf []byte) (tail rawStructuralTail, ok bool) {
+	n, read := binary.Uvarint(buf)
+	if read <= 0 || n > uint64(len(buf)) {
+		return tail, false
+	}
+	buf = buf[read:]
+	start := buf
+	for i := uint64(0); i < n; i++ {
+		ordinal, r := binary.Uvarint(buf)
+		if r <= 0 {
+			return tail, false
+		}
+		if buf, ok = skipEndGroup(buf[r:], int(ordinal)-1); !ok {
+			return tail, false
+		}
+	}
+	tail.n, tail.entries = n, start[:len(start)-len(buf)]
+	m, read := binary.Uvarint(buf)
+	if read <= 0 || m > uint64(len(buf)) {
+		return tail, false
+	}
+	buf = buf[read:]
+	start = buf
+	for i := uint64(0); i < m; i++ {
+		if len(buf) < 24 {
+			return tail, false
+		}
+		k, r := binary.Uvarint(buf[24:])
+		if r <= 0 {
+			return tail, false
+		}
+		if buf, ok = skipEndGroup(buf[24+r:], int(k)); !ok {
+			return tail, false
+		}
+	}
+	tail.m, tail.delayed = m, start[:len(start)-len(buf)]
+	return tail, len(buf) == 0
+}
+
+// scanStructuralBR is unpackStructuralBR with the tail left packed (rawStructuralTail); bloomBytes,
+// ha and the tail's bytes are sub-slices of raw.
+func scanStructuralBR(raw []byte) (depth int, ckpt [8]byte, distance int, bloomBytes, ha []byte, tail rawStructuralTail, ok bool) {
+	d, n := binary.Uvarint(raw)
+	if n <= 0 || d > uint64(^uint(0)>>1) || len(raw)-n < 9 {
+		return
+	}
+	copy(ckpt[:], raw[n:n+8])
+	distance = int(raw[n+8]) + 1
+	geometry := checkpointBlooms[distance-1]
+	rest := raw[n+9:]
+	if len(rest) < geometry.bytes {
+		return 0, ckpt, 0, nil, nil, tail, false
+	}
+	bloomBytes, rest = rest[:geometry.bytes], rest[geometry.bytes:]
+	haLen, read := binary.Uvarint(rest)
+	if read <= 0 || haLen > uint64(len(rest)-read) {
+		return 0, ckpt, 0, nil, nil, tail, false
+	}
+	rest = rest[read:]
+	ha, rest = rest[:haLen], rest[haLen:]
+	if tail, ok = scanStructuralTail(rest); !ok {
+		return 0, ckpt, 0, nil, nil, rawStructuralTail{}, false
+	}
+	return int(d), ckpt, distance, bloomBytes, ha, tail, true
+}
+
+// appendStructuralHeader writes the payload's window core: what packStructuralBR writes before the
+// tail.
+func appendStructuralHeader(out []byte, depth int, ckpt [8]byte, distance int, bloomBytes, ha []byte) []byte {
+	out = binary.AppendUvarint(out, uint64(maxInt(depth, 0)))
+	out = append(out, ckpt[:]...)
+	out = append(out, byte(distance-1))
+	out = append(out, bloomBytes...)
+	out = binary.AppendUvarint(out, uint64(len(ha)))
+	return append(out, ha...)
+}
+
+// appendChildTail writes a child span's tail: its parent's entries unchanged, its own (ordinal, end
+// group), its parent's delayed entries unchanged, then the delayed entries drained for it.  The
+// same bytes as packStructuralTail of the decoded parent tail extended the same way
+// (TestChildTailMatchesRepack).
+func appendChildTail(out []byte, parent rawStructuralTail, ordinal int, ends []int, drained []structuralDelayed) []byte {
+	out = binary.AppendUvarint(out, parent.n+1)
+	out = append(out, parent.entries...)
+	out = binary.AppendUvarint(out, uint64(maxInt(ordinal, 0)))
+	out = packEndGroup(out, ends, ordinal-1)
+	out = binary.AppendUvarint(out, parent.m+uint64(len(drained)))
+	out = append(out, parent.delayed...)
+	for _, d := range drained {
+		out = packStructuralDelayed(out, d)
+	}
+	return out
 }
 
 // structuralDelayedFromServer converts the server wrapper's end-of-request
