@@ -310,7 +310,7 @@ That is why the unit tests check them directly.
 | `cpu_env_ab.sh <build> <kind> <out> <env A> <env B> [rate] [s] [rounds]` | The same as `cpu_ab.sh`, but one build under two run-time settings, e.g. `"GRPC_STREAM_WORKERS=0"` vs `"GRPC_STREAM_WORKERS=8"`: runs A, B, B, A (`rounds` times); prints CPU per request per run, mean and spread per arm, the difference, and every service's CPU per request per arm. `PROFILE_SECONDS` set also profiles every run. |
 | `stack_growth.py <profiles...> [--top N] [--chains]` | How much CPU goes into growing goroutine stacks (`runtime.newstack`), by the function that crossed the limit and by goroutine. Takes `run_local.sh` profiles (`<run>/pprof/*.pb.gz`). |
 | `cpu_areas.py <profile dir> [<profile dir>]` | CPU seconds by area (interceptors' own code, span start/end, processor, export, HTTP/2 header compression, gRPC transport, protobuf, GC, allocation, stack growth, scheduler, syscalls), for one run or two side by side. Takes `<run>/pprof` directories. |
-| `tput_ab.sh <build A> <build B> <kind> <out> [overload rate] [s] [rounds]` | Peak throughput with repetitions: per run a fresh start, a warm-up step at 700 req/s (its CPU per request is reported too) and an overload step (default 1600 req/s offered, 45 s), order A-B-B-A per round. Summary: achieved req/s per run, mean and spread per build, and the difference within each ABBA round (cancels the machine's drift). `LABEL_A`/`LABEL_B` (default `old`/`new`); `SUMMARY_ONLY=1` recomputes the summary of an existing output directory. |
+| `tput_ab.sh <build A> <build B> <kind> <out> [overload rate] [s] [rounds]` | Peak throughput with repetitions: per run a fresh start, a warm-up step at 700 req/s (its CPU per request is reported too) and an overload step (default 1600 req/s offered, 45 s), order A-B-B-A per round. Summary: achieved req/s and service CPU per run, mean and spread per build, and the difference within each ABBA round (cancels the machine's drift). Runs whose services got clearly less CPU (`STARVED`) or whose warm-up stalled are flagged and left out (see the 2026-10-15 log entry). `LABEL_A`/`LABEL_B` (default `old`/`new`); `SUMMARY_ONLY=1` recomputes the summary of an existing output directory. |
 
 | Go benchmark: `runtime/plugins/opentelemetry/interceptors/bench_test.go` | One traced call through real gRPC (in-memory connection) and both interceptors, per variant (no tracing, vanilla, bridge with a reverse context), each also with `/HeaderTable0` (server option `grpc.HeaderTableSize(0)`), `/Workers` (gRPC stream workers on the server), `/GoPerCall` (each call on a new goroutine, as the SN workflow does) and `/GoPerCall+Workers`: ns and allocations per call. Seconds instead of a 40-minute experiment, for trying ideas; confirm winners with `cpu_ab.sh`. Run: `cd runtime && go test -run '^$' -bench . -benchmem ./plugins/opentelemetry/interceptors/`. |
 
@@ -1552,6 +1552,37 @@ optimization.
 (A first attempt checked out the old commit as a git worktree for this and filled the disk: the
 repository tracks large generated build directories. Git removed the partial checkout itself; the
 old package was then copied alone instead.)
+
+### 2026-10-15: Throughput of the cleanup; disturbed runs flagged by `tput_ab.sh`
+
+Asked for throughput tests after the prepare/finish cleanup. New PB build of the current code
+(`pb_interceptor_final2`, commit `8e4d29c1`); trace validation against `pb_wrapper_final`
+(`runs_r12/`): 2000/2000 identical, TVD 0.000, 46000 spans per run. Peak throughput against the
+previous final interceptor build (`b943cec7`), both orders (`r12_cleanup.sh`,
+`final/tput_pb_cleanup`, `final/tput_pb_cleanup_rev`):
+
+| order | old | new | difference | per round |
+|---|---|---|---|---|
+| old first | 1,024.1 req/s | 1,027.5 (3 runs) | +0.3% | -0.4%, +1.0% |
+| new first | 1,022.0 | 1,024.3 | +0.2% | +0.3%, +0.2% |
+
+No measurable change, as the microbenchmark predicted (under 0.05%). Warm-up CPU per request: -0.4%
+and +0.1%.
+
+One run (old-first set, run 6, new build) served 888.9 req/s, 13% below all others, with a normal
+warm-up. In its overload step the services got 177.7 s of CPU against ~195.5 s in the runs around
+it: at saturation they use all the CPU they get, so something outside the app took ~9% of CPUs 0-5
+for that step. The earlier throughput sets never had this (service CPU 193-201 s in every run;
+yesterday's "run 5" dips had normal CPU). `tput_ab.sh` now prints each run's service CPU in the
+overload step and flags:
+
+* `STARVED`: service CPU over 3% below the set's median; left out of the throughput means and
+  differences (the new-build mean above is of its 3 other runs);
+* `stalled warm-up`: the warm-up step served over 100 requests fewer than the set's best (the
+  ~0.5 s stalls seen since 2026-10-14); left out of the warm-up CPU figures only.
+
+The summary lists what it left out. Recomputed for the earlier sets, nothing changes except CGPB's
+warm-up CPU (its run 6 had a stalled warm-up): +0.2% becomes -0.0%.
 
 ### Open items
 

@@ -31,6 +31,15 @@
 # each round's difference, so the per-round differences are the ones to judge against each other.
 # SUMMARY_ONLY=1 recomputes the summary of an existing <out> without running anything.
 #
+# Disturbed runs are flagged and left out of the means and differences (the summary says which):
+#   STARVED  the services used over 3% less CPU in the overload step than the set's median.  At
+#            saturation they use all the CPU they get, so something outside the app took CPUs
+#            0-5 (2026-10-15: one run got 177.7 s instead of ~195.5 s and served 13% fewer
+#            requests).  Its throughput is not the build's.
+#   stalled  the warm-up step served over 100 requests fewer than the set's best: the load
+#            generator stalled (~0.5 s, seen since 2026-10-14), which skews that step's CPU per
+#            request; only the warm-up CPU of such a run is left out.
+#
 # LABEL_A, LABEL_B (default "old", "new") name the two builds in the run directories and summary.
 #
 # Example:
@@ -75,41 +84,56 @@ fi
 python3 - "$out" "$A" "$B" "$warmup" "$overload" <<'EOF' | tee "$out/summary.txt"
 import glob, os, re, statistics, sys
 out, la, lb, warmup, overload = sys.argv[1:6]
-tput = {la: [], lb: []}
-cpu = {la: [], lb: []}
-rounds = {}   # round -> {label: [(throughput, cpu)]}
+runs = []   # one dict per run, in run order
 for run in sorted(glob.glob(os.path.join(out, '*_*')), key=lambda p: int(os.path.basename(p).split('_')[0])):
     name = os.path.basename(run)
     label = name.split('_', 1)[1]
     wo = os.path.join(run, f'wrk-{overload}.out')
-    if label not in tput or not os.path.exists(wo):
+    if label not in (la, lb) or not os.path.exists(wo):
         continue
     text = open(wo).read()
-    rps = float(re.search(r'Requests/sec:\s*([\d.]+)', text).group(1))
     errors = re.search(r'Socket errors:.*', text)
     non2xx = re.search(r'Non-2xx or 3xx responses:\s*(\d+)', text)
-    tput[label].append(rps)
     reqs = int(re.search(r'(\d+) requests in', open(os.path.join(run, f'wrk-{warmup}.out')).read()).group(1))
-    secs = sum(float(l.split()[1]) for l in open(os.path.join(run, f'cpu-{warmup}.txt')))
-    cpu[label].append(secs / reqs * 1e3)
-    rounds.setdefault((int(name.split('_')[0]) - 1) // 4, {la: [], lb: []})[label].append((rps, cpu[label][-1]))
-    note = '  ' + errors.group(0) if errors else ''
-    note += f'  non-2xx: {non2xx.group(1)}' if non2xx else ''
-    print(f'{name:12s} {rps:8.1f} req/s at {overload} offered   warm-up {cpu[label][-1]:.3f} ms CPU per request{note}')
+    runs.append({
+        'name': name, 'label': label, 'round': (int(name.split('_')[0]) - 1) // 4,
+        'rps': float(re.search(r'Requests/sec:\s*([\d.]+)', text).group(1)),
+        'svc_cpu': sum(float(l.split()[1]) for l in open(os.path.join(run, f'cpu-{overload}.txt'))),
+        'warm_reqs': reqs,
+        'warm_cpu': sum(float(l.split()[1]) for l in open(os.path.join(run, f'cpu-{warmup}.txt'))) / reqs * 1e3,
+        'note': ('  ' + errors.group(0) if errors else '') + (f'  non-2xx: {non2xx.group(1)}' if non2xx else ''),
+    })
+median_cpu = statistics.median(r['svc_cpu'] for r in runs)
+best_warm = max(r['warm_reqs'] for r in runs)
+for r in runs:
+    r['starved'] = r['svc_cpu'] < 0.97 * median_cpu
+    r['stalled'] = r['warm_reqs'] < best_warm - 100
+    flags = ('  STARVED' if r['starved'] else '') + ('  stalled warm-up' if r['stalled'] else '')
+    print(f"{r['name']:16s} {r['rps']:8.1f} req/s at {overload} offered (service CPU {r['svc_cpu']:5.1f} s)   "
+          f"warm-up {r['warm_cpu']:.3f} ms CPU per request{r['note']}{flags}")
 print()
-for what, per, unit, fmt in (('throughput', tput, 'req/s', '.1f'), ('warm-up CPU', cpu, 'ms/req', '.3f')):
-    a, b = per[la], per[lb]
+for what, key, skip, unit, fmt in (('throughput', 'rps', 'starved', 'req/s', '.1f'),
+                                   ('warm-up CPU', 'warm_cpu', 'stalled', 'ms/req', '.3f')):
+    left_out = [r['name'] for r in runs if r[skip]]
+    kept = [r for r in runs if not r[skip]]
+    a = [r[key] for r in kept if r['label'] == la]
+    b = [r[key] for r in kept if r['label'] == lb]
     if not a or not b:
         continue
-    for label, v in per.items():
+    if left_out:
+        print(f"{what:12s} left out ({skip}): {', '.join(left_out)}")
+    for label, v in ((la, a), (lb, b)):
         print(f'{what:12s} {label:8s} mean {statistics.mean(v):{fmt}} {unit}   spread (max-min) {max(v) - min(v):{fmt}}   runs {len(v)}')
     d = statistics.mean(b) - statistics.mean(a)
     noise = max(max(a) - min(a), max(b) - min(b))
     print(f'{what:12s} difference ({lb} - {la}): {d:+{fmt}} {unit} ({d / statistics.mean(a):+.2%}); '
           f'noise (largest same-build spread): {noise:{fmt}} ({noise / statistics.mean(a):.2%})')
-    k = 0 if what == 'throughput' else 1
-    per_round = [statistics.mean(x[k] for x in r[lb]) - statistics.mean(x[k] for x in r[la])
-                 for _, r in sorted(rounds.items()) if r[la] and r[lb]]
+    per_round = []
+    for rnd in sorted({r['round'] for r in kept}):
+        ra = [r[key] for r in kept if r['round'] == rnd and r['label'] == la]
+        rb = [r[key] for r in kept if r['round'] == rnd and r['label'] == lb]
+        if ra and rb:
+            per_round.append(statistics.mean(rb) - statistics.mean(ra))
     print(f'{what:12s} per ABBA round ({lb} - {la}): ' +
           ', '.join(f'{x:+{fmt}} ({x / statistics.mean(a):+.2%})' for x in per_round))
     print()
