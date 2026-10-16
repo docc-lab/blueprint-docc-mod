@@ -47,6 +47,12 @@ type reverseSpanState struct {
 	scheduled bool
 	prepared  bool
 	carried   string
+	// Tomislav-RetCtx: the decisions PrepareCheckpoint makes for a bridge span with wire state,
+	// read at OnEnd by classification (pathCheckpoint) and export (appendBridgeWire) instead of
+	// being written to the span as attributes (`_rc`, `__bag.rev_rejected`).  Spans without wire
+	// state (vanilla, the legacy fixed-cpd mode) still use the attributes.
+	rc       string // the trusses this span took over, as the exported `_rc` text
+	rejected bool   // a leaf that rejected being a checkpoint
 }
 
 type reverseCheckpointProcessor struct {
@@ -170,6 +176,18 @@ func (p *reverseCheckpointProcessor) state(id trace.SpanID) *reverseSpanState {
 // stack frame earlier. That scan was the single largest consumer of Attributes()
 // in the deployed profile (31 % of it on composepost).
 func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned string) string {
+	return p.prepare(span, returned, -1)
+}
+
+// PrepareServerCheckpoint implements backend.ServerCheckpointPreparer: the caller says how many
+// children the server span had, so its attributes need not be read back for that.
+func (p *reverseCheckpointProcessor) PrepareServerCheckpoint(span trace.Span, returned string, children int) string {
+	return p.prepare(span, returned, children)
+}
+
+// prepare is PrepareCheckpoint; children is the span's child count, or -1 if the caller does not
+// know it (then a server span's children attributes are read).
+func (p *reverseCheckpointProcessor) prepare(span trace.Span, returned string, children int) string {
 	s, ok := span.(sdktrace.ReadWriteSpan)
 	if !ok || !s.IsRecording() {
 		return ""
@@ -182,19 +200,21 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 	}
 	state.prepared = true
 	depth, scheduled := state.depth, state.scheduled
-	// The remaining two values are the bridge processor's own wire attributes, so
-	// they still come off the span -- one scan, where there used to be several.
+	// Tomislav-RetCtx: a bridge span with wire state has its truss (the raw emit payload) beside it,
+	// and the caller of PrepareServerCheckpoint says how many children it had.  The span's
+	// attributes (a locked copy through a map) are read only for what is not known otherwise: a
+	// legacy bridge's truss (no wire state), SB's force_lp (set on the span at any time,
+	// TestReverseTTLRespectsSyntheticForceLP), or a server span's children when the caller did not
+	// say.
 	var truss []byte
 	var forceLP bool
 	var attrs []attribute.KeyValue
-	// Tomislav-RetCtx: the ranged window's truss is the raw emit payload beside the span;
-	// attributes are read only for what still lives there (SB's force_lp, the children
-	// markers a server-leaf rejection checks, or a legacy bridge with no wire state).
+	server := s.SpanKind() == trace.SpanKindServer
 	w := bridgeWires.load(s.SpanContext().SpanID())
 	if w != nil {
 		truss = w.emit
 	}
-	if w == nil || p.kind == backend.SegStructuralCheckpoint || s.SpanKind() == trace.SpanKindServer {
+	if w == nil || p.kind == backend.SegStructuralCheckpoint || (server && children < 0) {
 		attrs = s.Attributes()
 		for _, attr := range attrs {
 			switch attr.Key {
@@ -207,7 +227,11 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 			}
 		}
 	}
-	root := depth == 0 || (p.root && s.SpanKind() == trace.SpanKindServer)
+	hasChildren := children > 0
+	if children < 0 {
+		hasChildren = spanHasChildrenIn(attrs)
+	}
+	root := depth == 0 || (p.root && server)
 	if returned != "" {
 		backend.CountTrussReceived()
 		var emitted string
@@ -215,8 +239,13 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 			emitted, returned = p.reversePolicy.route(returned, p.reversePolicy.terminates(scheduled, root), depth, rand.Float64)
 		}
 		if emitted != "" {
-			// Tomislav-RetCtx: exported as before, as text (the carrier is raw in the process).
-			s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, backend.RetCtxText(emitted)))
+			// Tomislav-RetCtx: exported as before, as text (the carrier is raw in the process); for a
+			// bridge span with wire state, from there (appendBridgeWire) instead of the span.
+			if rc := backend.RetCtxText(emitted); w != nil {
+				w.rev.rc = rc
+			} else {
+				s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, rc))
+			}
 			backend.CountCheckpoint()
 			backend.SampleLogCheckpoint(emitted)
 		}
@@ -224,7 +253,7 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 	// Only forced, unscheduled leaves may reject. Original checkpoints retain
 	// their own data; they terminate every returned truss unless reverse_passthrough
 	// is on (reversePolicy.terminates), in which case the policy routes it as above.
-	if s.SpanKind() == trace.SpanKindServer && !spanHasChildrenIn(attrs) && !forceLP && !scheduled && !root && p.leafRejectRate > 0 && len(truss) > 0 {
+	if server && !hasChildren && !forceLP && !scheduled && !root && p.leafRejectRate > 0 && len(truss) > 0 {
 		if rand.Float64() < p.leafRejectRate {
 			var own string
 			if p.reversePolicy.probabilistic() {
@@ -235,7 +264,11 @@ func (p *reverseCheckpointProcessor) PrepareCheckpoint(span trace.Span, returned
 				own = backend.EncodeCheckpointRetCtxWithTTL(s.SpanContext().SpanID(), depth, p.kind, truss, p.reverseRange.newTTL())
 			}
 			returned = backend.MergeRetCtx(returned, own)
-			s.SetAttributes(attribute.Bool(checkpointRejectedAttribute, true))
+			if w != nil {
+				w.rev.rejected = true
+			} else {
+				s.SetAttributes(attribute.Bool(checkpointRejectedAttribute, true))
+			}
 			backend.CountLeafReject()
 		} else {
 			backend.CountLocalCheckpoint()
@@ -252,6 +285,14 @@ type checkpointTracerProvider struct {
 	backend.CheckpointPreparer
 }
 
+// PrepareServerCheckpoint implements backend.ServerCheckpointPreparer when the preparer does.
+func (c *checkpointTracerProvider) PrepareServerCheckpoint(span trace.Span, returned string, children int) string {
+	if p, ok := c.CheckpointPreparer.(backend.ServerCheckpointPreparer); ok {
+		return p.PrepareServerCheckpoint(span, returned, children)
+	}
+	return c.CheckpointPreparer.PrepareCheckpoint(span, returned)
+}
+
 // isPathCheckpoint is shared by PB/CGPB finalization and export classification.
 func isPathCheckpoint(s sdktrace.ReadOnlySpan) bool {
 	return pathCheckpoint(s.SpanKind(), s.Attributes(), bridgeWires.load(s.SpanContext().SpanID()))
@@ -264,13 +305,14 @@ func pathCheckpoint(kind trace.SpanKind, attrs []attribute.KeyValue, w *bridgeWi
 	var priority, hasPriority, rejected, reverseCheckpoint bool
 	if w != nil {
 		priority, hasPriority = w.priority, true
+		rejected, reverseCheckpoint = w.rev.rejected, w.rev.rc != "" // reverseSpanState
 	}
 	for _, attr := range attrs {
 		switch attr.Key {
 		case checkpointRejectedAttribute:
-			rejected = attr.Value.AsBool()
+			rejected = rejected || attr.Value.AsBool()
 		case backend.ReverseTrussCheckpointKey:
-			reverseCheckpoint = attr.Value.AsString() != ""
+			reverseCheckpoint = reverseCheckpoint || attr.Value.AsString() != ""
 		case AttrBagPrio:
 			priority, hasPriority = attr.Value.AsInt64() == 1, true
 		}

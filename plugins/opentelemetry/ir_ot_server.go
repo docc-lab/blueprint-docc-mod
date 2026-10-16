@@ -665,7 +665,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, children); prepared { // Tomislav-RetCtx: the child count, not read back off the span
 			retCtx = out
 		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.
@@ -795,7 +795,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, 0); prepared { // Tomislav-RetCtx: vanilla sets no child attributes: 0 children, as before
 			retCtx = out
 		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.
@@ -927,7 +927,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, int(childCount.Load())); prepared { // Tomislav-RetCtx: the child count, not read back off the span
 			retCtx = out
 		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.
@@ -1059,7 +1059,7 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Deferred End exports the span with the SDK's completed decision.
 	if backend.ReverseTrussEnabled() {
 		retCtx = backend.MergedChildren(ctx)
-		if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared {
+		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, int(childCount.Load())); prepared { // Tomislav-RetCtx: the child count, not read back off the span
 			retCtx = out
 		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.

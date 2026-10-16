@@ -108,6 +108,10 @@ func appendBridgeWire(out []*commonpb.KeyValue, w *bridgeWire, highPriority bool
 	if w == nil {
 		return out
 	}
+	if w.rev.rc != "" { // Tomislav-RetCtx: `_rc`, decided by PrepareCheckpoint (reverse_checkpoint.go)
+		out = append(out, &commonpb.KeyValue{Key: backend.ReverseTrussCheckpointKey,
+			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: w.rev.rc}}})
+	}
 	if highPriority {
 		return append(out, newBytesKV(AttrBREmit, w.emit, 0))
 	}

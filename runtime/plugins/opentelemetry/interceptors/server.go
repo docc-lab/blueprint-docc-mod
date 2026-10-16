@@ -150,9 +150,11 @@ func (s *serverSide) finish(call *serverCall, err error) string {
 		call.state.childrenMutex.Unlock()
 	}
 
-	// 9. Reverse context back to the caller (bridges with REVERSE_TRUSS=on).
+	// 9. Reverse context back to the caller (bridges with REVERSE_TRUSS=on).  The child count goes
+	//    to the SDK, which otherwise reads it back off the span (0 for vanilla, which counts none and
+	//    sets no child attributes: the same answer).
 	if s.reverse {
-		return serverRetCtx(call.ctx, s.tp, call.span, err) // below
+		return serverRetCtx(call.ctx, s.tp, call.span, int(call.state.childCount.Load()), err) // below
 	}
 	return ""
 }
@@ -253,9 +255,9 @@ func setRemEndEvents(span trace.Span, children int, endEvents []int) {
 // wrappers do: merged children, then the SDK's checkpoint preparation on the live server span.  It
 // returns it only if the call succeeded ("" otherwise): with wrappers, a failed call returns no
 // response message, so the caller never sees retCtx either.
-func serverRetCtx(ctx context.Context, tp trace.TracerProvider, span trace.Span, callErr error) string {
-	retCtx := backend.MergedChildren(ctx)                                       // runtime/core/backend/reversetruss.go
-	if out, prepared := backend.PrepareCheckpoint(tp, span, retCtx); prepared { // runtime/core/backend/checkpoint.go
+func serverRetCtx(ctx context.Context, tp trace.TracerProvider, span trace.Span, children int, callErr error) string {
+	retCtx := backend.MergedChildren(ctx)                                                       // runtime/core/backend/reversetruss.go
+	if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, children); prepared { // runtime/core/backend/checkpoint.go
 		retCtx = out
 	}
 	if callErr != nil {

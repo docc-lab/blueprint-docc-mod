@@ -46,6 +46,25 @@ func PrepareCheckpoint(provider trace.TracerProvider, span trace.Span, returned 
 	return "", false
 }
 
+// ServerCheckpointPreparer is a CheckpointPreparer that can take a server span's child count from
+// the caller.  Tomislav-RetCtx: the SDK otherwise reads it back from the span's children
+// attributes, and reading a live span's attributes locks it and copies them through a map.
+type ServerCheckpointPreparer interface {
+	PrepareServerCheckpoint(span trace.Span, returned string, children int) string
+}
+
+// PrepareServerCheckpoint is PrepareCheckpoint for a server span whose child count (the calls its
+// handler made) the caller knows.  Without a ServerCheckpointPreparer it is PrepareCheckpoint.
+func PrepareServerCheckpoint(provider trace.TracerProvider, span trace.Span, returned string, children int) (string, bool) {
+	if !span.IsRecording() {
+		return "", false
+	}
+	if preparer, ok := provider.(ServerCheckpointPreparer); ok {
+		return preparer.PrepareServerCheckpoint(span, returned, children), true
+	}
+	return PrepareCheckpoint(provider, span, returned)
+}
+
 // ReadReverseBaggage extracts the SDK's encoded return carrier from a recording
 // span. Instrumentation carries it upstream or adds it to the fan-in accumulator.
 func ReadReverseBaggage(span trace.Span) string {

@@ -14,6 +14,11 @@ import (
 )
 
 func checkpointSpanAttribute(span trace.Span, key attribute.Key) string {
+	// Tomislav-RetCtx: a bridge span with wire state keeps `_rc` there (reverseSpanState.rc,
+	// exported by appendBridgeWire), not on the span.
+	if w := bridgeWires.load(span.SpanContext().SpanID()); w != nil && key == backend.ReverseTrussCheckpointKey {
+		return backend.RetCtxFromText(w.rev.rc)
+	}
 	for _, attr := range span.(sdktrace.ReadOnlySpan).Attributes() {
 		if attr.Key == key {
 			if key == backend.ReverseTrussCheckpointKey {
