@@ -19,10 +19,10 @@ import (
 // Run real span processing and serialization with no exporter or background
 // workers. The tests inspect exactly what would enter each export buffer.
 func checkpointTestProvider(kind string) (trace.TracerProvider, func() (hp, lp []*tracepb.Span)) {
-	buffered := func(entries []sbBufEntry) []*tracepb.Span {
+	buffered := func(entries []wireSpan) []*tracepb.Span {
 		var spans []*tracepb.Span
 		for _, entry := range entries {
-			spans = append(spans, entry.span)
+			spans = append(spans, entry.span())
 		}
 		return spans
 	}
@@ -43,7 +43,7 @@ func checkpointTestProvider(kind string) (trace.TracerProvider, func() (hp, lp [
 		next, snapshot = p, func() ([]*tracepb.Span, []*tracepb.Span) {
 			var spans []*tracepb.Span
 			for _, entry := range p.spanBuf {
-				spans = append(spans, entry.span)
+				spans = append(spans, entry.span())
 			}
 			return spans, nil
 		}

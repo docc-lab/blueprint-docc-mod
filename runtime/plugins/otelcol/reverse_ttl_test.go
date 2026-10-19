@@ -209,7 +209,7 @@ func testReversePolicyTree(t *testing.T, policy reversePolicy) {
 			}
 			seen := map[trace.SpanID]bool{}
 			for _, entry := range hp {
-				encoded := exportedCheckpoint(t, entry.span)
+				encoded := exportedCheckpoint(t, entry.span())
 				if encoded == "" {
 					continue
 				}
@@ -233,7 +233,7 @@ func testReversePolicyTree(t *testing.T, policy reversePolicy) {
 					} else {
 						// Probability may stop at any ancestor up to the first
 						// original checkpoint, and must never escape that boundary.
-						for emitter.IsValid() && !bytes.Equal(entry.span.SpanId, emitter[:]) {
+						for emitter.IsValid() && !bytes.Equal(entry.span().SpanId, emitter[:]) {
 							if locations[emitter].original {
 								t.Fatal("truss passed an original checkpoint")
 							}
@@ -246,7 +246,7 @@ func testReversePolicyTree(t *testing.T, policy reversePolicy) {
 							t.Fatal("p=0 emitted before original checkpoint")
 						}
 					}
-					if !emitter.IsValid() || !bytes.Equal(entry.span.SpanId, emitter[:]) || cp.Depth != origin.Depth || !bytes.Equal(cp.Truss, origin.Truss) {
+					if !emitter.IsValid() || !bytes.Equal(entry.span().SpanId, emitter[:]) || cp.Depth != origin.Depth || !bytes.Equal(cp.Truss, origin.Truss) {
 						t.Fatalf("truss %s emitted at wrong ancestor or changed payload", cp.SpanID)
 					}
 				}

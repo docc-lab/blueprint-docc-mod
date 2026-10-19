@@ -119,6 +119,11 @@ func (g *retryGate) schedule(events []*tracepb.ResourceSpans, n int64, resend fu
 	for _, rs := range events {
 		size += int64(proto.Size(rs))
 	}
+	g.scheduleBytes(size, n, resend, done)
+}
+
+// scheduleBytes is schedule for a batch already encoded (otlp_wire.go): size is its length.
+func (g *retryGate) scheduleBytes(size, n int64, resend func() error, done func(error)) {
 	g.pendingBatches.Add(1)
 	spans := g.pendingSpans.Add(n)
 	bytes := g.pendingBytes.Add(size)

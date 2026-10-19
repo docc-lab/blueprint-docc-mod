@@ -38,6 +38,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
@@ -176,6 +177,55 @@ func recordRefused(events []*tracepb.ResourceSpans, isHP bool) {
 					_ = r.file.WriteByte(flag)
 				}
 			}
+		}
+	}
+}
+
+// recordRefusedIDs is recordRefused for a batch the live processors export as bytes
+// (otlp_wire.go, wireBatch): the same counting over the batch's trace IDs.
+func recordRefusedIDs(ids []trace.TraceID, isHP bool) {
+	flag := refusedFlagAny
+	if isHP {
+		flag |= refusedFlagHP
+	}
+	r := refusedIDs
+	if !r.census { // counters only
+		r.mu.Lock()
+		r.spansAll += int64(len(ids))
+		if isHP {
+			r.spansHP += int64(len(ids))
+		}
+		r.mu.Unlock()
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rotate(time.Now())
+	for _, id := range ids {
+		r.spansAll++
+		if isHP {
+			r.spansHP++
+		}
+		have := r.cur[id] | r.prev[id]
+		if have&flag == flag {
+			if _, ok := r.cur[id]; !ok {
+				r.cur[id] = have // keep a recurring trace in the live generation
+			}
+			continue // nothing new for this trace
+		}
+		if have == 0 {
+			r.tracesAny++
+		}
+		if isHP && have&refusedFlagHP == 0 {
+			r.tracesHP++
+		}
+		r.cur[id] = have | flag
+		if r.keepRecords {
+			r.records = append(r.records, refusedRecord{id: id, flags: flag})
+		}
+		if r.file != nil {
+			_, _ = r.file.Write(id[:])
+			_ = r.file.WriteByte(flag)
 		}
 	}
 }

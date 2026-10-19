@@ -11,8 +11,8 @@ package otelcol
 //     with the baggage as JSON (backend.AddBaggageToTraceContext); for the bridges with
 //     the response path on, hand a returned checkpoint truss to PrepareCheckpoint,
 //   - span End (processor OnEnd: classify, build the span proto, buffer),
-//   - the export encode: every 64 requests the buffered protos are wrapped and
-//     proto-marshalled as the processor's export goroutines do (no network).
+//   - the export encode: every 64 requests the buffered spans (already encoded at OnEnd,
+//     otlp_wire.go) are concatenated into the export request as the flush does (no network).
 //
 // Run:  go test ./runtime/plugins/otelcol/ -run '^$' -bench 'BenchmarkRequest' -benchmem -count 5
 
@@ -24,11 +24,9 @@ import (
 
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 // wrapperBaggage is the client wrapper's baggage construction.
@@ -75,43 +73,39 @@ func oneFrontendRequest(tp trace.TracerProvider, reverse bool, retCtx string) {
 	server.End()
 }
 
-// encodeBuffered drains a processor's buffers and proto-marshals them as export does.
+// encodeBuffered drains a processor's buffers and builds the export request bytes as the flush
+// does (otlp_wire.go, buildBatch; the spans are already encoded, so this is the concatenation).
 func encodeBuffered(p sdktrace.SpanProcessor, resource any) {
-	var spans []*tracepb.Span
+	var spans []wireSpan
 	switch q := p.(type) {
 	case *PathBridgeProcessor:
 		q.eventsLock.Lock()
-		for _, e := range append(q.hpBuf, q.lpBuf...) {
-			spans = append(spans, e.span)
-		}
+		spans = append(append(spans, q.hpBuf...), q.lpBuf...)
 		q.hpBuf, q.lpBuf = q.hpBuf[:0], q.lpBuf[:0]
 		q.eventsLock.Unlock()
 	case *CallGraphBridgeProcessor:
 		q.eventsLock.Lock()
-		for _, e := range append(q.hpBuf, q.lpBuf...) {
-			spans = append(spans, e.span)
-		}
+		spans = append(append(spans, q.hpBuf...), q.lpBuf...)
 		q.hpBuf, q.lpBuf = q.hpBuf[:0], q.lpBuf[:0]
 		q.eventsLock.Unlock()
 	case *StructuralBridgeProcessor:
 		q.eventsLock.Lock()
-		for _, e := range append(q.hpBuf, q.lpBuf...) {
-			spans = append(spans, e.span)
-		}
+		spans = append(append(spans, q.hpBuf...), q.lpBuf...)
 		q.hpBuf, q.lpBuf = q.hpBuf[:0], q.lpBuf[:0]
 		q.eventsLock.Unlock()
 	case *VanillaProcessor:
 		q.spanLock.Lock()
-		for _, e := range q.spanBuf {
-			spans = append(spans, e.span)
-		}
+		spans = append(spans, q.spanBuf...)
 		q.spanBuf = q.spanBuf[:0]
 		q.spanLock.Unlock()
 	}
-	rs := &tracepb.ResourceSpans{ScopeSpans: []*tracepb.ScopeSpans{{
-		Scope: &commonpb.InstrumentationScope{Name: "frontend"}, Spans: spans}}}
-	_, _ = proto.Marshal(rs)
+	_ = buildBatch(benchResourceField, benchScopeField, spans)
 }
+
+var (
+	benchResourceField = resourceField(nil)
+	benchScopeField    = scopeField(instrumentation.Scope{Name: "frontend"})
+)
 
 func requestHarness(kind string, reverse bool) (trace.TracerProvider, sdktrace.SpanProcessor) {
 	var inner sdktrace.SpanProcessor

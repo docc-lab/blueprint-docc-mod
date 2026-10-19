@@ -18,14 +18,7 @@ import (
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/bloom"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
-	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -46,8 +39,8 @@ import (
 type PathBridgeProcessor struct {
 	mu sync.RWMutex
 
-	// OTLP gRPC client for sending custom protobuf messages
-	client otlptrace.Client
+	// Tomislav-RetCtx: the OTLP connection (otlp_wire.go); the export bytes are written here.
+	conn *otlpConn
 
 	// Configuration
 	agentEndpoint string
@@ -65,12 +58,12 @@ type PathBridgeProcessor struct {
 
 	// Two physical buffers, separated by CP/LP classification at OnEnd.
 	// flushBuffer drains them sequentially with HP preference (see SB).
-	hpBuf      []sbBufEntry
-	lpBuf      []sbBufEntry
+	hpBuf      []wireSpan // Tomislav-RetCtx: encoded spans (otlp_wire.go)
+	lpBuf      []wireSpan
 	eventsLock sync.Mutex
 
 	// Shared Resource proto for every export, captured lazily on first OnEnd.
-	resource     *resourcepb.Resource
+	resource     []byte // the encoded ResourceSpans.resource field (otlp_wire.go, resourceField)
 	resourceOnce sync.Once
 
 	// Per-batch / per-priority counters (all atomic). Mirrors SB exactly:
@@ -128,22 +121,17 @@ func NewPathBridgeProcessor(ctx context.Context, agentEndpoint string, configDis
 
 	slog.Info("🔵 Using endpoint", "endpoint", endpoint)
 
-	// Create OTLP gRPC client. Retry is governed by the shared
-	// grpcRetryEnabled (OTLP_RETRY env) — the bridges design intends the
-	// priority processor + breadcrumb mechanism to absorb pressure, NOT an
-	// SDK-side retry queue, so deployments bake OTLP_RETRY=off.
-	client := otlptracegrpc.NewClient(
-		otlptracegrpc.WithEndpoint(endpoint),
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{Enabled: grpcRetryEnabled}),
-	)
-
-	slog.Info("🔵 OTLP client created, starting connection")
-
-	// Start the client
-	if err := client.Start(ctx); err != nil {
-		slog.Error("❌ Failed to start OTLP client", "error", err)
-		return nil, fmt.Errorf("failed to start OTLP client: %w", err)
+	// Tomislav-RetCtx: a plain gRPC connection; the processor writes the OTLP bytes itself
+	// (otlp_wire.go) instead of handing protobuf objects to the exporter client.  The exporter's
+	// retry (OTLP_RETRY) has no counterpart on this path: every campaign runs with it off, and the
+	// 1 s export deadline never left room for its 5 s first retry anyway.
+	conn, err := dialOTLP(endpoint)
+	if err != nil {
+		slog.Error("❌ Failed to open the OTLP connection", "error", err)
+		return nil, fmt.Errorf("failed to open the OTLP connection: %w", err)
+	}
+	if grpcRetryEnabled {
+		slog.Warn("OTLP_RETRY is not off; the direct OTLP export path does not retry refused batches")
 	}
 
 	slog.Info("✅ PathBridgeProcessor created successfully")
@@ -161,7 +149,7 @@ func NewPathBridgeProcessor(ctx context.Context, agentEndpoint string, configDis
 	}
 
 	processor := &PathBridgeProcessor{
-		client:              client,
+		conn:                conn,
 		agentEndpoint:       agentEndpoint,
 		bloomFilter:         bloom.New(BloomFilterM, BloomFilterK),
 		stopChan:            make(chan struct{}),
@@ -190,7 +178,7 @@ func NewPathBridgeProcessor(ctx context.Context, agentEndpoint string, configDis
 	slog.Info("🔵 About to fetch full config")
 	if err := processor.fetchFullConfig(ctx); err != nil {
 		if errors.Is(err, errInvalidCheckpointRange) || errors.Is(err, errInvalidReversePolicy) {
-			_ = client.Stop(ctx)
+			_ = conn.close()
 			return nil, err
 		}
 		slog.Error("❌ Failed to fetch full config", "error", err)
@@ -303,8 +291,8 @@ func (p *PathBridgeProcessor) flushBuffer() {
 	p.eventsLock.Lock()
 	hpSnap := p.hpBuf
 	lpSnap := p.lpBuf
-	p.hpBuf = make([]sbBufEntry, 0, cap(p.hpBuf))
-	p.lpBuf = make([]sbBufEntry, 0, cap(p.lpBuf))
+	p.hpBuf = make([]wireSpan, 0, cap(p.hpBuf))
+	p.lpBuf = make([]wireSpan, 0, cap(p.lpBuf))
 	p.eventsLock.Unlock()
 
 	if len(hpSnap) == 0 && len(lpSnap) == 0 {
@@ -318,92 +306,68 @@ func (p *PathBridgeProcessor) flushBuffer() {
 }
 
 // dispatchPriority groups one priority class's snapshot by scope, chunks
-// each scope group at SBBatchSize, and spawns one goroutine per chunk.
-func (p *PathBridgeProcessor) dispatchPriority(snap []sbBufEntry, isHP bool) {
+// each scope group at SBBatchSize, and spawns one goroutine per chunk.  Each chunk is encoded as
+// one ExportTraceServiceRequest (otlp_wire.go, buildBatch): one ResourceSpans (the shared
+// Resource) wrapping one ScopeSpans wrapping up to SBBatchSize spans.
+func (p *PathBridgeProcessor) dispatchPriority(snap []wireSpan, isHP bool) {
 	if len(snap) == 0 {
 		return
 	}
-	type scopeKey struct{ name, version string }
-	type scopeGroup struct {
-		scope instrumentation.Scope
-		spans []*tracepb.Span
-	}
-	groups := make(map[scopeKey]*scopeGroup, 1)
-	for _, e := range snap {
-		k := scopeKey{e.scope.Name, e.scope.Version}
-		g, ok := groups[k]
-		if !ok {
-			g = &scopeGroup{scope: e.scope}
-			groups[k] = g
-		}
-		g.spans = append(g.spans, e.span)
-	}
-	for _, g := range groups {
-		scopeProto := &commonpb.InstrumentationScope{
-			Name:    g.scope.Name,
-			Version: g.scope.Version,
-		}
+	for _, g := range groupByScope(snap) {
 		for start := 0; start < len(g.spans); start += SBBatchSize {
 			end := start + SBBatchSize
 			if end > len(g.spans) {
 				end = len(g.spans)
 			}
-			chunk := g.spans[start:end]
-			rs := &tracepb.ResourceSpans{
-				Resource: p.resource,
-				ScopeSpans: []*tracepb.ScopeSpans{{
-					Scope: scopeProto,
-					Spans: chunk,
-				}},
-			}
+			batch := buildBatch(p.resource, g.scope, g.spans[start:end])
 			p.exportWG.Add(1)
-			go p.exportBatch([]*tracepb.ResourceSpans{rs}, int64(len(chunk)), isHP)
+			go p.exportBatch(batch, isHP)
 		}
 	}
 }
 
 // exportBatch sends one priority-homogeneous batch and updates counters
 // based on outcome. On failure the spans are permanently dropped (no retry).
-func (p *PathBridgeProcessor) exportBatch(events []*tracepb.ResourceSpans, n int64, isHP bool) {
+func (p *PathBridgeProcessor) exportBatch(batch *wireBatch, isHP bool) {
 	defer p.exportWG.Done()
 	// Tomislav-RetCtx: SDK one-shot retry policy (sdk_retry.go; BRIDGES_RETRY, default off).
 	if !isHP && sdkRetry.suppressLP() {
-		sdkRetry.lpSuppressed.Add(n)
-		p.batchDropped(events, n, isHP, errLPSuppressed)
+		sdkRetry.lpSuppressed.Add(batch.n)
+		p.batchDropped(batch, isHP, errLPSuppressed)
 		return
 	}
-	err := p.sendData(events, isHP)
+	err := p.sendData(batch.req, isHP)
 	if err != nil && sdkRetry.wants(isHP, err) {
 		p.exportWG.Add(1)
-		sdkRetry.schedule(events, n, func() error { return p.sendData(events, isHP) }, func(err error) {
+		sdkRetry.scheduleBytes(int64(len(batch.req)), batch.n, func() error { return p.sendData(batch.req, isHP) }, func(err error) {
 			defer p.exportWG.Done()
 			if err != nil {
-				p.batchDropped(events, n, isHP, err)
+				p.batchDropped(batch, isHP, err)
 				return
 			}
-			p.batchSent(n, isHP)
+			p.batchSent(batch.n, isHP)
 		})
 		return
 	}
 	if err != nil {
-		p.batchDropped(events, n, isHP, err)
+		p.batchDropped(batch, isHP, err)
 		return
 	}
-	p.batchSent(n, isHP)
+	p.batchSent(batch.n, isHP)
 }
 
 // batchDropped accounts one batch that will not be delivered (census included).
-func (p *PathBridgeProcessor) batchDropped(events []*tracepb.ResourceSpans, n int64, isHP bool, err error) {
+func (p *PathBridgeProcessor) batchDropped(batch *wireBatch, isHP bool, err error) {
 	atomic.AddInt64(&p.batchesDropped, 1)
-	atomic.AddInt64(&p.spansDropped, n)
+	atomic.AddInt64(&p.spansDropped, batch.n)
 	if isHP {
-		atomic.AddInt64(&p.cpDropped, n)
+		atomic.AddInt64(&p.cpDropped, batch.n)
 	} else {
-		atomic.AddInt64(&p.lpDropped, n)
+		atomic.AddInt64(&p.lpDropped, batch.n)
 	}
 	p.categorizeSendError(err)
-	recordRefused(events, isHP) // Tomislav-RetCtx: census of trace IDs in the dropped batch
-	slog.Error("Failed to send batch", "error", err, "count", n, "hp", isHP)
+	recordRefusedIDs(batch.ids, isHP) // Tomislav-RetCtx: census of trace IDs in the dropped batch
+	slog.Error("Failed to send batch", "error", err, "count", batch.n, "hp", isHP)
 }
 
 // batchSent accounts one delivered batch.
@@ -418,17 +382,11 @@ func (p *PathBridgeProcessor) batchSent(n int64, isHP bool) {
 	slog.Debug("Sent batch", "count", n, "hp", isHP)
 }
 
-// sendData sends one priority-homogeneous batch with the
+// sendData sends one encoded, priority-homogeneous batch with the
 // "bridges-priority: hp|lp" gRPC metadata header attached. The
 // collector-side priority processor reads this header to admit or refuse
 // the batch in one O(1) decision.
-func (p *PathBridgeProcessor) sendData(events []*tracepb.ResourceSpans, isHP bool) error {
-	if len(events) == 0 {
-		return nil
-	}
-
-	slog.Debug("🔵 Sending data", "count", len(events), "hp", isHP)
-
+func (p *PathBridgeProcessor) sendData(req []byte, isHP bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), grpcDeadline)
 	defer cancel()
 
@@ -438,13 +396,10 @@ func (p *PathBridgeProcessor) sendData(events []*tracepb.ResourceSpans, isHP boo
 	}
 	ctx = metadata.AppendToOutgoingContext(ctx, MetadataPriorityKey, priorityVal)
 
-	err := p.client.UploadTraces(ctx, events)
-	if err != nil {
-		slog.Error("❌ Failed to send data", "error", err, "count", len(events), "hp", isHP)
+	if err := p.conn.export(ctx, req); err != nil { // otlp_wire.go
+		slog.Error("❌ Failed to send data", "error", err, "hp", isHP)
 		return fmt.Errorf("failed to send data: %w", err)
 	}
-
-	slog.Debug("✅ Data sent successfully", "count", len(events), "hp", isHP)
 	return nil
 }
 
@@ -570,14 +525,11 @@ func (p *PathBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, attrs []a
 		atomic.AddInt64(&p.lpReceived, 1)
 	}
 	p.resourceOnce.Do(func() {
-		p.resource = p.convertResourceToProto(s.Resource())
+		p.resource = resourceField(s.Resource()) // otlp_wire.go
 	})
-	spanProto := p.buildSpanProto(s, attrs, w, highPriority)
-	entry := sbBufEntry{
-		span:         spanProto,
-		scope:        s.InstrumentationScope(),
-		isCheckpoint: highPriority,
-	}
+	// Tomislav-RetCtx: the span's OTLP bytes, written once here (otlp_wire.go); `_br` / `_o` / `_d`
+	// come from the wire entry, the attributes through the policyPath strip list.
+	entry := encodeSpan(s, attrs, w, highPriority, policyPath)
 	p.eventsLock.Lock()
 	if highPriority {
 		p.hpBuf = append(p.hpBuf, entry)
@@ -588,278 +540,6 @@ func (p *PathBridgeProcessor) routeToPipeline(s sdktrace.ReadOnlySpan, attrs []a
 	lpSize := len(p.lpBuf)
 	p.eventsLock.Unlock()
 	slog.Debug("🔴 Routed to pipeline", "span_name", s.Name(), "hp_buffer_size", hpSize, "lp_buffer_size", lpSize, "high_prio", highPriority)
-}
-
-// buildSpanProto materializes a single *tracepb.Span from a ReadOnlySpan.
-// The Resource and ScopeSpans envelopes are added at flush time so one
-// ResourceSpans wraps many spans. highPriority is threaded through to
-// convertAttributes which keeps `_br` iff highPriority and `_d` otherwise.
-func (p *PathBridgeProcessor) buildSpanProto(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWire, highPriority bool) *tracepb.Span {
-	traceID := s.SpanContext().TraceID()
-	spanID := s.SpanContext().SpanID()
-
-	spanProto := &tracepb.Span{
-		TraceId:           traceID[:],
-		SpanId:            spanID[:],
-		StartTimeUnixNano: uint64(s.StartTime().UnixNano()),
-		EndTimeUnixNano:   uint64(s.EndTime().UnixNano()),
-		Name:              s.Name(),
-		Kind:              p.convertSpanKind(s.SpanKind()),
-		Status:            p.convertStatus(s.Status()),
-		Attributes:        appendBridgeWire(p.convertAttributes(attrs, highPriority), w, highPriority),
-		Events:            p.convertEvents(s.Events()),
-		Links:             p.convertLinks(s.Links()),
-	}
-	if s.Parent().IsValid() {
-		parentSpanID := s.Parent().SpanID()
-		spanProto.ParentSpanId = parentSpanID[:]
-	}
-	return spanProto
-}
-
-// convertResourceToProto converts an OpenTelemetry resource to protobuf format
-func (p *PathBridgeProcessor) convertResourceToProto(resource interface{}) *resourcepb.Resource {
-	if resource == nil {
-		return &resourcepb.Resource{}
-	}
-
-	// Try to get the resource's iterator
-	var iter attribute.Iterator
-	if r, ok := resource.(interface{ Iter() attribute.Iterator }); ok {
-		iter = r.Iter()
-	} else {
-		return &resourcepb.Resource{}
-	}
-
-	attrs := p.convertAttributeIterator(iter)
-
-	return &resourcepb.Resource{
-		Attributes: attrs,
-	}
-}
-
-// convertAttributeIterator converts an attribute iterator to protobuf format
-func (p *PathBridgeProcessor) convertAttributeIterator(iter attribute.Iterator) []*commonpb.KeyValue {
-	if iter.Len() == 0 {
-		return nil
-	}
-
-	attrs := make([]*commonpb.KeyValue, 0, iter.Len())
-	for iter.Next() {
-		attr := iter.Attribute()
-		attrs = append(attrs, p.convertAttribute(attr))
-	}
-	return attrs
-}
-
-// convertAttribute converts a single attribute to protobuf format
-func (p *PathBridgeProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.KeyValue {
-	return &commonpb.KeyValue{
-		Key:   string(kv.Key),
-		Value: p.convertAttributeValue(kv.Value),
-	}
-}
-
-// convertAttributeValue converts an attribute value to protobuf format
-func (p *PathBridgeProcessor) convertAttributeValue(v attribute.Value) *commonpb.AnyValue {
-	av := new(commonpb.AnyValue)
-	switch v.Type() {
-	case attribute.STRING:
-		av.Value = &commonpb.AnyValue_StringValue{
-			StringValue: v.AsString(),
-		}
-	case attribute.INT64:
-		av.Value = &commonpb.AnyValue_IntValue{
-			IntValue: v.AsInt64(),
-		}
-	case attribute.FLOAT64:
-		av.Value = &commonpb.AnyValue_DoubleValue{
-			DoubleValue: v.AsFloat64(),
-		}
-	case attribute.BOOL:
-		av.Value = &commonpb.AnyValue_BoolValue{
-			BoolValue: v.AsBool(),
-		}
-	case attribute.BOOLSLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertBoolSlice(v.AsBoolSlice()),
-			},
-		}
-	case attribute.INT64SLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertInt64Slice(v.AsInt64Slice()),
-			},
-		}
-	case attribute.FLOAT64SLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertFloat64Slice(v.AsFloat64Slice()),
-			},
-		}
-	case attribute.STRINGSLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertStringSlice(v.AsStringSlice()),
-			},
-		}
-	default:
-		av.Value = &commonpb.AnyValue_StringValue{
-			StringValue: fmt.Sprintf("%v", v.AsInterface()),
-		}
-	}
-	return av
-}
-
-// Helper functions for slice conversions
-func (p *PathBridgeProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_BoolValue{BoolValue: v},
-		}
-	}
-	return values
-}
-
-func (p *PathBridgeProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_IntValue{IntValue: v},
-		}
-	}
-	return values
-}
-
-func (p *PathBridgeProcessor) convertFloat64Slice(slice []float64) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_DoubleValue{DoubleValue: v},
-		}
-	}
-	return values
-}
-
-func (p *PathBridgeProcessor) convertStringSlice(slice []string) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_StringValue{StringValue: v},
-		}
-	}
-	return values
-}
-
-// convertSpanKind converts OpenTelemetry span kind to protobuf format
-func (p *PathBridgeProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_SpanKind {
-	switch kind {
-	case trace.SpanKindInternal:
-		return tracepb.Span_SPAN_KIND_INTERNAL
-	case trace.SpanKindServer:
-		return tracepb.Span_SPAN_KIND_SERVER
-	case trace.SpanKindClient:
-		return tracepb.Span_SPAN_KIND_CLIENT
-	case trace.SpanKindProducer:
-		return tracepb.Span_SPAN_KIND_PRODUCER
-	case trace.SpanKindConsumer:
-		return tracepb.Span_SPAN_KIND_CONSUMER
-	default:
-		return tracepb.Span_SPAN_KIND_UNSPECIFIED
-	}
-}
-
-// convertStatus converts OpenTelemetry span status to protobuf format
-func (p *PathBridgeProcessor) convertStatus(status sdktrace.Status) *tracepb.Status {
-	return &tracepb.Status{
-		Code:    tracepb.Status_StatusCode(status.Code),
-		Message: status.Description,
-	}
-}
-
-// convertAttributes converts span attributes to protobuf format, including all baggage attributes
-func (p *PathBridgeProcessor) convertAttributes(attrs []attribute.KeyValue, highPriority bool) []*commonpb.KeyValue {
-	if len(attrs) == 0 {
-		return nil
-	}
-
-	out := make([]*commonpb.KeyValue, 0, len(attrs))
-	for _, attr := range attrs {
-		// (1) intra-process baggage signals never reach the wire.
-		if strings.HasPrefix(string(attr.Key), "__bag.") {
-			continue
-		}
-		// (2) Blueprint wrapper helpers — also intra-process.
-		switch attr.Key {
-		case "depth", "hasChildren":
-			continue
-		}
-		// (3) path-bridge breadcrumbs ride the wire as proto BYTES (base64-
-		// decoded from their intra-process carrier), gated by priority:
-		// checkpoints+leaves carry `_br` (the anchored payload), interior
-		// non-checkpoints carry `_d` (just the absolute-depth varint).
-		if attr.Key == AttrBREmit {
-			if !highPriority {
-				continue
-			}
-			out = append(out, bridgeBytesKV(string(AttrBREmit), attr.Value.AsString()))
-			continue
-		}
-		if attr.Key == AttrD {
-			if highPriority {
-				continue
-			}
-			out = append(out, bridgeBytesKV(string(AttrD), attr.Value.AsString()))
-			continue
-		}
-		// (4) drop the superseded base64 ancestry keys if any linger.
-		switch attr.Key {
-		case AncestryKey, AncestryModeKey, AncestryExtraKey:
-			continue
-		}
-		// (5) everything else passes through.
-		out = append(out, p.convertAttribute(attr))
-	}
-	return out
-}
-
-// convertEvents converts span events to protobuf format
-func (p *PathBridgeProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Span_Event {
-	if len(events) == 0 {
-		return nil
-	}
-
-	protoEvents := make([]*tracepb.Span_Event, len(events))
-	for i, event := range events {
-		protoEvents[i] = &tracepb.Span_Event{
-			TimeUnixNano: uint64(event.Time.UnixNano()),
-			Name:         event.Name,
-			Attributes:   p.convertAttributes(event.Attributes, true),
-		}
-	}
-	return protoEvents
-}
-
-// convertLinks converts span links to protobuf format
-func (p *PathBridgeProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_Link {
-	if len(links) == 0 {
-		return nil
-	}
-
-	protoLinks := make([]*tracepb.Span_Link, len(links))
-	for i, link := range links {
-		traceID := link.SpanContext.TraceID()
-		spanID := link.SpanContext.SpanID()
-
-		protoLinks[i] = &tracepb.Span_Link{
-			TraceId:    traceID[:],
-			SpanId:     spanID[:],
-			Attributes: p.convertAttributes(link.Attributes, true),
-		}
-	}
-	return protoLinks
 }
 
 // getConfigDiscoveryEndpoint converts the agent endpoint to the config discovery endpoint
@@ -1069,7 +749,7 @@ func (p *PathBridgeProcessor) Shutdown(ctx context.Context) error {
 	p.wg.Wait()
 	p.exportWG.Wait()
 
-	if err := p.client.Stop(ctx); err != nil {
+	if err := p.conn.close(); err != nil {
 		slog.Error("❌ Failed to stop client", "error", err)
 	}
 

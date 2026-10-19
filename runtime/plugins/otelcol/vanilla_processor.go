@@ -12,16 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
-	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -76,22 +68,11 @@ const (
 	MetricsInterval = 1 * time.Second
 )
 
-// bufferedSpan is one buffered span pending export. The Span proto is kept
-// mutable so downstream processors (e.g. bridge variants) can append
-// breadcrumb attributes or events between OnEnd and the next flush. The
-// scope is carried alongside so flushBuffer can group spans into
-// per-InstrumentationScope ScopeSpans blocks at export time without
-// duplicating the Resource envelope per span.
-type bufferedSpan struct {
-	span  *tracepb.Span
-	scope instrumentation.Scope
-}
-
 type VanillaProcessor struct {
 	mu sync.RWMutex
 
-	// OTLP gRPC client for sending custom protobuf messages
-	client otlptrace.Client
+	// Tomislav-RetCtx: the OTLP connection (otlp_wire.go); the export bytes are written here.
+	conn *otlpConn
 
 	// Configuration
 	agentEndpoint string
@@ -127,18 +108,16 @@ type VanillaProcessor struct {
 	sendCanceled    int64 // gRPC code = Canceled
 	sendOther       int64 // any other error class
 
-	// Shared Resource proto for every export. A TracerProvider has exactly
-	// one Resource, so we capture it lazily on the first OnEnd and reuse
-	// the same pointer for every flush — eliminates the per-span Resource
-	// duplication that would otherwise inflate the wire payload ~3×.
-	resource     *resourcepb.Resource
+	// The encoded Resource of every export (otlp_wire.go, resourceField). A TracerProvider has
+	// exactly one Resource, so it is captured on the first OnEnd and every batch carries the same
+	// bytes once, not once per span.
+	resource     []byte
 	resourceOnce sync.Once
 
-	// Buffer of pending spans plus their InstrumentationScope. flushBuffer
-	// groups by scope at export time to produce one ResourceSpans per chunk
-	// (shared Resource, one ScopeSpans per distinct scope present in the
-	// chunk).
-	spanBuf  []bufferedSpan
+	// Buffer of pending spans, each already encoded (otlp_wire.go, wireSpan) with its
+	// InstrumentationScope. flushBuffer groups by scope at export time to produce one
+	// ResourceSpans per chunk (shared Resource, one ScopeSpans per chunk).
+	spanBuf  []wireSpan
 	spanLock sync.Mutex
 }
 
@@ -146,25 +125,23 @@ type VanillaProcessor struct {
 func NewVanillaProcessor(ctx context.Context, agentEndpoint string, additionalPort string) (*VanillaProcessor, error) {
 	slog.Info("🔵 Creating new VanillaProcessor", "agentEndpoint", agentEndpoint)
 
-	// Create OTLP gRPC client
-	client := otlptracegrpc.NewClient(
-		otlptracegrpc.WithEndpoint(agentEndpoint),
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{Enabled: grpcRetryEnabled}),
-	)
-
-	slog.Info("🔵 OTLP client created, starting connection")
-
-	// Start the client
-	if err := client.Start(ctx); err != nil {
-		slog.Error("❌ Failed to start OTLP client", "error", err)
-		return nil, fmt.Errorf("failed to start OTLP client: %w", err)
+	// Tomislav-RetCtx: a plain gRPC connection; the processor writes the OTLP bytes itself
+	// (otlp_wire.go) instead of handing protobuf objects to the exporter client.  The exporter's
+	// retry (OTLP_RETRY) has no counterpart on this path: every campaign runs with it off, and the
+	// 1 s export deadline never left room for its 5 s first retry anyway.
+	conn, err := dialOTLP(agentEndpoint)
+	if err != nil {
+		slog.Error("❌ Failed to open the OTLP connection", "error", err)
+		return nil, fmt.Errorf("failed to open the OTLP connection: %w", err)
+	}
+	if grpcRetryEnabled {
+		slog.Warn("OTLP_RETRY is not off; the direct OTLP export path does not retry refused batches")
 	}
 
 	slog.Info("✅ VanillaProcessor created successfully")
 
 	processor := &VanillaProcessor{
-		client:        client,
+		conn:          conn,
 		agentEndpoint: agentEndpoint,
 		stopChan:      make(chan struct{}),
 	}
@@ -272,83 +249,51 @@ func (p *VanillaProcessor) processEvents() {
 // rather than once per span (~3× smaller wire payload than the
 // per-span-ResourceSpans shape it replaced). Chunking keeps every OTLP
 // RPC under the receiver-side 4 MiB gRPC limit regardless of arrival rate.
+// Tomislav-RetCtx: the chunk's request bytes are built by concatenating the spans' encoded bytes
+// (otlp_wire.go, buildBatch); nothing is marshalled at flush time.
 func (p *VanillaProcessor) flushBuffer() {
 	p.spanLock.Lock()
 	snap := p.spanBuf
-	p.spanBuf = make([]bufferedSpan, 0, cap(p.spanBuf))
+	p.spanBuf = make([]wireSpan, 0, cap(p.spanBuf))
 	p.spanLock.Unlock()
 
 	if len(snap) == 0 {
 		return
 	}
 
-	// Group spans by scope. Key is Name|Version — both are part of the
-	// InstrumentationScope identity at the proto level. In practice nearly
-	// all spans in a service share one scope, so this map almost always
-	// has exactly one entry.
-	type scopeKey struct{ name, version string }
-	type scopeGroup struct {
-		scope instrumentation.Scope
-		spans []*tracepb.Span
-	}
-	groups := make(map[scopeKey]*scopeGroup, 1)
-	for _, e := range snap {
-		k := scopeKey{e.scope.Name, e.scope.Version}
-		g, ok := groups[k]
-		if !ok {
-			g = &scopeGroup{scope: e.scope}
-			groups[k] = g
-		}
-		g.spans = append(g.spans, e.span)
-	}
-
-	// Chunk each scope group at BatchSize and dispatch each chunk in its
-	// own goroutine. One ResourceSpans per chunk; Resource envelope shared.
-	for _, g := range groups {
-		scopeProto := &commonpb.InstrumentationScope{
-			Name:    g.scope.Name,
-			Version: g.scope.Version,
-		}
+	for _, g := range groupByScope(snap) {
 		for start := 0; start < len(g.spans); start += BatchSize {
 			end := start + BatchSize
 			if end > len(g.spans) {
 				end = len(g.spans)
 			}
-			chunk := g.spans[start:end]
-			rs := &tracepb.ResourceSpans{
-				Resource: p.resource,
-				ScopeSpans: []*tracepb.ScopeSpans{{
-					Scope: scopeProto,
-					Spans: chunk,
-				}},
-			}
+			batch := buildBatch(p.resource, g.scope, g.spans[start:end])
 			// Count the chunk as flushed BEFORE we dispatch — at this point
 			// the spans have permanently left the buffer, so whatever
 			// happens to the upload they'll be accounted for under one of
 			// {sent, dropped}.
-			atomic.AddInt64(&p.spansFlushed, int64(len(chunk)))
+			atomic.AddInt64(&p.spansFlushed, batch.n)
 			p.exportWG.Add(1)
-			go func(rs *tracepb.ResourceSpans, n int) {
+			go func(batch *wireBatch) {
 				defer p.exportWG.Done()
-				batch := []*tracepb.ResourceSpans{rs}
 				dropped := func(err error) {
-					slog.Error("Failed to send batch", "error", err, "count", n)
+					slog.Error("Failed to send batch", "error", err, "count", batch.n)
 					atomic.AddInt64(&p.batchesDropped, 1)
-					atomic.AddInt64(&p.spansDropped, int64(n))
+					atomic.AddInt64(&p.spansDropped, batch.n)
 					p.categorizeSendError(err)
-					recordRefused(batch, true) // Tomislav-RetCtx: every vanilla span is trace-critical
+					recordRefusedIDs(batch.ids, true) // Tomislav-RetCtx: every vanilla span is trace-critical
 				}
 				sent := func() {
-					slog.Debug("Sent batch", "count", n)
+					slog.Debug("Sent batch", "count", batch.n)
 					atomic.AddInt64(&p.batchesSent, 1)
-					atomic.AddInt64(&p.spansSent, int64(n))
+					atomic.AddInt64(&p.spansSent, batch.n)
 				}
-				err := p.sendData(batch)
+				err := p.sendData(batch.req)
 				// Tomislav-RetCtx: vanilla's side of the SDK one-shot retry policy (sdk_retry.go):
 				// BRIDGES_RETRY=all retries every refused batch once; nothing is suppressed.
 				if err != nil && sdkRetry.wants(true, err) {
 					p.exportWG.Add(1)
-					sdkRetry.schedule(batch, int64(n), func() error { return p.sendData(batch) }, func(err error) {
+					sdkRetry.scheduleBytes(int64(len(batch.req)), batch.n, func() error { return p.sendData(batch.req) }, func(err error) {
 						defer p.exportWG.Done()
 						if err != nil {
 							dropped(err)
@@ -363,30 +308,21 @@ func (p *VanillaProcessor) flushBuffer() {
 					return
 				}
 				sent()
-			}(rs, len(chunk))
+			}(batch)
 		}
 	}
 }
 
-// sendData sends data to the OTLP endpoint
-func (p *VanillaProcessor) sendData(events []*tracepb.ResourceSpans) error {
-	if len(events) == 0 {
-		return nil
-	}
-
-	slog.Debug("🔵 Sending data", "count", len(events))
-
+// sendData sends one encoded batch to the OTLP endpoint.
+func (p *VanillaProcessor) sendData(req []byte) error {
 	// Create a context with timeout (env-tunable, default 1s).
 	ctx, cancel := context.WithTimeout(context.Background(), grpcDeadline)
 	defer cancel()
 
-	err := p.client.UploadTraces(ctx, events)
-	if err != nil {
-		slog.Error("❌ Failed to send data", "error", err, "count", len(events))
+	if err := p.conn.export(ctx, req); err != nil { // otlp_wire.go
+		slog.Error("❌ Failed to send data", "error", err)
 		return fmt.Errorf("failed to send data: %w", err)
 	}
-
-	slog.Debug("✅ Data sent successfully", "count", len(events))
 	return nil
 }
 
@@ -412,7 +348,7 @@ func (p *VanillaProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	// TracerProvider has exactly one Resource for its lifetime, so this
 	// runs at most once.
 	p.resourceOnce.Do(func() {
-		p.resource = p.convertResourceToProto(s.Resource())
+		p.resource = resourceField(s.Resource()) // otlp_wire.go
 	})
 
 	p.routeToPipeline(s)
@@ -424,258 +360,11 @@ func (p *VanillaProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 // bridge processors that need to append breadcrumb attributes between
 // OnEnd and the next flush) can extend them in place.
 func (p *VanillaProcessor) routeToPipeline(s sdktrace.ReadOnlySpan) {
-	spanProto := p.buildSpanProto(s)
+	// Tomislav-RetCtx: the span's OTLP bytes, written once here (otlp_wire.go).
+	entry := encodeSpan(s, s.Attributes(), nil, false, policyVanilla)
 	p.spanLock.Lock()
-	p.spanBuf = append(p.spanBuf, bufferedSpan{span: spanProto, scope: s.InstrumentationScope()})
+	p.spanBuf = append(p.spanBuf, entry)
 	p.spanLock.Unlock()
-}
-
-// buildSpanProto materializes a single *tracepb.Span from a ReadOnlySpan.
-// The Resource and ScopeSpans envelopes are NOT built here — they're
-// constructed at flush time, where many spans can share one Resource and
-// be grouped by Scope, so the envelopes are serialized once per chunk
-// instead of once per span.
-func (p *VanillaProcessor) buildSpanProto(s sdktrace.ReadOnlySpan) *tracepb.Span {
-	traceID := s.SpanContext().TraceID()
-	spanID := s.SpanContext().SpanID()
-
-	spanProto := &tracepb.Span{
-		TraceId:           traceID[:], // Convert [16]byte to []byte
-		SpanId:            spanID[:],  // Convert [8]byte to []byte
-		StartTimeUnixNano: uint64(s.StartTime().UnixNano()),
-		EndTimeUnixNano:   uint64(s.EndTime().UnixNano()),
-		Name:              s.Name(),
-		Kind:              p.convertSpanKind(s.SpanKind()),
-		Status:            p.convertStatus(s.Status()),
-		Attributes:        p.convertAttributes(s.Attributes()),
-		Events:            p.convertEvents(s.Events()),
-		Links:             p.convertLinks(s.Links()),
-	}
-
-	if s.Parent().IsValid() {
-		parentSpanID := s.Parent().SpanID()
-		spanProto.ParentSpanId = parentSpanID[:] // Convert [8]byte to []byte
-	}
-
-	return spanProto
-}
-
-// convertResourceToProto converts an OpenTelemetry resource to protobuf format
-func (p *VanillaProcessor) convertResourceToProto(resource interface{}) *resourcepb.Resource {
-	if resource == nil {
-		return &resourcepb.Resource{}
-	}
-
-	// Try to get the resource's iterator
-	var iter attribute.Iterator
-	if r, ok := resource.(interface{ Iter() attribute.Iterator }); ok {
-		iter = r.Iter()
-	} else {
-		// Fallback to empty resource
-		return &resourcepb.Resource{}
-	}
-
-	// Convert attributes using the iterator
-	attrs := p.convertAttributeIterator(iter)
-
-	return &resourcepb.Resource{
-		Attributes: attrs,
-	}
-}
-
-// convertAttributeIterator converts an attribute iterator to protobuf format
-func (p *VanillaProcessor) convertAttributeIterator(iter attribute.Iterator) []*commonpb.KeyValue {
-	if iter.Len() == 0 {
-		return nil
-	}
-
-	attrs := make([]*commonpb.KeyValue, 0, iter.Len())
-	for iter.Next() {
-		attr := iter.Attribute()
-		attrs = append(attrs, p.convertAttribute(attr))
-	}
-	return attrs
-}
-
-// convertAttribute converts a single attribute to protobuf format
-func (p *VanillaProcessor) convertAttribute(kv attribute.KeyValue) *commonpb.KeyValue {
-	return &commonpb.KeyValue{
-		Key:   string(kv.Key),
-		Value: p.convertAttributeValue(kv.Value),
-	}
-}
-
-// convertAttributeValue converts an attribute value to protobuf format
-func (p *VanillaProcessor) convertAttributeValue(v attribute.Value) *commonpb.AnyValue {
-	av := new(commonpb.AnyValue)
-	switch v.Type() {
-	case attribute.STRING:
-		av.Value = &commonpb.AnyValue_StringValue{
-			StringValue: v.AsString(),
-		}
-	case attribute.INT64:
-		av.Value = &commonpb.AnyValue_IntValue{
-			IntValue: v.AsInt64(),
-		}
-	case attribute.FLOAT64:
-		av.Value = &commonpb.AnyValue_DoubleValue{
-			DoubleValue: v.AsFloat64(),
-		}
-	case attribute.BOOL:
-		av.Value = &commonpb.AnyValue_BoolValue{
-			BoolValue: v.AsBool(),
-		}
-	case attribute.BOOLSLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertBoolSlice(v.AsBoolSlice()),
-			},
-		}
-	case attribute.INT64SLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertInt64Slice(v.AsInt64Slice()),
-			},
-		}
-	case attribute.FLOAT64SLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertFloat64Slice(v.AsFloat64Slice()),
-			},
-		}
-	case attribute.STRINGSLICE:
-		av.Value = &commonpb.AnyValue_ArrayValue{
-			ArrayValue: &commonpb.ArrayValue{
-				Values: p.convertStringSlice(v.AsStringSlice()),
-			},
-		}
-	default:
-		// Fallback to string representation
-		av.Value = &commonpb.AnyValue_StringValue{
-			StringValue: fmt.Sprintf("%v", v.AsInterface()),
-		}
-	}
-	return av
-}
-
-// Helper functions for slice conversions
-func (p *VanillaProcessor) convertBoolSlice(slice []bool) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_BoolValue{BoolValue: v},
-		}
-	}
-	return values
-}
-
-func (p *VanillaProcessor) convertInt64Slice(slice []int64) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_IntValue{IntValue: v},
-		}
-	}
-	return values
-}
-
-func (p *VanillaProcessor) convertFloat64Slice(slice []float64) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_DoubleValue{DoubleValue: v},
-		}
-	}
-	return values
-}
-
-func (p *VanillaProcessor) convertStringSlice(slice []string) []*commonpb.AnyValue {
-	values := make([]*commonpb.AnyValue, len(slice))
-	for i, v := range slice {
-		values[i] = &commonpb.AnyValue{
-			Value: &commonpb.AnyValue_StringValue{StringValue: v},
-		}
-	}
-	return values
-}
-
-// convertSpanKind converts OpenTelemetry span kind to protobuf format
-func (p *VanillaProcessor) convertSpanKind(kind trace.SpanKind) tracepb.Span_SpanKind {
-	switch kind {
-	case trace.SpanKindInternal:
-		return tracepb.Span_SPAN_KIND_INTERNAL
-	case trace.SpanKindServer:
-		return tracepb.Span_SPAN_KIND_SERVER
-	case trace.SpanKindClient:
-		return tracepb.Span_SPAN_KIND_CLIENT
-	case trace.SpanKindProducer:
-		return tracepb.Span_SPAN_KIND_PRODUCER
-	case trace.SpanKindConsumer:
-		return tracepb.Span_SPAN_KIND_CONSUMER
-	default:
-		return tracepb.Span_SPAN_KIND_UNSPECIFIED
-	}
-}
-
-// convertStatus converts OpenTelemetry span status to protobuf format
-func (p *VanillaProcessor) convertStatus(status sdktrace.Status) *tracepb.Status {
-	return &tracepb.Status{
-		Code:    tracepb.Status_StatusCode(status.Code),
-		Message: status.Description,
-	}
-}
-
-// convertAttributes converts span attributes to protobuf format
-func (p *VanillaProcessor) convertAttributes(attrs []attribute.KeyValue) []*commonpb.KeyValue {
-	if len(attrs) == 0 {
-		return nil
-	}
-
-	protoAttrs := make([]*commonpb.KeyValue, 0, len(attrs))
-	for _, attr := range attrs {
-		if backend.IsReverseBaggageKey(attr.Key) || attr.Key == reverseDepthAttribute {
-			continue // Tomislav-RetCtx: keep reverse carriers out of exported data.
-		}
-		protoAttrs = append(protoAttrs, p.convertAttribute(attr))
-	}
-	return protoAttrs
-}
-
-// convertEvents converts span events to protobuf format
-func (p *VanillaProcessor) convertEvents(events []sdktrace.Event) []*tracepb.Span_Event {
-	if len(events) == 0 {
-		return nil
-	}
-
-	protoEvents := make([]*tracepb.Span_Event, len(events))
-	for i, event := range events {
-		protoEvents[i] = &tracepb.Span_Event{
-			TimeUnixNano: uint64(event.Time.UnixNano()),
-			Name:         event.Name,
-			Attributes:   p.convertAttributes(event.Attributes),
-		}
-	}
-	return protoEvents
-}
-
-// convertLinks converts span links to protobuf format
-func (p *VanillaProcessor) convertLinks(links []sdktrace.Link) []*tracepb.Span_Link {
-	if len(links) == 0 {
-		return nil
-	}
-
-	protoLinks := make([]*tracepb.Span_Link, len(links))
-	for i, link := range links {
-		traceID := link.SpanContext.TraceID()
-		spanID := link.SpanContext.SpanID()
-
-		protoLinks[i] = &tracepb.Span_Link{
-			TraceId:    traceID[:],
-			SpanId:     spanID[:],
-			Attributes: p.convertAttributes(link.Attributes),
-		}
-	}
-	return protoLinks
 }
 
 // Shutdown implements SpanProcessor.Shutdown
@@ -696,7 +385,7 @@ func (p *VanillaProcessor) Shutdown(ctx context.Context) error {
 	p.exportWG.Wait()
 
 	// Stop the client
-	if err := p.client.Stop(ctx); err != nil {
+	if err := p.conn.close(); err != nil {
 		slog.Error("❌ Failed to stop client", "error", err)
 	}
 

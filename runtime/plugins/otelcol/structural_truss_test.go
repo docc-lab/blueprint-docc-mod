@@ -307,7 +307,7 @@ func TestStructuralBridgeFanOutTrusses(t *testing.T) {
 	}
 	for _, entry := range lp {
 		var hasO, hasD, hasBR bool
-		for _, attr := range entry.span.Attributes {
+		for _, attr := range entry.span().Attributes {
 			switch attr.Key {
 			case AttrO:
 				hasO = true

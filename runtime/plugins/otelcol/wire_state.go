@@ -14,12 +14,10 @@ package otelcol
 // OnStart, read by the response path, taken (and so freed) at OnEnd.
 
 import (
-	"encoding/binary"
 	"sync"
 
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/trace"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 )
 
 // bridgeWire is one span's bridge state that never has to be on the OTel span.
@@ -100,44 +98,4 @@ func (t *wireTable) take(id trace.SpanID) *bridgeWire {
 	delete(s.m, id)
 	s.mu.Unlock()
 	return v
-}
-
-// appendBridgeWire adds the span's wire attribute from its bridge wire state: `_br` (the raw
-// emit payload) on checkpoints and leaves, `_d` (the depth varint) on interior non-checkpoints.
-func appendBridgeWire(out []*commonpb.KeyValue, w *bridgeWire, highPriority bool) []*commonpb.KeyValue {
-	if w == nil {
-		return out
-	}
-	if w.rev.rc != "" { // Tomislav-RetCtx: `_rc`, decided by PrepareCheckpoint (reverse_checkpoint.go)
-		out = append(out, &commonpb.KeyValue{Key: backend.ReverseTrussCheckpointKey,
-			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: w.rev.rc}}})
-	}
-	if highPriority {
-		return append(out, newBytesKV(AttrBREmit, w.emit, 0))
-	}
-	if w.structural {
-		out = append(out, newBytesKV(AttrO, nil, w.ordinal))
-	}
-	return append(out, newBytesKV(AttrD, nil, w.depth))
-}
-
-// bytesKV is a bytes-valued KeyValue with its value wrappers (and room for a varint) in one
-// allocation instead of four.
-type bytesKV struct {
-	kv  commonpb.KeyValue
-	av  commonpb.AnyValue
-	bv  commonpb.AnyValue_BytesValue
-	buf [binary.MaxVarintLen64]byte
-}
-
-// newBytesKV returns key=raw, or key=uvarint(n) when raw is nil.
-func newBytesKV(key string, raw []byte, n int) *commonpb.KeyValue {
-	b := &bytesKV{}
-	if raw == nil {
-		raw = b.buf[:binary.PutUvarint(b.buf[:], uint64(n))]
-	}
-	b.bv.BytesValue = raw
-	b.av.Value = &b.bv
-	b.kv.Key, b.kv.Value = key, &b.av
-	return &b.kv
 }

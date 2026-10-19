@@ -23,23 +23,23 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-func ttlTestProvider(t *testing.T, kind string, r checkpointRange) (trace.TracerProvider, func() (hp, lp []sbBufEntry)) {
+func ttlTestProvider(t *testing.T, kind string, r checkpointRange) (trace.TracerProvider, func() (hp, lp []wireSpan)) {
 	t.Helper()
 	oldM, oldK := BloomFilterM, BloomFilterK
 	t.Cleanup(func() { BloomFilterM, BloomFilterK = oldM, oldK; backend.SetRTBloomParams(oldM, oldK) })
 	setBloomForCPD(r.max)
 	var processor sdktrace.SpanProcessor
-	var snapshot func() ([]sbBufEntry, []sbBufEntry)
+	var snapshot func() ([]wireSpan, []wireSpan)
 	switch kind {
 	case "pb":
 		p := &PathBridgeProcessor{checkpointDistance: int64(r.max), checkpointRange: r}
-		processor, snapshot = p, func() ([]sbBufEntry, []sbBufEntry) { return p.hpBuf, p.lpBuf }
+		processor, snapshot = p, func() ([]wireSpan, []wireSpan) { return p.hpBuf, p.lpBuf }
 	case "cgpb":
 		p := &CallGraphBridgeProcessor{checkpointDistance: int64(r.max), checkpointRange: r}
-		processor, snapshot = p, func() ([]sbBufEntry, []sbBufEntry) { return p.hpBuf, p.lpBuf }
+		processor, snapshot = p, func() ([]wireSpan, []wireSpan) { return p.hpBuf, p.lpBuf }
 	case "sb":
 		p := &StructuralBridgeProcessor{checkpointDistance: int64(r.max), checkpointRange: r}
-		processor, snapshot = p, func() ([]sbBufEntry, []sbBufEntry) { return p.hpBuf, p.lpBuf }
+		processor, snapshot = p, func() ([]wireSpan, []wireSpan) { return p.hpBuf, p.lpBuf }
 	default:
 		t.Fatal(kind)
 	}
@@ -155,9 +155,9 @@ func TestCheckpointTTLPaths(t *testing.T) {
 					}
 					var exported *tracepb.Span
 					if checkpoint {
-						exported = hp[len(hp)-1].span
+						exported = hp[len(hp)-1].span()
 					} else {
-						exported = lp[len(lp)-1].span
+						exported = lp[len(lp)-1].span()
 					}
 					for _, attr := range exported.Attributes {
 						if strings.HasPrefix(attr.Key, "__bag.") {
