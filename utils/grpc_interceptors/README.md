@@ -1679,3 +1679,95 @@ with the profile estimates (CGPB shares PB's reverse-path changes and was not me
   HotelReservation only compile-checked.
 * Bridge kind still comes from `OT_BRIDGE` at build time; could become a wiring argument.
 * Nothing is committed yet.
+
+### 2026-10-19: The OTLP export bytes written directly (item 8, option B; branch `perf-own-code`)
+
+The user's condition for option B: fine if it stays inside a processor, not if it replaces an
+OpenTelemetry component elsewhere. It does stay inside: the exporter client (`otlptracegrpc`) was
+only ever called by our processors (`client.UploadTraces(ctx, []*tracepb.ResourceSpans)`), the
+collector speaks standard OTLP/gRPC, and the SDK's `SpanProcessor` interface is unchanged. So the
+live processors (vanilla, PB, CGPB, SB) now do both steps themselves (`runtime/plugins/otelcol/
+otlp_wire.go`, commit `c68a01fd`):
+
+* `encodeSpan` writes a span's OTLP `Span` message straight from the SDK's snapshot at `OnEnd`
+  (one allocation per span) instead of building a `*tracepb.Span` object tree (`buildSpanProto`,
+  the `convert*` functions: about 64 allocations per request, then protobuf's reflective
+  marshalling at flush). The buffers hold bytes (`wireSpan`); `buildBatch` concatenates a chunk
+  into one `ExportTraceServiceRequest` (lengths computed, no marshalling at flush); `otlpConn`
+  sends it over a plain `grpc.ClientConn` with a pass-through codec, with the same
+  `bridges-priority` metadata and the same gRPC status errors, so the census (`recordRefusedIDs`)
+  and the retry gate (`scheduleBytes`) see what they saw. The per-processor `convert*` code is
+  gone (about 250 lines per processor); the earlier processors (eb, rc, priority, realtime) keep
+  the exporter client.
+* The bytes are the ones `proto.Marshal` produced for the old object trees, byte for byte:
+  `otlp_wire_test.go` keeps the old builders as the reference and checks 20,000 random spans over
+  all four strip policies (every special key, every value type, events, links, statuses, parents,
+  wire entries), the request envelope over resources, scopes and chunk sizes (0 to 600), and a
+  round trip against a real gRPC server for every processor (span names, the priority header, a
+  refused batch counted and recorded). Two things the old trees did are kept on purpose because
+  the bytes must match: an empty `Status` message is always present, and the status code is the
+  SDK's `codes.Code` copied without mapping, which swaps Ok and Error on the wire (found here;
+  `docs/tracing/BUG_REPORT.md` F-15 on `code-review`; the fix is one line in `encodeSpan` once
+  the old bytes no longer have to be matched). One deliberate difference: a string attribute that
+  is not valid UTF-8 is written as it is, where the old path failed to marshal and dropped the
+  batch (no producer makes such a value). `OTLP_RETRY` has no counterpart on this path (every
+  campaign runs with it off, and with the 1 s export deadline the exporter's 5 s first retry never
+  ran anyway); a non-off value is warned about at startup.
+
+Per-request micro-benchmark (`BenchmarkRequest*`, the instrumentation + processor + export
+encode of one request, `-count 3`, old = `code-review` tree, new = this commit):
+
+| | old | new |
+|---|---|---|
+| vanilla | 23.3 us, 69 allocs | 20.6 us, 54 allocs |
+| PB | 43.4 us, 120 allocs | 35.3 us, 97 allocs |
+| SB with reverse | 60.2 us, 151 allocs | 47.6 us, 109 allocs |
+
+(The old benchmark's export step marshalled the object trees; the new one concatenates the
+encoded spans, as the flush now does.) All otelcol, backend and interceptor tests pass with
+`-race`. Builds, trace validation and throughput: `~/grpc-interceptors-work/r16_direct_otlp.sh`,
+results below.
+
+**Validation** (`r16_direct_otlp.sh`, `ab_trio.sh`, fixed config, 2000 requests per run,
+`runs_r16/`), each direct-export build against the build it replaces (PB, SB, CGPB: the items 1-7
+builds `*_interceptor_perf`; vanilla: `v_interceptor_final`, since items 1-7 did not touch its code
+path):
+
+| kind | trace by trace | largest attribute TVD vs old (same build twice) |
+|---|---|---|
+| PB | 2000/2000 identical, 46,000 spans | 0.000 (0.000) |
+| CGPB | 2000/2000 identical | 0.012 (0.048) |
+| SB | 2000/2000 structurally identical | 0.124 (0.036): only the `_br` sizes of ComposePost's concurrent children, the start-ordinal race |
+| vanilla, first run | 1999/2000 | 0.000 (0.000) |
+| vanilla, rerun on the idle machine (`vE`) | 2000/2000 identical, 46,000 spans | 0.000 (0.000) |
+
+The one vanilla mismatch of the first run was trace 0, the first request, with 49 spans instead of
+23: it hit the 1 s gRPC deadline, the retry wrappers repeated it, and composepost's log has the two
+"context canceled" calls at that moment. That is the slow-first-request stall of 2026-10-14, which
+hits whichever build runs right after a build (this run started seconds after the four builds), not
+the export path; two runs of the old build in the same set were identical, and the rerun was exact.
+
+**Peak throughput** (`tput_ab.sh`: fresh start, 45 s warm-up at 700 req/s, then 45 s at 1,600
+req/s offered; two A-B-B-A rounds per order; `direct/`), new (direct export) minus old:
+
+| | old first | new first | warm-up CPU per request, old first / new first |
+|---|---|---|---|
+| SB | **+1.16%** (rounds +1.17, +1.15) | **+1.12%** (rounds +0.87, +1.35) | -1.10% / -1.61% |
+| PB | **+1.13%** (rounds +0.86, +1.40) | **+1.08%** (rounds +1.32, +0.81) | -1.61% / -0.79% |
+| vanilla | +0.14% (noise 0.75%) | +0.00% (noise 0.84%) | +0.11% / -0.73% (noise 1.1-3.1%) |
+
+For SB and PB every new run is above every old run in both orders (SB, old first: new
+1,017.7-1,023.4 vs old 1,002.5-1,010.6 req/s; PB: 1,045.4-1,050.0 vs 1,024.0-1,040.1). No starved
+runs; three stalled warm-ups (SB new-first run 3, PB old-first run 7, vanilla old-first run 4) are
+left out of the CPU figures only. Absolute rates: SB old 1,008.5 today against 984.4 on 2026-10-16
+(machine drift between sessions; compare within a set only).
+
+So the bridges gain about 1.1% peak throughput and 1-1.6% CPU per request from writing the export
+bytes directly; vanilla gains nothing this method can resolve (the profiles put its export at
+about 3% of CPU, and the object trees it no longer builds are smaller than the bridges'). Chained
+with items 1-7, the `perf-own-code` branch is about +3.7% (SB) and +1.9% (PB) peak throughput over
+the 2026-10-15 interceptor builds, with the usual caveat that the two sessions' sets were measured
+on different days.
+
+`retctx-grpc-interceptors` is fast-forwarded to this branch (items 1-8). Item 10 (our other large
+stack frames) remains deferred.
