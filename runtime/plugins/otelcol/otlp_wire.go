@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 
@@ -105,7 +106,9 @@ func (c *otlpConn) close() error { return c.cc.Close() }
 // Marshal copies the request into a buffer from gRPC's pool (what gRPC's own protobuf codec
 // marshals into), which gRPC frees once the bytes are written.  The copy (one memmove of the
 // batch) is what lets the batch keep its own buffer: it goes back to batchBufs as soon as the
-// export is over, retry included, with nothing in gRPC referencing it.
+// export is over, retry included, with nothing in gRPC referencing it.  (gRPC's pool is a
+// sync.Pool, so under load it misses as often as it did for the old exporter: the same
+// allocation, see batchBufs.)
 type rawCodec struct{}
 
 func (rawCodec) Marshal(v any) (mem.BufferSlice, error) {
@@ -131,36 +134,70 @@ func (rawCodec) Name() string { return "proto" }
 // The buffer entry and the batch.
 
 // wireSpan is one ended span as the processors now buffer it: its OTLP Span message body, already
-// encoded, with what the flush needs to group and account for it.
+// encoded, with what the flush needs to group and account for it.  48 bytes: the scope is the
+// process-wide interned entry (wireScopes), not the SDK's 64-byte Scope value, so the buffers
+// and their flush-time sort move half as much.
 type wireSpan struct {
-	body    []byte                // the Span message (without the ScopeSpans.spans tag and length)
-	scope   instrumentation.Scope // groups spans into ScopeSpans at flush time
-	traceID trace.TraceID         // for the refused-trace census of a dropped batch
+	body    []byte        // the Span message (without the ScopeSpans.spans tag and length)
+	scope   *wireScope    // groups spans into ScopeSpans at flush time (sortByScope)
+	traceID trace.TraceID // for the refused-trace census of a dropped batch
 }
 
 // wireBatch is one export: the request bytes and the spans in it (for the count and, if the batch
 // is refused, the census).  spans is a sub-slice of the flush's snapshot and the request buffer
-// comes from batchBufs, so a batch allocates nothing once the pool has warmed up.
+// comes from batchBufs, so a batch allocates nothing once the free list has filled.
 type wireBatch struct {
 	req   []byte
 	n     int64
 	spans []wireSpan
-	buf   *[]byte // the pooled buffer req was written into
+	buf   *[]byte // the buffer from batchBufs that req was written into
 }
 
 // batchBufs holds the request buffers of batches, reused from flush to flush.  A batch keeps its
 // buffer until the processor calls release, after the batch was sent or dropped (after its one
-// retry, if it got one).  gRPC's own protobuf codec marshals into a pooled buffer too; writing the
-// request into a fresh make([]byte) per batch cost 6-10 KB of allocation per request in the
-// 2026-10-20 profiles (utils/grpc_interceptors/README.md).
-var batchBufs = sync.Pool{New: func() any { b := make([]byte, 0, 32<<10); return &b }}
+// retry, if it got one).  Writing the request into a fresh make([]byte) per batch cost 6-10 KB
+// of allocation per request in the 2026-10-20 profiles (utils/grpc_interceptors/README.md).
+//
+// A free list, not a sync.Pool: the garbage collector empties a sync.Pool at every cycle, and a
+// loaded service collects many times between two flushes (100 ms apart), so a sync.Pool here
+// missed at every flush (the second profile of 2026-10-20).  The list keeps at most batchBufsKept
+// buffers of at most batchBufMax bytes each, so what it holds is bounded; a batch that needs more
+// grows its buffer, and release drops a buffer that grew past the cap.
+var batchBufs = make(chan *[]byte, batchBufsKept)
 
-// release returns the batch's buffer to the pool (its grown size with it).  Called exactly once
-// per batch; the request bytes must not be used afterwards.
+const (
+	batchBufsKept = 32        // buffers kept: more than the batches one flush spawns
+	batchBufInit  = 32 << 10  // a new buffer's capacity (a 100 ms batch of a loaded service)
+	batchBufMax   = 256 << 10 // bigger buffers are not kept
+)
+
+func getBatchBuf() *[]byte {
+	select {
+	case b := <-batchBufs:
+		return b
+	default:
+		b := make([]byte, 0, batchBufInit)
+		return &b
+	}
+}
+
+func putBatchBuf(b *[]byte) {
+	if cap(*b) > batchBufMax {
+		return
+	}
+	*b = (*b)[:0]
+	select {
+	case batchBufs <- b:
+	default: // the list is full; the garbage collector takes this one
+	}
+}
+
+// release returns the batch's buffer to the free list (its grown size with it).  Called exactly
+// once per batch; the request bytes must not be used afterwards.
 func (b *wireBatch) release() {
 	*b.buf = b.req[:0]
 	b.req = nil
-	batchBufs.Put(b.buf)
+	putBatchBuf(b.buf)
 	b.buf = nil
 }
 
@@ -174,23 +211,46 @@ func (b *wireBatch) traceIDs() []trace.TraceID {
 	return ids
 }
 
+// wireScope is one InstrumentationScope as the flush needs it: the encoded ScopeSpans.scope field
+// and the scope's interning order, the key sortByScope groups by.  A process has a handful: the
+// server-side tracer of its service and one client-side tracer per service it calls (the
+// interceptors name the tracers as the wrappers did).
+type wireScope struct {
+	field []byte // the ScopeSpans.scope field, tag and length included
+	order int    // interning order (from 1); the sort key
+}
+
 // scopeKey is the InstrumentationScope identity at the proto level.
 type scopeKey struct{ name, version string }
 
-// wireScopes caches the encoded ScopeSpans.scope field per scope (there is one scope per Blueprint
-// service, so a handful per process); process-wide, the encoding is a pure function of the scope.
-var wireScopes sync.Map // scopeKey -> []byte
+// wireScopes interns the scopes, process-wide; the encoding is a pure function of the scope.
+var (
+	wireScopes   sync.Map   // scopeKey -> *wireScope
+	wireScopesMu sync.Mutex // serializes interning a new scope, so the orders are unique
+	wireScopeN   int        // scopes interned so far (under wireScopesMu)
+)
 
-func scopeField(scope instrumentation.Scope) []byte {
+// internScope returns the process-wide entry of a scope.  encodeSpan calls it for every span, so
+// the found case is one sync.Map load (two short string hashes).
+func internScope(scope instrumentation.Scope) *wireScope {
 	key := scopeKey{scope.Name, scope.Version}
-	if b, ok := wireScopes.Load(key); ok {
-		return b.([]byte)
+	if ws, ok := wireScopes.Load(key); ok {
+		return ws.(*wireScope)
+	}
+	wireScopesMu.Lock()
+	defer wireScopesMu.Unlock()
+	if ws, ok := wireScopes.Load(key); ok {
+		return ws.(*wireScope)
 	}
 	body, _ := proto.Marshal(&commonpb.InstrumentationScope{Name: scope.Name, Version: scope.Version})
-	b := appendBytesFieldAlways(nil, 1, body) // a set message is written even when empty
-	actual, _ := wireScopes.LoadOrStore(key, b)
-	return actual.([]byte)
+	wireScopeN++
+	ws := &wireScope{field: appendBytesFieldAlways(nil, 1, body), order: wireScopeN} // a set message is written even when empty
+	wireScopes.Store(key, ws)
+	return ws
 }
+
+// scopeField is the encoded ScopeSpans.scope field of a scope (tests and benchmarks).
+func scopeField(scope instrumentation.Scope) []byte { return internScope(scope).field }
 
 // resourceField encodes the ResourceSpans.resource field for a TracerProvider's Resource, once per
 // processor (every span of a provider shares it): the attributes as the old convertResourceToProto
@@ -267,10 +327,10 @@ func buildBatch(resource, scope []byte, spans []wireSpan) *wireBatch {
 	}
 	rs := len(resource) + 1 + uvarintLen(uint64(ss)) + ss
 	total := 1 + uvarintLen(uint64(rs)) + rs
-	buf := batchBufs.Get().(*[]byte)
+	buf := getBatchBuf()
 	req := (*buf)[:0]
 	if cap(req) < total {
-		req = make([]byte, 0, total) // the pool entry grows to it at release
+		req = make([]byte, 0, total) // the free-list entry grows to it at release
 	}
 	req = append(req, 0x0a)
 	req = binary.AppendUvarint(req, uint64(rs))
@@ -284,41 +344,37 @@ func buildBatch(resource, scope []byte, spans []wireSpan) *wireBatch {
 	return &wireBatch{req: req, n: int64(len(spans)), spans: spans, buf: buf}
 }
 
-// groupByScope splits a buffer snapshot into per-scope groups, in first-seen order (the old code
-// ranged over a map; the order of groups never mattered and now it is stable).
-type scopeGroup struct {
-	scope []byte
-	spans []wireSpan
+// sortByScope groups a buffer snapshot in place: a stable sort by scope (interning order), after
+// which each scope's spans are one run, in their buffered order.  Nothing is copied or allocated.
+// The first version of this code copied the entries into per-scope slices (about 26 us and 4.5 KB
+// of allocation per request in the PB profiles of 2026-10-20), and a one-scope fast path did not
+// help: every process that calls other services has one client-side scope per callee.  A snapshot
+// that is already in scope order (a leaf service: one scope) is left as it is.
+func sortByScope(snap []wireSpan) {
+	for i := 1; i < len(snap); i++ {
+		if snap[i].scope.order < snap[i-1].scope.order {
+			slices.SortStableFunc(snap, func(a, b wireSpan) int { return a.scope.order - b.scope.order })
+			return
+		}
+	}
 }
 
-func groupByScope(snap []wireSpan) []*scopeGroup {
-	// The common case, one scope (one Blueprint service per process), takes the snapshot as it is:
-	// copying the entries into a new slice cost about 20 us per request in the PB profile of
-	// 2026-10-20 (utils/grpc_interceptors/README.md).
-	first := scopeKey{snap[0].scope.Name, snap[0].scope.Version}
-	same := true
-	for i := 1; i < len(snap); i++ {
-		if (scopeKey{snap[i].scope.Name, snap[i].scope.Version}) != first {
-			same = false
-			break
+// batches sorts a snapshot by scope and hands emit one batch per run of at most max spans of one
+// scope, each encoded by buildBatch under the processor's resource: one ResourceSpans wrapping one
+// ScopeSpans wrapping the run.  The batches keep sub-slices of the snapshot, which the caller must
+// not reuse.  Used by the flush of every processor.
+func batches(resource []byte, snap []wireSpan, max int, emit func(*wireBatch)) {
+	sortByScope(snap)
+	for start := 0; start < len(snap); {
+		end := start + 1
+		for end < len(snap) && snap[end].scope == snap[start].scope {
+			end++
 		}
-	}
-	if same {
-		return []*scopeGroup{{scope: scopeField(snap[0].scope), spans: snap}}
-	}
-	var groups []*scopeGroup
-	index := make(map[scopeKey]*scopeGroup, 2)
-	for i := range snap {
-		k := scopeKey{snap[i].scope.Name, snap[i].scope.Version}
-		g, ok := index[k]
-		if !ok {
-			g = &scopeGroup{scope: scopeField(snap[i].scope)}
-			index[k] = g
-			groups = append(groups, g)
+		for s := start; s < end; s += max {
+			emit(buildBatch(resource, snap[start].scope.field, snap[s:min(s+max, end)]))
 		}
-		g.spans = append(g.spans, snap[i])
+		start = end
 	}
-	return groups
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -379,7 +435,7 @@ func encodeSpan(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWi
 	buf = appendStringField(buf, 2, st.Description)
 	buf = appendVarintField(buf, 3, uint64(st.Code)) // unmapped, as before (see the file comment)
 	buf = closeMessage(buf, 15, mark)
-	return wireSpan{body: buf, scope: s.InstrumentationScope(), traceID: tid}
+	return wireSpan{body: buf, scope: internScope(s.InstrumentationScope()), traceID: tid}
 }
 
 func spanKindCode(kind trace.SpanKind) int {

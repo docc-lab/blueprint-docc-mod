@@ -313,17 +313,10 @@ func (p *PathBridgeProcessor) dispatchPriority(snap []wireSpan, isHP bool) {
 	if len(snap) == 0 {
 		return
 	}
-	for _, g := range groupByScope(snap) {
-		for start := 0; start < len(g.spans); start += SBBatchSize {
-			end := start + SBBatchSize
-			if end > len(g.spans) {
-				end = len(g.spans)
-			}
-			batch := buildBatch(p.resource, g.scope, g.spans[start:end])
-			p.exportWG.Add(1)
-			go p.exportBatch(batch, isHP)
-		}
-	}
+	batches(p.resource, snap, SBBatchSize, func(batch *wireBatch) { // otlp_wire.go
+		p.exportWG.Add(1)
+		go p.exportBatch(batch, isHP)
+	})
 }
 
 // exportBatch sends one priority-homogeneous batch and updates counters

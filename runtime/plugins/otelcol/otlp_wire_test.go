@@ -404,7 +404,7 @@ func TestEncodeSpanMatchesProtoMarshal(t *testing.T) {
 		if string(got.body) != string(want) {
 			t.Fatalf("case %d (policy %d, hp %v): encoded span differs\n got %x\nwant %x\nstub %+v", i, policy, hp, got.body, want, stub)
 		}
-		if got.traceID != s.SpanContext().TraceID() || got.scope != s.InstrumentationScope() {
+		if got.traceID != s.SpanContext().TraceID() || got.scope != internScope(s.InstrumentationScope()) {
 			t.Fatalf("case %d: wrong trace ID or scope on the entry", i)
 		}
 		// And it decodes to the same message.
@@ -453,8 +453,8 @@ func TestBuildBatchMatchesProtoMarshal(t *testing.T) {
 			}
 		}
 	}
-	// groupByScope keeps every span and groups by scope identity, first seen first; with one scope
-	// it hands the snapshot back without copying.
+	// batches keeps every span, groups by scope identity in place (a stable sort, so each scope's
+	// spans stay in their buffered order), chunks at max, and leaves a one-scope snapshot as it is.
 	var mixed, single []wireSpan
 	for i := 0; i < 50; i++ {
 		stub := randomStub(r)
@@ -462,25 +462,70 @@ func TestBuildBatchMatchesProtoMarshal(t *testing.T) {
 		stub.InstrumentationScope = instrumentation.Scope{Name: "OneService"}
 		single = append(single, encodeSpan(stub.Snapshot(), nil, nil, false, policyVanilla))
 	}
+	before := append([]wireSpan(nil), mixed...)
 	for _, snap := range [][]wireSpan{mixed, single} {
-		total := 0
-		for _, g := range groupByScope(snap) {
-			total += len(g.spans)
-			for _, sp := range g.spans {
-				if string(scopeField(sp.scope)) != string(g.scope) {
-					t.Fatal("span in the wrong scope group")
+		total, nb := 0, 0
+		batches(resourceField(nil), snap, 7, func(b *wireBatch) {
+			nb++
+			if len(b.spans) == 0 || len(b.spans) > 7 || b.n != int64(len(b.spans)) {
+				t.Fatalf("batch of %d spans (n=%d)", len(b.spans), b.n)
+			}
+			total += len(b.spans)
+			for _, sp := range b.spans {
+				if sp.scope != b.spans[0].scope {
+					t.Fatal("span in the wrong scope batch")
 				}
 			}
-		}
+			// The batch is the run's encoding: the ScopeSpans.scope field is the spans' scope.
+			if !bytes.Contains(b.req, b.spans[0].scope.field) {
+				t.Fatal("batch without its scope field")
+			}
+			b.release()
+		})
 		if total != len(snap) {
-			t.Fatalf("groupByScope lost spans: %d of %d", total, len(snap))
+			t.Fatalf("batches lost spans: %d of %d", total, len(snap))
+		}
+		if nb < (len(snap)+6)/7 {
+			t.Fatalf("too few batches: %d", nb)
 		}
 	}
-	if g := groupByScope(single); len(g) != 1 || &g[0].spans[0] != &single[0] {
-		t.Fatal("one scope: the snapshot should be handed back without a copy")
+	// In place and stable: every span is still there, grouped, and within a scope in the old order.
+	seen := map[*wireScope]int{}
+	for i := range mixed {
+		if i > 0 && mixed[i].scope != mixed[i-1].scope {
+			if _, dup := seen[mixed[i].scope]; dup {
+				t.Fatal("mixed: a scope's spans are not one run")
+			}
+		}
+		seen[mixed[i].scope]++
 	}
-	if g := groupByScope(mixed); len(g) < 2 {
-		t.Fatal("mixed scopes: expected several groups")
+	if len(seen) < 2 {
+		t.Fatal("mixed scopes: expected several runs")
+	}
+	for _, scope := range []*wireScope{mixed[0].scope, mixed[len(mixed)-1].scope} {
+		var was, is []string
+		for _, sp := range before {
+			if sp.scope == scope {
+				was = append(was, string(sp.body))
+			}
+		}
+		for _, sp := range mixed {
+			if sp.scope == scope {
+				is = append(is, string(sp.body))
+			}
+		}
+		if len(was) != len(is) {
+			t.Fatalf("scope %d: %d spans before, %d after", scope.order, len(was), len(is))
+		}
+		for i := range was {
+			if was[i] != is[i] {
+				t.Fatalf("scope %d: span %d moved within its scope", scope.order, i)
+			}
+		}
+	}
+	sortByScope(single)
+	if single[0].scope != single[len(single)-1].scope {
+		t.Fatal("single: one scope expected")
 	}
 }
 
@@ -538,25 +583,51 @@ func TestBatchBufferPool(t *testing.T) {
 		spans = append(spans, encodeSpan(stub.Snapshot(), nil, nil, false, policyVanilla))
 	}
 	res, scope := resourceField(nil), scopeField(instrumentation.Scope{Name: "S"})
+	// Start from an empty free list (other tests leave buffers in it).
+	for {
+		select {
+		case <-batchBufs:
+			continue
+		default:
+		}
+		break
+	}
 	big := buildBatch(res, scope, spans)
 	want := string(big.req)
-	bigCap := cap(big.req)
+	if len(want) <= batchBufInit || len(want) > batchBufMax {
+		t.Fatalf("test batch of %d bytes: want one that grows the buffer and is still kept", len(want))
+	}
+	grown := &big.req[0]
 	big.release()
 	if big.req != nil || big.buf != nil {
 		t.Fatal("release left the batch pointing at the buffer")
 	}
-	// A small batch after a big one reuses (and keeps) the big buffer when the pool hands it back.
+	// The next batch, small or big, reuses the grown buffer; rebuilt bytes are the same.
 	small := buildBatch(res, scope, spans[:1])
-	if cap(small.req) >= bigCap {
-		small.release()
-	} else {
-		small.release() // another pool entry; fine
+	if &small.req[0] != grown {
+		t.Fatal("the released buffer was not reused")
 	}
+	small.release()
 	again := buildBatch(res, scope, spans)
-	if string(again.req) != want {
-		t.Fatal("a rebuilt batch differs after buffer reuse")
+	if &again.req[0] != grown || string(again.req) != want {
+		t.Fatal("a rebuilt batch differs or did not reuse the buffer")
 	}
 	again.release()
+	// A buffer that grew past batchBufMax is not kept.
+	huge := &[]byte{}
+	*huge = make([]byte, 0, batchBufMax+1)
+	putBatchBuf(huge)
+	if b := getBatchBuf(); b == huge {
+		t.Fatal("an oversized buffer was kept")
+	}
+	// The list is bounded: putting more than batchBufsKept buffers keeps batchBufsKept.
+	for i := 0; i < batchBufsKept+5; i++ {
+		b := make([]byte, 0, 16)
+		putBatchBuf(&b)
+	}
+	if len(batchBufs) != batchBufsKept {
+		t.Fatalf("free list holds %d buffers, want %d", len(batchBufs), batchBufsKept)
+	}
 }
 
 // exportServer records what the processors sent, as the collector would see it.

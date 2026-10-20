@@ -261,58 +261,51 @@ func (p *VanillaProcessor) flushBuffer() {
 		return
 	}
 
-	for _, g := range groupByScope(snap) {
-		for start := 0; start < len(g.spans); start += BatchSize {
-			end := start + BatchSize
-			if end > len(g.spans) {
-				end = len(g.spans)
+	batches(p.resource, snap, BatchSize, func(batch *wireBatch) { // otlp_wire.go
+		// Count the chunk as flushed BEFORE we dispatch — at this point
+		// the spans have permanently left the buffer, so whatever
+		// happens to the upload they'll be accounted for under one of
+		// {sent, dropped}.
+		atomic.AddInt64(&p.spansFlushed, batch.n)
+		p.exportWG.Add(1)
+		go func(batch *wireBatch) {
+			defer p.exportWG.Done()
+			dropped := func(err error) {
+				slog.Error("Failed to send batch", "error", err, "count", batch.n)
+				atomic.AddInt64(&p.batchesDropped, 1)
+				atomic.AddInt64(&p.spansDropped, batch.n)
+				p.categorizeSendError(err)
+				recordRefusedIDs(batch.traceIDs(), true) // Tomislav-RetCtx: every vanilla span is trace-critical
 			}
-			batch := buildBatch(p.resource, g.scope, g.spans[start:end])
-			// Count the chunk as flushed BEFORE we dispatch — at this point
-			// the spans have permanently left the buffer, so whatever
-			// happens to the upload they'll be accounted for under one of
-			// {sent, dropped}.
-			atomic.AddInt64(&p.spansFlushed, batch.n)
-			p.exportWG.Add(1)
-			go func(batch *wireBatch) {
-				defer p.exportWG.Done()
-				dropped := func(err error) {
-					slog.Error("Failed to send batch", "error", err, "count", batch.n)
-					atomic.AddInt64(&p.batchesDropped, 1)
-					atomic.AddInt64(&p.spansDropped, batch.n)
-					p.categorizeSendError(err)
-					recordRefusedIDs(batch.traceIDs(), true) // Tomislav-RetCtx: every vanilla span is trace-critical
-				}
-				sent := func() {
-					slog.Debug("Sent batch", "count", batch.n)
-					atomic.AddInt64(&p.batchesSent, 1)
-					atomic.AddInt64(&p.spansSent, batch.n)
-				}
-				err := p.sendData(batch.req)
-				// Tomislav-RetCtx: vanilla's side of the SDK one-shot retry policy (sdk_retry.go):
-				// BRIDGES_RETRY=all retries every refused batch once; nothing is suppressed.
-				if err != nil && sdkRetry.wants(true, err) {
-					p.exportWG.Add(1)
-					sdkRetry.scheduleBytes(int64(len(batch.req)), batch.n, func() error { return p.sendData(batch.req) }, func(err error) {
-						defer p.exportWG.Done()
-						defer batch.release()
-						if err != nil {
-							dropped(err)
-							return
-						}
-						sent()
-					})
-					return
-				}
-				defer batch.release()
-				if err != nil {
-					dropped(err)
-					return
-				}
-				sent()
-			}(batch)
-		}
-	}
+			sent := func() {
+				slog.Debug("Sent batch", "count", batch.n)
+				atomic.AddInt64(&p.batchesSent, 1)
+				atomic.AddInt64(&p.spansSent, batch.n)
+			}
+			err := p.sendData(batch.req)
+			// Tomislav-RetCtx: vanilla's side of the SDK one-shot retry policy (sdk_retry.go):
+			// BRIDGES_RETRY=all retries every refused batch once; nothing is suppressed.
+			if err != nil && sdkRetry.wants(true, err) {
+				p.exportWG.Add(1)
+				sdkRetry.scheduleBytes(int64(len(batch.req)), batch.n, func() error { return p.sendData(batch.req) }, func(err error) {
+					defer p.exportWG.Done()
+					defer batch.release()
+					if err != nil {
+						dropped(err)
+						return
+					}
+					sent()
+				})
+				return
+			}
+			defer batch.release()
+			if err != nil {
+				dropped(err)
+				return
+			}
+			sent()
+		}(batch)
+	})
 }
 
 // sendData sends one encoded batch to the OTLP endpoint.
