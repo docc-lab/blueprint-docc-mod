@@ -36,6 +36,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 	"go.opentelemetry.io/otel/attribute"
@@ -216,23 +217,39 @@ func (b *wireBatch) traceIDs() []trace.TraceID {
 // server-side tracer of its service and one client-side tracer per service it calls (the
 // interceptors name the tracers as the wrappers did).
 type wireScope struct {
-	field []byte // the ScopeSpans.scope field, tag and length included
-	order int    // interning order (from 1); the sort key
+	name, version string // the identity, for the scopeFront scan
+	field         []byte // the ScopeSpans.scope field, tag and length included
+	order         int    // interning order (from 1); the sort key
 }
 
 // scopeKey is the InstrumentationScope identity at the proto level.
 type scopeKey struct{ name, version string }
 
 // wireScopes interns the scopes, process-wide; the encoding is a pure function of the scope.
+// Lookups scan scopeFront, an immutable slice of the first scopes interned (a new one replaces the
+// slice under wireScopesMu): comparing two strings that are the same string (the tracer's) is a
+// pointer check, where hashing the key for the sync.Map cost a quarter of encodeSpan in the PB
+// profile of 2026-10-20 (0.33 s of 1.43 s).  A process with more scopes than scopeFrontMax finds
+// the rest in the map.
 var (
 	wireScopes   sync.Map   // scopeKey -> *wireScope
 	wireScopesMu sync.Mutex // serializes interning a new scope, so the orders are unique
 	wireScopeN   int        // scopes interned so far (under wireScopesMu)
+	scopeFront   atomic.Pointer[[]*wireScope]
 )
 
+const scopeFrontMax = 32
+
 // internScope returns the process-wide entry of a scope.  encodeSpan calls it for every span, so
-// the found case is one sync.Map load (two short string hashes).
+// the found case is a scan of scopeFront, a few pointer comparisons.
 func internScope(scope instrumentation.Scope) *wireScope {
+	if front := scopeFront.Load(); front != nil {
+		for _, ws := range *front {
+			if ws.name == scope.Name && ws.version == scope.Version {
+				return ws
+			}
+		}
+	}
 	key := scopeKey{scope.Name, scope.Version}
 	if ws, ok := wireScopes.Load(key); ok {
 		return ws.(*wireScope)
@@ -244,8 +261,16 @@ func internScope(scope instrumentation.Scope) *wireScope {
 	}
 	body, _ := proto.Marshal(&commonpb.InstrumentationScope{Name: scope.Name, Version: scope.Version})
 	wireScopeN++
-	ws := &wireScope{field: appendBytesFieldAlways(nil, 1, body), order: wireScopeN} // a set message is written even when empty
+	ws := &wireScope{name: scope.Name, version: scope.Version, field: appendBytesFieldAlways(nil, 1, body), order: wireScopeN} // a set message is written even when empty
 	wireScopes.Store(key, ws)
+	var front []*wireScope
+	if f := scopeFront.Load(); f != nil {
+		front = *f
+	}
+	if len(front) < scopeFrontMax {
+		next := append(append([]*wireScope(nil), front...), ws) // a new slice: readers hold the old one
+		scopeFront.Store(&next)
+	}
 	return ws
 }
 

@@ -630,6 +630,34 @@ func TestBatchBufferPool(t *testing.T) {
 	}
 }
 
+// TestInternScope: one entry per (name, version), found in the front scan and, past
+// scopeFrontMax, in the map; the orders are distinct and the field is the encoded scope.
+func TestInternScope(t *testing.T) {
+	a := internScope(instrumentation.Scope{Name: "intern-A", Version: "1"})
+	if internScope(instrumentation.Scope{Name: "intern-A", Version: "1"}) != a {
+		t.Fatal("same scope, different entry")
+	}
+	b := internScope(instrumentation.Scope{Name: "intern-A", Version: "2"})
+	if b == a || b.order == a.order {
+		t.Fatal("another version: same entry or order")
+	}
+	if string(a.field) != string(scopeField(instrumentation.Scope{Name: "intern-A", Version: "1"})) {
+		t.Fatal("field differs from scopeField")
+	}
+	var many []*wireScope
+	for i := 0; i < scopeFrontMax+10; i++ {
+		many = append(many, internScope(instrumentation.Scope{Name: fmt.Sprintf("intern-many-%d", i)}))
+	}
+	if f := scopeFront.Load(); f == nil || len(*f) != scopeFrontMax {
+		t.Fatalf("front holds %d entries, want %d", len(*f), scopeFrontMax)
+	}
+	for i, ws := range many {
+		if internScope(instrumentation.Scope{Name: fmt.Sprintf("intern-many-%d", i)}) != ws {
+			t.Fatalf("scope %d not found again", i)
+		}
+	}
+}
+
 // exportServer records what the processors sent, as the collector would see it.
 type exportServer struct {
 	coltracepb.UnimplementedTraceServiceServer
