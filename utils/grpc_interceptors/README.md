@@ -1771,3 +1771,155 @@ on different days.
 
 `retctx-grpc-interceptors` is fast-forwarded to this branch (items 1-8). Item 10 (our other large
 stack frames) remains deferred.
+
+### 2026-10-20: Profiles of the direct OTLP export, and two fixes they prompted
+
+Asked for profiles of item 8. `profile_ab.sh` (`~/grpc-interceptors-work/r17_profile_direct.sh`,
+`prof/direct_{pb,sb,v}`): the build it replaces ("wrapper" in the script's labels: the items 1-7
+builds for PB and SB, `v_interceptor_final` for vanilla) and then the direct build, one after the
+other at a fixed rate (PB and SB 700 req/s, vanilla 800, 60 s), CPU per request of every service
+from `/proc`, and 30 s CPU and allocation profiles of every service. `analyze_direct.py` (same
+directory) splits the merged profiles by the areas this change touches, using `cpu_areas.py`'s
+sample traces, and reads the allocation profiles per request.
+
+CPU per request, whole run, old -> new (single pair each, so +-3% is noise): PB 4.825 -> 4.726 ms
+(-2.1%), SB 4.864 -> 4.829 (-0.7%), vanilla 4.183 -> 4.165 (-0.4%).
+
+Where the time moved (CPU seconds of all 14 services in 30 s, and microseconds per request):
+
+| area | PB old | PB new | SB old | SB new | v old | v new |
+|---|---|---|---|---|---|---|
+| span end, processor OnEnd | 2.29 s (109 us) | 2.13 (102) | 2.30 (110) | 2.32 (111) | 1.06 (44) | 1.08 (45) |
+| of which old: span -> proto objects | 1.20 (57) | | 1.20 (57) | | 0.87 (36) | |
+| of which new: span -> bytes (encodeSpan) | | 1.03 (49) | | 1.14 (54) | | 0.91 (38) |
+| flush: old reflective marshal (protobuf, export only) | 0.67 (32) | | 1.22 (58) | | 0.21 (9) | |
+| flush: new buildBatch + otlpConn.export | | 0.80 (38) | | 1.42 (68) | | 0.73 (30) |
+| export background total | 1.54 (73) | 1.53 (73) | 2.55 (122) | 2.31 (110) | 1.20 (50) | 1.22 (51) |
+| garbage collection | 8.62 (411) | 8.92 (425) | 7.59 (362) | 7.87 (375) | 7.60 (317) | 7.76 (324) |
+| allocated objects per request | 2,568 | 2,399 | 2,629 | 2,406 | 2,118 | 2,044 |
+| allocated bytes per request | 224.1 KB | 219.2 | 233.0 | 227.9 | 185.5 | 190.3 |
+
+Reading it:
+
+* The saving is where it was expected. PB: building the object trees cost 57 us per request at
+  span end and marshalling them 42 us at flush (99 us); writing the bytes costs 49 us at span end
+  and about 2 us at flush. About 48 us per request, 1.1% of a 4.3 ms request: the throughput gain
+  of 2026-10-19. The object trees are gone from the allocation profile (PB 156, SB 197, vanilla
+  97 objects per request).
+* `encodeSpan` is not much cheaper than building the trees (PB 49 vs 57 us, SB 54 vs 57, vanilla
+  38 vs 36): most of that time is the attribute loop and, for the bridges, copying the `_br`
+  payload, which both paths do; what the bytes save is the second pass (the marshal) and the
+  allocations.
+* Vanilla gains nothing resolvable: its spans are small, so its trees were cheap (36 us) and its
+  marshal small (9 us), and the new path brought a cost of its own: every batch's request was a
+  fresh `make([]byte)` (6-10 KB per request, 2.6% of vanilla's allocation), where gRPC's protobuf
+  codec marshals into a pooled buffer. The GC rows (+0.2-0.3 s) are within run-to-run noise but
+  point the same way.
+* `groupByScope` cost 0.48 s in PB (about 20 us per request, 0.4%): it copied every 72-byte buffer
+  entry into a new slice per scope group, where the old grouping copied 8-byte pointers, and one
+  scope per process is the rule.
+* Pre-existing and unchanged: the per-batch export goroutine grows its stack (0.33 s in PB,
+  attributed under gRPC's `newClientStream` now, under the marshal before); the collector-side
+  gRPC work of the export; GC at 8-10% of all CPU.
+
+Two fixes, commit `7fbd06f3`: a one-scope snapshot is handed to the batches without a copy (and a
+batch keeps its spans instead of a copy of their trace IDs, built only if the batch is refused);
+the request buffer comes from a pool (`batchBufs`) and goes back after the export is over, retry
+included. For that, `rawCodec` implements gRPC's `CodecV2` and hands gRPC a pooled copy of the
+request (`mem.Copy`, one memmove per batch, freed by gRPC after the write), so nothing in gRPC
+references the batch's buffer when it is reused; before, with the v1 codec, gRPC wrapped our bytes
+without copying. `TestBatchBufferPool` and the codec test cover both; all otelcol tests pass with
+`-race`. Rebuild, profile and validation of PB and vanilla with the fixes: `r18_profile_fixed.sh`,
+results below.
+
+**Re-profile with the fixes of `7fbd06f3`** (`r18_profile_fixed.sh`, `prof/direct2_{pb,v}`): CPU per
+request old -> new PB 4.789 -> 4.686 ms (-2.1%), vanilla 4.301 -> 4.207 (-2.2%); traces 2000/2000
+identical for both. But the allocation profiles showed that neither fix took:
+
+* The pooled batch buffer missed its `sync.Pool` at every flush: 304 MB of 32 KB buffers in PB,
+  7.2 KB per request, more than the unpooled `make` it replaced (6.4 KB).  The garbage collector
+  empties a `sync.Pool` at every cycle (the victim cache survives one), and a loaded service
+  collects many times between two flushes 100 ms apart.  gRPC's own pool, which the old exporter
+  marshalled into and `mem.Copy` copies into, misses the same way in both builds (127 vs 131 MB).
+* `groupByScope` still copied: 191 MB (4.5 KB/req) and 0.54 s CPU (26 us/req).  "One scope per
+  process" was wrong: the server-side spans of a service carry its own tracer, and every client
+  call carries the callee's `<Service>_OTServerWrapperInterface` tracer (the interceptors keep the
+  wrappers' names), so ComposePost has nine scopes and the one-scope path only helps the leaves.
+
+Corrected in commit `2177fd13`:
+
+* `batchBufs` is a bounded free list (a channel of 32 buffers of at most 256 KB; bigger ones are
+  dropped), which the collector does not empty.
+* The buffer entry's scope is an interned `*wireScope` (process-wide `sync.Map`, keyed by name and
+  version, looked up once per span at `OnEnd`, the same lookup `scopeField` did per group); the
+  entry shrinks from 104 to 48 bytes, which also halves the per-flush buffer swap
+  (`make([]wireSpan, 0, cap)`, 4.3 KB/req in PB).
+* The flush groups the snapshot in place: a stable sort by interning order (`sortByScope`), skipped
+  when the snapshot is already in order (a leaf service), then runs chunked at the batch size
+  (`batches`, now the one flush loop of all four processors).  No copy, no allocation; within a
+  scope the spans keep their buffered order.  (The old exporter ranged over a Go map, so the order
+  of the ScopeSpans in a request was never defined; now it is the interning order.)
+
+Tests: the grouping keeps every span, one scope per batch, the within-scope order, the free list's
+bounds; all `otelcol` and interceptor tests pass with `-race`.  Rebuild of all four kinds,
+re-profile of PB and vanilla and validation of all four: `r19_profile_fixed2.sh`
+(`prof/direct3_{pb,v}`, `runs_r16/{pb,v,sb,cgpb}G`), results below.
+
+**Profiles with the corrected fixes** (`2177fd13`; `r19_profile_fixed2.sh`, `prof/direct3_{pb,v}`,
+same method as above; the "old" build is still the one the direct export replaces). CPU per request,
+whole run, old -> new: PB 4.746 -> 4.660 ms (-1.8%), vanilla 4.156 -> 4.155 (-0.0%). Inside the
+profiled 30 s:
+
+| area | PB old | PB new | v old | v new |
+|---|---|---|---|---|
+| processor OnEnd | 2.05 s (98 us) | 2.48 (118) | 1.14 (48) | 1.25 (52) |
+| of which old: span -> proto objects | 1.15 (55) | | 0.93 (39) | |
+| of which new: span -> bytes (encodeSpan) | | 1.43 (68) | | 1.15 (48) |
+| export background | 3.74 (178) | 0.76 (36) | 2.15 (90) | 1.05 (44) |
+| of which old: exporter client + marshal | 5.88 (280) | | 4.63 (193) | |
+| of which new: buildBatch + export | | 0.59 (28) | | 0.66 (28) |
+| garbage collection | 8.54 (407) | 6.76 (322) | 7.79 (325) | 6.65 (277) |
+| allocation (mallocgc) | 12.43 (593) | 11.20 (534) | 11.66 (486) | 11.51 (480) |
+| stack growth | 5.47 (261) | 5.20 (248) | 6.08 (254) | 5.46 (228) |
+| allocated objects per request | 2,556 | 2,336 | 2,106 | 2,035 |
+| allocated bytes per request | 222.8 KB | 209.8 | 185.0 | 175.0 |
+| of which processor OnEnd | 12.8 | 5.3 | 8.0 | 2.7 |
+| of which export background | 12.6 | 9.4 | 7.5 | 5.2 |
+
+(The "exporter client + marshal" row of the old build is larger than "export background" because the
+pattern also matches gRPC's protobuf work on the application RPCs; the per-area numbers of the
+export are the "export background" row.)
+
+Traces of the corrected build (`runs_r16/{pb,v,sb,cgpb}G`): 2000/2000 identical to the old build
+for all four kinds.
+
+Now the allocation goes the right way in both kinds: -13 KB (-5.8%) per request in PB, -10 KB
+(-5.4%) in vanilla, and the export path allocates less than the old exporter did (PB 9.4 vs 12.6 KB,
+vanilla 5.2 vs 7.5). Garbage collection is down 85 us per request in PB and 48 in vanilla. The free
+list hits: `getBatchBuf` allocated 2 MB in the whole PB run where the `sync.Pool` had missed for
+304 MB; `batches` and `sortByScope` are below the profile's noise in CPU and allocate 5.6 MB in all
+(the grouping copied 191 MB). What is left of the export's own cost is gRPC (the stream, the
+headers, the write) and gRPC's pooled copy of the request (117 MB, a miss per batch, the same as
+the old exporter's marshal buffer).
+
+One cost appeared with the interned scope: the `sync.Map` lookup per span in `encodeSpan` (hashing
+a two-string key: `typehash`, `nilinterhash`, `memHashFallback`) was 0.33 s of `encodeSpan`'s
+1.43 s, about 16 us per request. Commit `c1a04e2d` scans an immutable slice of the interned scopes
+first (copy-on-write, at most 32; the map serves any beyond): every span of a tracer carries the
+tracer's own strings, so the comparison is a pointer check. Micro-benchmark (`BenchmarkInternScope`,
+not kept), nine scopes: 125 -> 44 ns per lookup. Rebuild, profile and validation of PB:
+`r20_intern_scan.sh` (`prof/direct4_pb`, `runs_r16/pbH`), results below.
+
+**Profile with the scan** (`c1a04e2d`; `r20_intern_scan.sh`, `prof/direct4_pb`): `internScope` 0.33 ->
+0.21 s (of which 0.16 s is the scan itself), `encodeSpan` 1.43 -> 1.06 s (68 -> 51 us per request;
+the 68 of the previous round was partly noise: 49 and 52 in the rounds before). CPU per request,
+whole run, PB 4.784 -> 4.703 ms (-1.7%); allocation 223.3 -> 209.4 KB per request (-13.9),
+garbage collection -55 us per request. Traces (`runs_r16/pbH`): 2000/2000 identical.
+
+Summary of the profiling pass, PB, old build -> `c1a04e2d`: CPU per request -1.7 to -2.1% (four
+single-pair runs: -2.1, -2.1, -1.8, -1.7); allocation -13 to -14 KB per request (-6%); objects
+-230 per request (-9%); traces identical.  Vanilla: CPU even, allocation -10 KB per request (-5%).
+Not done, noted for later: the per-batch export goroutine (its stack growth, about 0.3 s per 30 s in
+PB, is older than this work) could be one long-lived worker per processor; gRPC's pooled copy of
+the request misses its pool once per batch under load (117 MB per run; the old exporter's marshal
+buffer did the same) and is not ours to change.
