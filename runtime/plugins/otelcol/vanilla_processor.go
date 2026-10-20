@@ -281,7 +281,7 @@ func (p *VanillaProcessor) flushBuffer() {
 					atomic.AddInt64(&p.batchesDropped, 1)
 					atomic.AddInt64(&p.spansDropped, batch.n)
 					p.categorizeSendError(err)
-					recordRefusedIDs(batch.ids, true) // Tomislav-RetCtx: every vanilla span is trace-critical
+					recordRefusedIDs(batch.traceIDs(), true) // Tomislav-RetCtx: every vanilla span is trace-critical
 				}
 				sent := func() {
 					slog.Debug("Sent batch", "count", batch.n)
@@ -295,6 +295,7 @@ func (p *VanillaProcessor) flushBuffer() {
 					p.exportWG.Add(1)
 					sdkRetry.scheduleBytes(int64(len(batch.req)), batch.n, func() error { return p.sendData(batch.req) }, func(err error) {
 						defer p.exportWG.Done()
+						defer batch.release()
 						if err != nil {
 							dropped(err)
 							return
@@ -303,6 +304,7 @@ func (p *VanillaProcessor) flushBuffer() {
 					})
 					return
 				}
+				defer batch.release()
 				if err != nil {
 					dropped(err)
 					return

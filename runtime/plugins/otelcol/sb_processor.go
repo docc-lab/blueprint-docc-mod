@@ -429,6 +429,7 @@ func (p *StructuralBridgeProcessor) exportBatch(batch *wireBatch, isHP bool) {
 	if !isHP && sdkRetry.suppressLP() {
 		sdkRetry.lpSuppressed.Add(batch.n)
 		p.batchDropped(batch, isHP, errLPSuppressed)
+		batch.release()
 		return
 	}
 	err := p.sendData(batch.req, isHP)
@@ -436,6 +437,7 @@ func (p *StructuralBridgeProcessor) exportBatch(batch *wireBatch, isHP bool) {
 		p.exportWG.Add(1)
 		sdkRetry.scheduleBytes(int64(len(batch.req)), batch.n, func() error { return p.sendData(batch.req, isHP) }, func(err error) {
 			defer p.exportWG.Done()
+			defer batch.release()
 			if err != nil {
 				p.batchDropped(batch, isHP, err)
 				return
@@ -444,6 +446,7 @@ func (p *StructuralBridgeProcessor) exportBatch(batch *wireBatch, isHP bool) {
 		})
 		return
 	}
+	defer batch.release()
 	if err != nil {
 		p.batchDropped(batch, isHP, err)
 		return
@@ -461,7 +464,7 @@ func (p *StructuralBridgeProcessor) batchDropped(batch *wireBatch, isHP bool, er
 		atomic.AddInt64(&p.lpDropped, batch.n)
 	}
 	p.categorizeSendError(err)
-	recordRefusedIDs(batch.ids, isHP) // Tomislav-RetCtx: census of trace IDs in the dropped batch
+	recordRefusedIDs(batch.traceIDs(), isHP) // Tomislav-RetCtx: census of trace IDs in the dropped batch
 	slog.Error("Failed to send batch", "error", err, "count", batch.n, "hp", isHP)
 }
 

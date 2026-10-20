@@ -47,6 +47,7 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -80,7 +81,7 @@ func dialOTLP(endpoint string) (*otlpConn, error) {
 // categorizeSendError and the retry gate (sdk_retry.go) see what they saw.
 func (c *otlpConn) export(ctx context.Context, req []byte) error {
 	var resp []byte
-	if err := c.cc.Invoke(ctx, otlpExportMethod, req, &resp, grpc.ForceCodec(rawCodec{})); err != nil {
+	if err := c.cc.Invoke(ctx, otlpExportMethod, req, &resp, grpc.ForceCodecV2(rawCodec{})); err != nil {
 		return err
 	}
 	// A partial success is a success with a note (the exporter client logged it through
@@ -100,22 +101,27 @@ func (c *otlpConn) close() error { return c.cc.Close() }
 
 // rawCodec hands gRPC request bytes that are already encoded and gives back the response bytes as
 // they are.  Its name is "proto" so the content type stays application/grpc+proto.
+//
+// Marshal copies the request into a buffer from gRPC's pool (what gRPC's own protobuf codec
+// marshals into), which gRPC frees once the bytes are written.  The copy (one memmove of the
+// batch) is what lets the batch keep its own buffer: it goes back to batchBufs as soon as the
+// export is over, retry included, with nothing in gRPC referencing it.
 type rawCodec struct{}
 
-func (rawCodec) Marshal(v any) ([]byte, error) {
+func (rawCodec) Marshal(v any) (mem.BufferSlice, error) {
 	b, ok := v.([]byte)
 	if !ok {
 		return nil, fmt.Errorf("rawCodec: want []byte, got %T", v)
 	}
-	return b, nil
+	return mem.BufferSlice{mem.Copy(b, mem.DefaultBufferPool())}, nil
 }
 
-func (rawCodec) Unmarshal(data []byte, v any) error {
+func (rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	out, ok := v.(*[]byte)
 	if !ok {
 		return fmt.Errorf("rawCodec: want *[]byte, got %T", v)
 	}
-	*out = append((*out)[:0], data...)
+	*out = data.Materialize()
 	return nil
 }
 
@@ -132,11 +138,40 @@ type wireSpan struct {
 	traceID trace.TraceID         // for the refused-trace census of a dropped batch
 }
 
-// wireBatch is one export: the request bytes, the span count and the trace IDs (for the census).
+// wireBatch is one export: the request bytes and the spans in it (for the count and, if the batch
+// is refused, the census).  spans is a sub-slice of the flush's snapshot and the request buffer
+// comes from batchBufs, so a batch allocates nothing once the pool has warmed up.
 type wireBatch struct {
-	req []byte
-	n   int64
-	ids []trace.TraceID
+	req   []byte
+	n     int64
+	spans []wireSpan
+	buf   *[]byte // the pooled buffer req was written into
+}
+
+// batchBufs holds the request buffers of batches, reused from flush to flush.  A batch keeps its
+// buffer until the processor calls release, after the batch was sent or dropped (after its one
+// retry, if it got one).  gRPC's own protobuf codec marshals into a pooled buffer too; writing the
+// request into a fresh make([]byte) per batch cost 6-10 KB of allocation per request in the
+// 2026-10-20 profiles (utils/grpc_interceptors/README.md).
+var batchBufs = sync.Pool{New: func() any { b := make([]byte, 0, 32<<10); return &b }}
+
+// release returns the batch's buffer to the pool (its grown size with it).  Called exactly once
+// per batch; the request bytes must not be used afterwards.
+func (b *wireBatch) release() {
+	*b.buf = b.req[:0]
+	b.req = nil
+	batchBufs.Put(b.buf)
+	b.buf = nil
+}
+
+// traceIDs lists the batch's trace IDs for the census (recordRefusedIDs); only built when a batch
+// is refused.
+func (b *wireBatch) traceIDs() []trace.TraceID {
+	ids := make([]trace.TraceID, len(b.spans))
+	for i := range b.spans {
+		ids[i] = b.spans[i].traceID
+	}
+	return ids
 }
 
 // scopeKey is the InstrumentationScope identity at the proto level.
@@ -231,19 +266,22 @@ func buildBatch(resource, scope []byte, spans []wireSpan) *wireBatch {
 		ss += 1 + uvarintLen(uint64(len(spans[i].body))) + len(spans[i].body)
 	}
 	rs := len(resource) + 1 + uvarintLen(uint64(ss)) + ss
-	req := make([]byte, 0, 1+uvarintLen(uint64(rs))+rs)
+	total := 1 + uvarintLen(uint64(rs)) + rs
+	buf := batchBufs.Get().(*[]byte)
+	req := (*buf)[:0]
+	if cap(req) < total {
+		req = make([]byte, 0, total) // the pool entry grows to it at release
+	}
 	req = append(req, 0x0a)
 	req = binary.AppendUvarint(req, uint64(rs))
 	req = append(req, resource...)
 	req = append(req, 0x12)
 	req = binary.AppendUvarint(req, uint64(ss))
 	req = append(req, scope...)
-	ids := make([]trace.TraceID, len(spans))
 	for i := range spans {
 		req = appendBytesField(req, 2, spans[i].body)
-		ids[i] = spans[i].traceID
 	}
-	return &wireBatch{req: req, n: int64(len(spans)), ids: ids}
+	return &wireBatch{req: req, n: int64(len(spans)), spans: spans, buf: buf}
 }
 
 // groupByScope splits a buffer snapshot into per-scope groups, in first-seen order (the old code
@@ -254,8 +292,22 @@ type scopeGroup struct {
 }
 
 func groupByScope(snap []wireSpan) []*scopeGroup {
+	// The common case, one scope (one Blueprint service per process), takes the snapshot as it is:
+	// copying the entries into a new slice cost about 20 us per request in the PB profile of
+	// 2026-10-20 (utils/grpc_interceptors/README.md).
+	first := scopeKey{snap[0].scope.Name, snap[0].scope.Version}
+	same := true
+	for i := 1; i < len(snap); i++ {
+		if (scopeKey{snap[i].scope.Name, snap[i].scope.Version}) != first {
+			same = false
+			break
+		}
+	}
+	if same {
+		return []*scopeGroup{{scope: scopeField(snap[0].scope), spans: snap}}
+	}
 	var groups []*scopeGroup
-	index := make(map[scopeKey]*scopeGroup, 1)
+	index := make(map[scopeKey]*scopeGroup, 2)
 	for i := range snap {
 		k := scopeKey{snap[i].scope.Name, snap[i].scope.Version}
 		g, ok := index[k]

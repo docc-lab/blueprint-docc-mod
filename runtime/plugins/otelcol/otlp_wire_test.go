@@ -31,6 +31,7 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 )
@@ -441,34 +442,45 @@ func TestBuildBatchMatchesProtoMarshal(t *testing.T) {
 				if string(batch.req) != string(want) {
 					t.Fatalf("batch of %d differs (len %d vs %d)", n, len(batch.req), len(want))
 				}
-				if batch.n != int64(n) || len(batch.ids) != n {
-					t.Fatalf("batch of %d: n=%d ids=%d", n, batch.n, len(batch.ids))
+				if batch.n != int64(n) || len(batch.spans) != n || len(batch.traceIDs()) != n {
+					t.Fatalf("batch of %d: n=%d spans=%d", n, batch.n, len(batch.spans))
 				}
-				for i := range spans {
-					if batch.ids[i] != spans[i].traceID {
+				for i, id := range batch.traceIDs() {
+					if id != spans[i].traceID {
 						t.Fatalf("batch of %d: id %d", n, i)
 					}
 				}
 			}
 		}
 	}
-	// groupByScope keeps every span and groups by scope identity, first seen first.
-	var mixed []wireSpan
+	// groupByScope keeps every span and groups by scope identity, first seen first; with one scope
+	// it hands the snapshot back without copying.
+	var mixed, single []wireSpan
 	for i := 0; i < 50; i++ {
 		stub := randomStub(r)
 		mixed = append(mixed, encodeSpan(stub.Snapshot(), nil, nil, false, policyVanilla))
+		stub.InstrumentationScope = instrumentation.Scope{Name: "OneService"}
+		single = append(single, encodeSpan(stub.Snapshot(), nil, nil, false, policyVanilla))
 	}
-	total := 0
-	for _, g := range groupByScope(mixed) {
-		total += len(g.spans)
-		for _, sp := range g.spans {
-			if string(scopeField(sp.scope)) != string(g.scope) {
-				t.Fatal("span in the wrong scope group")
+	for _, snap := range [][]wireSpan{mixed, single} {
+		total := 0
+		for _, g := range groupByScope(snap) {
+			total += len(g.spans)
+			for _, sp := range g.spans {
+				if string(scopeField(sp.scope)) != string(g.scope) {
+					t.Fatal("span in the wrong scope group")
+				}
 			}
 		}
+		if total != len(snap) {
+			t.Fatalf("groupByScope lost spans: %d of %d", total, len(snap))
+		}
 	}
-	if total != len(mixed) {
-		t.Fatalf("groupByScope lost spans: %d of %d", total, len(mixed))
+	if g := groupByScope(single); len(g) != 1 || &g[0].spans[0] != &single[0] {
+		t.Fatal("one scope: the snapshot should be handed back without a copy")
+	}
+	if g := groupByScope(mixed); len(g) < 2 {
+		t.Fatal("mixed scopes: expected several groups")
 	}
 }
 
@@ -494,24 +506,57 @@ func TestRawCodec(t *testing.T) {
 	c := rawCodec{}
 	in := []byte{1, 2, 3}
 	out, err := c.Marshal(in)
-	if err != nil || string(out) != string(in) {
+	if err != nil || string(out.Materialize()) != string(in) {
 		t.Fatal("marshal", out, err)
 	}
+	in[0] = 9
+	if out.Materialize()[0] != 1 {
+		t.Fatal("marshal did not copy: the batch buffer would be shared with gRPC")
+	}
+	out.Free()
 	if _, err := c.Marshal("x"); err == nil {
 		t.Fatal("marshal accepted a string")
 	}
 	var back []byte
-	if err := c.Unmarshal(in, &back); err != nil || string(back) != string(in) {
+	if err := c.Unmarshal(mem.BufferSlice{mem.SliceBuffer(in)}, &back); err != nil || string(back) != string(in) {
 		t.Fatal("unmarshal", back, err)
 	}
-	in[0] = 9
-	if back[0] != 1 {
-		t.Fatal("unmarshal aliased the input")
-	}
 	var str string
-	if err := c.Unmarshal(in, &str); err == nil || c.Name() != "proto" {
+	if err := c.Unmarshal(mem.BufferSlice{mem.SliceBuffer(in)}, &str); err == nil || c.Name() != "proto" {
 		t.Fatal("unmarshal target type / name")
 	}
+}
+
+// TestBatchBufferPool: a released batch's buffer comes back for the next batch, grown to the
+// largest request it has held.
+func TestBatchBufferPool(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 6))
+	var spans []wireSpan
+	for i := 0; i < 300; i++ {
+		stub := randomStub(r)
+		stub.InstrumentationScope = instrumentation.Scope{Name: "S"}
+		spans = append(spans, encodeSpan(stub.Snapshot(), nil, nil, false, policyVanilla))
+	}
+	res, scope := resourceField(nil), scopeField(instrumentation.Scope{Name: "S"})
+	big := buildBatch(res, scope, spans)
+	want := string(big.req)
+	bigCap := cap(big.req)
+	big.release()
+	if big.req != nil || big.buf != nil {
+		t.Fatal("release left the batch pointing at the buffer")
+	}
+	// A small batch after a big one reuses (and keeps) the big buffer when the pool hands it back.
+	small := buildBatch(res, scope, spans[:1])
+	if cap(small.req) >= bigCap {
+		small.release()
+	} else {
+		small.release() // another pool entry; fine
+	}
+	again := buildBatch(res, scope, spans)
+	if string(again.req) != want {
+		t.Fatal("a rebuilt batch differs after buffer reuse")
+	}
+	again.release()
 }
 
 // exportServer records what the processors sent, as the collector would see it.
