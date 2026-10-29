@@ -232,8 +232,10 @@ def counter_deltas(before, after):
     return result, resets
 
 
-def run_wrk(directory, rate, seconds, seed, connections=None, generator=None, app='sn'):
-    """generator: optional plan['generator'] dict selecting a non-constant arrival process.
+def run_wrk(directory, rate, seconds, seed, connections=None, generator=None, app='sn', workload=None):
+    """workload: optional plan['workload'] block (dsb_hotel_seed.workload_for: 'lua', 'lua_env') that
+    replaces the app table's default script and its environment (user 2026-10-29: request mixes).
+    generator: optional plan['generator'] dict selecting a non-constant arrival process.
     Tomislav-RetCtx: {'binary': path, 'dist': 'pareto', 'burst_alpha': f, 'burst_cap': f,
     'burst_epoch': 'Ns'} appends `-D pareto --burst-*` and runs that binary; the seed is the
     same RANDOM_SEED the Lua script gets, so the burst schedule is reproducible. None keeps
@@ -252,8 +254,9 @@ def run_wrk(directory, rate, seconds, seed, connections=None, generator=None, ap
     # Tomislav-RetCtx: the workload script and entry NodePort come from the app table
     # (SN: compose-post.lua on 23229, unchanged; hotel: search-hotels.lua on 23230).
     spec = APPS[app]
+    lua, lua_env = (workload['lua'], workload['lua_env']) if workload else (spec['lua'], spec['lua_env'])
     argv = [binary, '-t', str(threads), '-c', str(connections), '-d', f'{seconds}s',
-            '-r', '-L', '-s', str(spec['lua']), entry_url(spec), '-R', str(rate)]
+            '-r', '-L', '-s', str(lua), entry_url(spec), '-R', str(rate)]
     if generator:
         argv += ['-D', generator['dist'],
                  '--burst-alpha', str(generator['burst_alpha']),
@@ -261,6 +264,7 @@ def run_wrk(directory, rate, seconds, seed, connections=None, generator=None, ap
                  '--burst-epoch', str(generator['burst_epoch']),
                  '--burst-seed', str(seed)]
     record = {'argv': argv, 'seed': seed, 'offered_rps': rate, 'offer_seconds': seconds, 'app': app,
+              'workload': workload['name'] if workload else None, 'lua_env': dict(lua_env),
               'started': now(), 'connections': connections, 'threads': threads,
               'file_descriptor_limit': list(resource.getrlimit(resource.RLIMIT_NOFILE)),
               'generator': generator}
@@ -269,7 +273,7 @@ def run_wrk(directory, rate, seconds, seed, connections=None, generator=None, ap
     start = time.monotonic()
     with (directory / 'wrk.stdout').open('w') as stdout, (directory / 'wrk.stderr').open('w') as stderr:
         process = subprocess.Popen(argv, stdout=stdout, stderr=stderr, start_new_session=True,
-                                   env=dict(os.environ, RANDOM_SEED=str(seed), LC_ALL='C', **spec['lua_env'],
+                                   env=dict(os.environ, RANDOM_SEED=str(seed), LC_ALL='C', **lua_env,
                                             # one "burst epoch k g rate" line per epoch in wrk.stderr, so the
                                             # realised per-epoch offered rate can be lined up with the collectors
                                             **({'WRK_BURST_TRACE': '1'} if generator else {})))
@@ -290,7 +294,8 @@ def run_wrk(directory, rate, seconds, seed, connections=None, generator=None, ap
 
 
 def owned_resources(namespace):
-    items = json.loads(kube(namespace, 'get', 'deployments,daemonsets,services,configmaps', '-o', 'json'))['items']
+    # Tomislav-RetCtx (2026-10-29): jobs too (the hotel seeding Job, dsb_hotel_seed.install)
+    items = json.loads(kube(namespace, 'get', 'deployments,daemonsets,services,configmaps,jobs', '-o', 'json'))['items']
     return [d for d in items if d['metadata'].get('labels', {}).get('retctx-e2e') or
             (d['metadata'].get('labels', {}).get('io.kompose.service') and d['metadata']['name'].endswith('-ctr'))]
 
@@ -318,6 +323,8 @@ def ready(namespace, variant, expected=33):
     deadline = time.monotonic() + 600
     while time.monotonic() < deadline:
         pods = json.loads(kube(namespace, 'get', 'pods', '-l', f'retctx-e2e={variant}', '-o', 'json'))['items']
+        # Tomislav-RetCtx (2026-10-29): a finished seeding Job's pod (phase Succeeded) is not a deployment pod
+        pods = [p for p in pods if p['status'].get('phase') != 'Succeeded']
         if len(pods) == expected and all(any(c['type'] == 'Ready' and c['status'] == 'True'
                                      for c in p['status'].get('conditions', [])) for p in pods):
             return pods

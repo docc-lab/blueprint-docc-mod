@@ -19,6 +19,7 @@ import urllib.request
 from prepare_dsb_sn_e2e import REPO, write_json
 from prepare_dsb_sn_nw import BRIDGES, COLLECTOR_PROFILES, COLLECTOR_RESOURCES, DISCOVERY, GATEWAY, cpu_count
 from dsb_apps import APPS, app_name, app_of, entry_url  # Tomislav-RetCtx: per-application constants
+import dsb_hotel_seed  # Tomislav-RetCtx (2026-10-29): larger hotel dataset seeded before the services start
 from run_dsb_sn_e2e import (now, kube, get_http, snapshot, counter_deltas, run_wrk, teardown, ready,
                             sample_traces, capture_traces, settle_trace_samples)
 
@@ -168,7 +169,7 @@ def knee_windows(case, directory, plan, measured, seed, state, status_path):
             n += 1
             state.update(stage='knee-windows', offered_rps=rate, window=n, updated=now()); write_json(status_path, state)
             window = point / f'window-{n}'
-            result = run_wrk(window, rate, plan['seconds_per_rate'], seed + 100 * n, connections=connections_for(rate),
+            result = run_wrk(window, rate, plan['seconds_per_rate'], seed + 100 * n, connections=connections_for(rate), workload=plan.get('workload'),
                              app=app_name(case))
             write_json(window / 'result.json', result)
             wins.append(spectrum(window / 'wrk.stdout'))
@@ -305,13 +306,31 @@ def check_initialized(case, directory):
     pods = json.loads(kube(namespace, 'get', 'pods', '-l', f'retctx-e2e={variant}', '-o', 'json'))['items']
     by_base = {p['metadata']['name'].split('-' + variant + '-ctr')[0]: p for p in pods}
     result = {'checked': now(), 'counts': {}, 'restarts': {}, 'probe': None}
+    # Tomislav-RetCtx (user 2026-10-29): a case seeded with a larger dataset (dsb_hotel_seed.install) holds a
+    # marker document per database recording what its Job inserted; the exact expectation is stock + inserted,
+    # and the Job itself must have succeeded (its pod may already be gone, the Job status stays).
+    markers = None
+    if case.get('hotel_seed'):
+        job = json.loads(kube(namespace, 'get', 'job', case['seeding']['job'], '-o', 'json'))
+        status = job.get('status', {})
+        assert status.get('succeeded') == 1 and not status.get('failed'), status
+        markers = {}
+        for base in app['seed']:
+            database = dsb_hotel_seed.TARGETS[base][1]
+            out = kube(namespace, 'exec', by_base[base]['metadata']['name'], '--', 'mongo', '--quiet', '--eval',
+                       f'JSON.stringify(db.getSiblingDB("{database}").seed_marker.findOne({{_id:"seed"}}))', timeout=60)
+            markers[base] = json.loads(out.strip().splitlines()[-1])
+            assert markers[base] and markers[base].get('inserted') is not None, (base, out[-500:])
+        result['seeding'] = {'job': case['seeding']['job'], 'spec': case['hotel_seed'],
+                             'markers': {b: {k: v for k, v in m.items() if k != '_id'} for b, m in markers.items()}}
+    expected_counts = dsb_hotel_seed.expected_counts(app['seed'], markers)
     for base, collections in app['seed'].items():
         pod = by_base[base]['metadata']['name']
-        for database, collection, expected in collections:
+        for database, collection, _ in collections:
             out = kube(namespace, 'exec', pod, '--', 'mongo', '--quiet', '--eval',
                        f'db.getSiblingDB("{database}").getCollection("{collection}").countDocuments({{}})', timeout=60)
             count = int(out.strip().splitlines()[-1])
-            result['counts'][f'{database}.{collection}'] = {'expected': expected, 'found': count}
+            result['counts'][f'{database}.{collection}'] = {'expected': expected_counts[f'{database}.{collection}'], 'found': count}
     # Tomislav-RetCtx: restarts summed per base over ALL its pods (the collector DaemonSet has 8;
     # keying by base alone kept only one of them). The trace store is recorded but not asserted:
     # Jaeger exits until Elasticsearch accepts connections, which gives jaeger exactly 2 restarts
@@ -493,7 +512,7 @@ def campaign(root, mode, skip_smoke=False):
             if mode == 'run':
                 state.update(stage='warmup', updated=now()); write_json(status_path, state)
                 warm = run_wrk(directory / 'warmup', plan['warmup_rps'], plan['warmup_seconds'], seed,
-                               connections=plan['warmup_connections'], app=app_name(case))
+                               connections=plan['warmup_connections'], app=app_name(case), workload=plan.get('workload'))
                 assert warm['non_2xx_3xx'] == 0 and not any(warm['socket_errors'].values()), warm
                 if case.get('backend_tuning') and case['kind'] != 'nt' \
                         and case.get('collector_profile') != 'sink':
@@ -533,7 +552,8 @@ def campaign(root, mode, skip_smoke=False):
                     peak = rate * (generator or {}).get('peak_multiplier', 1.0)
                     connections = 10 if mode == 'smoke' else connections_for(peak)
                     result = run_wrk(point, rate, 30 if mode == 'smoke' else plan['seconds_per_rate'], seed,
-                                     connections=connections, generator=generator, app=app_name(case))
+                                     connections=connections, generator=generator, app=app_name(case),
+                                     workload=plan.get('workload'))
                     after = snapshot(case['namespace'], case['variant'], point / 'after')
                     result['collector_deltas'], result['counter_resets'] = counter_deltas(before, after)
                     result['snapshot_errors'] = before['errors'] + after['errors']

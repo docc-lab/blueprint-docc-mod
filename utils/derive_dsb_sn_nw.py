@@ -24,6 +24,7 @@ from prepare_dsb_sn_nw import (BACKEND_TUNING, BACKENDS, BRIDGES, CLICKHOUSE, CO
                                set_reverse, tune_backend)
 from prepare_dsb_sn_e2e import environment
 from dsb_apps import APPS, app_name, set_cache_args  # Tomislav-RetCtx: per-application constants (default app 'sn')
+import dsb_hotel_seed  # Tomislav-RetCtx (user 2026-10-29): larger hotel dataset, request mixes
 from run_dsb_sn_e2e import now
 
 STORAGE = Path('/storage/tomislav-retctx-e2e')
@@ -109,8 +110,12 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
            priority_queue=False, gateway_priority_queue=False, pprof=False, agent_compression=None, app_pprof=False,
            app_gc_memlimit=None, app_gctrace=False, discovery_override=None, plateau_stop=False, knee_windows=False,
            ramp_passes=None, pass_gap_seconds=60, first_pass=1, repeat_grid=False, seeds=None, trace_capture=True,
-           census=False):
+           census=False, hotel_seed=None, workload=None):
     assert backend in BACKENDS, backend
+    # Tomislav-RetCtx (user 2026-10-29): hotel_seed = dsb_hotel_seed spec text ('hotels=2000,users=5000,
+    # reservations=20'): every hotel case gets a seeding Job and wait-seed init containers (real work only; the
+    # zero-work variant touches no database); workload = 'search' | 'mixed' (hotel), 'compose' | 'mixed' (SN).
+    seed_spec = dsb_hotel_seed.parse_spec(hotel_seed) if hotel_seed else None
     # Tomislav-RetCtx: which Jaeger+ES sizing (prepare_dsb_sn_nw.STORE_TUNINGS): the no-work
     # matrix's tuned store, or the SN real-work e2e campaign's (user 2026-09-23 for hotel).
     # (clickhouse backend: no Jaeger/ES at all, so no store tuning is recorded)
@@ -243,6 +248,10 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
                         environment(container, {'BRIDGES_PPROF': ':6060'})
         services = sum(1 for doc in documents if doc and set_reverse(doc, kind_reverse))
         assert entry['kind'] == 'nt' or services == APPS[app]['app_services'], (entry['kind'], services)
+        seeding = None
+        if seed_spec:
+            assert app == 'hotel', f'--hotel-seed applies to the real-work hotel app, not {app}'
+            seeding = dsb_hotel_seed.install(documents, entry['variant'], APPS[app]['namespace'], seed_spec)
         (case / 'collector.yaml').write_text(yaml.safe_dump(config, sort_keys=False))
         manifest.write_text(yaml.safe_dump_all(documents, sort_keys=False))
         complete = json.loads((case / 'build-complete.json').read_text())
@@ -263,6 +272,7 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
                      gateway_priority_queue=gateway_priority_queue, pprof=pprof, agent_compression=agent_compression,
                      discovery=discovery,
                      app_pprof=app_pprof, app_gc_memlimit=app_gc_memlimit, app_gctrace=app_gctrace, **({'census': True} if census else {}),
+                     **({'hotel_seed': dsb_hotel_seed.spec_text(seed_spec), 'seeding': seeding} if seeding else {}),
                      collector_profile=profile, reverse_truss=reverse, derived_from=entry['case'])
         write_json(case / 'case.json', entry)
         cases.append(entry)
@@ -326,6 +336,15 @@ def derive(source, root, kinds, repetitions, note, profile='passthrough', revers
     # Tomislav-RetCtx (user 2026-09-24): performance runs without trace sampling (loss evaluated separately)
     if not trace_capture:
         plan['trace_capture'] = False
+    # Tomislav-RetCtx (user 2026-10-29): the request mix and the seeded dataset are the campaign's, recorded in the plan
+    if workload:
+        plan['workload'] = dsb_hotel_seed.workload_for(app_name(cases[0]), workload, seed_spec)
+        plan['request'] = plan['workload']['request']
+    if seed_spec:
+        plan['hotel_seed'] = dict(seed_spec, spec=dsb_hotel_seed.spec_text(seed_spec))
+        plan['seeding'] = ('seed_hotels.js Job seeds every database before its service starts (dsb_hotel_seed.install); '
+                           'the constructors add their stock rows; run_dsb_sn_nw.check_initialized expects stock + the '
+                           "Job's marker counts exactly, zero restarts, a live probe, then the warm-up")
     # Tomislav-RetCtx: explicit per-repetition wrk2 seeds (e.g. extra fresh-deploy passes that must not reuse a seed)
     if seeds:
         assert len(seeds) == repetitions, (seeds, repetitions)
@@ -425,6 +444,12 @@ if __name__ == '__main__':
     parser.add_argument('--app-gctrace', action='store_true', help='GODEBUG=gctrace=1 on every application service')
     parser.add_argument('--census', action='store_true',
                         help='RETCTX_REFUSED_CENSUS=on on every application service (refused-trace census; loss experiments only)')
+    parser.add_argument('--hotel-seed', default=None, metavar='SPEC',
+                        help="hotel real work: seed a larger dataset before the services start, e.g. "
+                             "'hotels=2000,users=5000,reservations=20' (dsb_hotel_seed.parse_spec for every parameter)")
+    parser.add_argument('--workload', choices=('search', 'mixed', 'compose'), default=None,
+                        help="request mix: hotel 'search' (default, SearchHandler only) or 'mixed' (DSB 60/39/0.5/0.5); "
+                             "SN 'compose' (default) or 'mixed' (DSB 60/30/10)")
     parser.add_argument('--app-pprof', action='store_true', help='BRIDGES_PPROF=:6060 on every service (in-app CPU profiling)')
     parser.add_argument('--pprof', action='store_true', help='pprof extension (:1777) on agents and gateway (profiling)')
     parser.add_argument('--sdk-retry', choices=('priority',), default=None,
@@ -462,5 +487,5 @@ if __name__ == '__main__':
                        plateau_stop=args.plateau_stop, knee_windows=args.knee_windows,
                        ramp_passes=args.ramp_passes, pass_gap_seconds=args.pass_gap_seconds,
                        first_pass=args.first_pass, repeat_grid=args.repeat_grid, seeds=args.seeds, census=args.census,
-                       trace_capture=not args.no_trace_capture):
+                       trace_capture=not args.no_trace_capture, hotel_seed=args.hotel_seed, workload=args.workload):
         print(case['name'], case['case'])
