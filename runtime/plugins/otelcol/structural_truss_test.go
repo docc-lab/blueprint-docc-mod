@@ -317,7 +317,8 @@ func TestStructuralBridgeFanOutTrusses(t *testing.T) {
 				hasBR = true
 			}
 		}
-		if !hasO || !hasD || hasBR {
+		// Tomislav-RetCtx (user 2026-10-29): one attribute, `_o` = ordinal || depth; no `_d` beside it.
+		if !hasO || hasD || hasBR {
 			t.Fatalf("ordinary span wire attributes wrong: o=%v d=%v br=%v", hasO, hasD, hasBR)
 		}
 	}

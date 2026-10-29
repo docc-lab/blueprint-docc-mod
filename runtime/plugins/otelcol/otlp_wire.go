@@ -437,13 +437,20 @@ func encodeSpan(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWi
 	buf = appendVarintField(buf, 6, uint64(spanKindCode(s.SpanKind())))
 	buf = appendFixed64Field(buf, 7, uint64(s.StartTime().UnixNano()))
 	buf = appendFixed64Field(buf, 8, uint64(s.EndTime().UnixNano()))
-	buf = appendAttributes(buf, 9, attrs, highPriority, policy)
-	buf = appendBridgeWireBytes(buf, w, highPriority)
+	buf = appendAttributes(buf, 9, attrs, policy, true)
+	// Tomislav-RetCtx (user 2026-10-29): a span's bridge data is ONE attribute (appendBridgeWireBytes),
+	// from its wire entry, or from the legacy attribute-carried breadcrumbs of the fixed-cpd mode.
+	if w != nil {
+		var scratch [2 * binary.MaxVarintLen64]byte
+		buf = appendBridgeWireBytes(buf, w.bridgeBytes(&scratch), highPriority)
+	} else if policy != policyVanilla {
+		buf = appendBridgeWireBytes(buf, legacyBridgeBytes(attrs, policy), highPriority)
+	}
 	for _, ev := range s.Events() {
 		mark := len(buf)
 		buf = appendFixed64Field(buf, 1, uint64(ev.Time.UnixNano()))
 		buf = appendStringField(buf, 2, ev.Name)
-		buf = appendAttributes(buf, 3, ev.Attributes, true, policy)
+		buf = appendAttributes(buf, 3, ev.Attributes, policy, false)
 		buf = closeMessage(buf, 11, mark)
 	}
 	for _, link := range s.Links() {
@@ -451,7 +458,7 @@ func encodeSpan(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridgeWi
 		ltid, lsid := link.SpanContext.TraceID(), link.SpanContext.SpanID()
 		buf = appendBytesField(buf, 1, ltid[:])
 		buf = appendBytesField(buf, 2, lsid[:])
-		buf = appendAttributes(buf, 4, link.Attributes, true, policy)
+		buf = appendAttributes(buf, 4, link.Attributes, policy, false)
 		buf = closeMessage(buf, 13, mark)
 	}
 	// Status is always present (the old code always built one), even when empty.
@@ -481,15 +488,18 @@ func spanKindCode(kind trace.SpanKind) int {
 }
 
 // appendAttributes writes the attributes the policy lets through as repeated KeyValue messages of
-// the given field.  The per-policy rules are those of the old convertAttributes functions:
+// the given field.  The strip lists are those of the old per-processor convertAttributes functions:
 //
 //	vanilla:  skip the reverse-path keys (backend.IsReverseBaggageKey, __bag.__rt_depth)
-//	PB:       skip __bag.*, depth, hasChildren; `_br` iff HP and `_d` iff LP as raw bytes
-//	          (legacy attribute-carried breadcrumbs, bridgeBytesKV); skip the ancestry keys
+//	PB:       skip __bag.*, depth, hasChildren, the ancestry keys
 //	CGPB:     as PB, also skipping childCount
-//	SB:       skip __bag.*, depth, hasChildren, childCount, eventCount, remEndEvents; `_br` iff HP,
-//	          `_o` and `_d` iff LP, as raw bytes; skip `_oc` and `d`
-func appendAttributes(buf []byte, field int, attrs []attribute.KeyValue, highPriority bool, policy attrPolicy) []byte {
+//	SB:       skip __bag.*, depth, hasChildren, childCount, eventCount, remEndEvents, `_oc`, `d`
+//
+// span says whether these are the span's own attributes: a bridge span's breadcrumbs (`_br`, `_d`,
+// `_o`, legacy base64 strings) and its reverse context (`_rc`) are then left to
+// appendBridgeWireBytes, which writes them as one attribute; on events and links (never bridge
+// data in practice) the keys are ordinary attributes.
+func appendAttributes(buf []byte, field int, attrs []attribute.KeyValue, policy attrPolicy, span bool) []byte {
 	for _, attr := range attrs {
 		key := string(attr.Key)
 		switch policy {
@@ -508,18 +518,10 @@ func appendAttributes(buf []byte, field int, attrs []attribute.KeyValue, highPri
 				if policy == policyCallGraph {
 					continue
 				}
-			case AttrBREmit:
-				if !highPriority {
+			case AttrBREmit, AttrD, AttrO, backend.ReverseTrussCheckpointKey:
+				if span {
 					continue
 				}
-				buf = appendBridgeBytesAttr(buf, field, key, attr.Value.AsString())
-				continue
-			case AttrD:
-				if highPriority {
-					continue
-				}
-				buf = appendBridgeBytesAttr(buf, field, key, attr.Value.AsString())
-				continue
 			}
 		case policyStructural:
 			if strings.HasPrefix(key, "__bag.") {
@@ -528,18 +530,10 @@ func appendAttributes(buf []byte, field int, attrs []attribute.KeyValue, highPri
 			switch key {
 			case "depth", "hasChildren", "childCount", "eventCount", "remEndEvents", AttrOC, AttrDepth:
 				continue
-			case AttrBREmit:
-				if !highPriority {
+			case AttrBREmit, AttrD, AttrO, backend.ReverseTrussCheckpointKey:
+				if span {
 					continue
 				}
-				buf = appendBridgeBytesAttr(buf, field, key, attr.Value.AsString())
-				continue
-			case AttrO, AttrD:
-				if highPriority {
-					continue
-				}
-				buf = appendBridgeBytesAttr(buf, field, key, attr.Value.AsString())
-				continue
 			}
 		}
 		mark := len(buf)
@@ -550,12 +544,123 @@ func appendAttributes(buf []byte, field int, attrs []attribute.KeyValue, highPri
 	return buf
 }
 
-// appendBridgeBytesAttr writes key = raw bytes decoded from a base64 attribute (the legacy
-// attribute-carried breadcrumbs; bridgeBytesKV did this into an object).  Malformed base64 gives
-// empty bytes, as before.
-func appendBridgeBytesAttr(buf []byte, field int, key, b64 string) []byte {
-	raw, _ := decodeBR(b64)
-	return appendKeyBytes(buf, field, key, raw)
+// bridgeBytes is the material of a span's bridge attribute: from its wire entry (bridgeWire) for
+// a bridge span with wire state, or from the legacy attribute-carried breadcrumbs of the fixed-cpd
+// mode (legacyBridgeBytes).  A nil depth or ordinal means the span has none.
+type bridgeBytes struct {
+	rc         string // the reverse context the span took over: the raw packed envelope (or legacy text); "" = none
+	emit       []byte // the checkpoint's `_br` payload
+	depth      []byte // uvarint(absolute depth)
+	ordinal    []byte // uvarint(child ordinal), SB only
+	structural bool
+}
+
+// bridgeBytes views the wire entry; the varints are written into scratch, which the caller owns.
+func (w *bridgeWire) bridgeBytes(scratch *[2 * binary.MaxVarintLen64]byte) bridgeBytes {
+	n := binary.PutUvarint(scratch[:], uint64(w.depth))
+	b := bridgeBytes{rc: w.rev.rc, emit: w.emit, depth: scratch[:n], structural: w.structural}
+	if w.structural {
+		m := binary.PutUvarint(scratch[n:], uint64(w.ordinal))
+		b.ordinal = scratch[n : n+m]
+	}
+	return b
+}
+
+// legacyBridgeBytes collects the attribute-carried breadcrumbs of a bridge span without wire state
+// (the fixed-cpd mode, pb_processor.onStartFixed and its CGPB / SB counterparts): `_br`, `_d` and
+// `_o` are base64 strings (pack.go encodeBR; malformed base64 gives empty bytes, as before), `_rc`
+// the exported text of the reverse context (backend.RetCtxText), taken back to its raw form.
+func legacyBridgeBytes(attrs []attribute.KeyValue, policy attrPolicy) bridgeBytes {
+	b := bridgeBytes{structural: policy == policyStructural}
+	for _, attr := range attrs {
+		switch attr.Key {
+		case AttrBREmit:
+			b.emit = legacyBytes(attr.Value.AsString())
+		case AttrD:
+			b.depth = legacyBytes(attr.Value.AsString())
+		case AttrO:
+			b.ordinal = legacyBytes(attr.Value.AsString())
+		case backend.ReverseTrussCheckpointKey:
+			b.rc = backend.RetCtxFromText(attr.Value.AsString())
+		}
+	}
+	return b
+}
+
+func legacyBytes(b64 string) []byte {
+	if raw, ok := decodeBR(b64); ok {
+		return raw
+	}
+	return []byte{}
+}
+
+// appendBridgeWireBytes writes the span's bridge data as ONE attribute (Tomislav-RetCtx, user
+// 2026-10-29: never several key/value pairs for one set of bridge data; before, a checkpoint that
+// took over a reverse context carried `_rc` beside `_br`, and an ordinary SB span `_o` beside `_d`):
+//
+//	checkpoint:          `_br` = uvarint(len(rc)) || rc || payload   (no reverse context: one 0x00, then the payload)
+//	ordinary PB / CGPB:  `_d`  = uvarint(depth)
+//	ordinary SB:         `_o`  = uvarint(ordinal) || uvarint(depth)
+//
+// rc is the packed reverse envelope raw (backend/reversetruss_packed.go), no longer its base64 text:
+// `_br` is a bytes value, so nothing needed the text.  splitBR reads a `_br` back; the Python side
+// is utils/retctx_wire.py.  A reverse context never occurs on an ordinary span (pathCheckpoint makes
+// such a span a checkpoint); should one, it is dropped here rather than exported on its own.
+func appendBridgeWireBytes(buf []byte, b bridgeBytes, highPriority bool) []byte {
+	if highPriority {
+		return appendKeyBR(buf, 9, b.rc, b.emit)
+	}
+	if b.structural {
+		if b.ordinal == nil && b.depth == nil {
+			return buf
+		}
+		return appendKeyBytes2(buf, 9, AttrO, b.ordinal, b.depth)
+	}
+	if b.depth == nil {
+		return buf
+	}
+	return appendKeyBytes(buf, 9, AttrD, b.depth)
+}
+
+// appendKeyBR writes the checkpoint attribute: key `_br`, bytes_value = uvarint(len(rc)) || rc || emit,
+// straight into buf (no intermediate copy of the payload).
+func appendKeyBR(buf []byte, field int, rc string, emit []byte) []byte {
+	mark := len(buf)
+	buf = appendStringField(buf, 1, AttrBREmit)
+	inner := len(buf)
+	buf = append(buf, byte(7<<3|2))
+	buf = binary.AppendUvarint(buf, uint64(uvarintLen(uint64(len(rc)))+len(rc)+len(emit)))
+	buf = binary.AppendUvarint(buf, uint64(len(rc)))
+	buf = append(buf, rc...)
+	buf = append(buf, emit...)
+	buf = closeMessage(buf, 2, inner)
+	return closeMessage(buf, field, mark)
+}
+
+// appendKeyBytes2 writes one KeyValue whose bytes_value is a || b.
+func appendKeyBytes2(buf []byte, field int, key string, a, b []byte) []byte {
+	mark := len(buf)
+	buf = appendStringField(buf, 1, key)
+	inner := len(buf)
+	buf = append(buf, byte(7<<3|2))
+	buf = binary.AppendUvarint(buf, uint64(len(a)+len(b)))
+	buf = append(buf, a...)
+	buf = append(buf, b...)
+	buf = closeMessage(buf, 2, inner)
+	return closeMessage(buf, field, mark)
+}
+
+// splitBR reads a `_br` value back: the reverse context (nil when the checkpoint took none over)
+// and the payload.  ok is false when the length prefix overruns the value.
+func splitBR(raw []byte) (rc, emit []byte, ok bool) {
+	n, k := binary.Uvarint(raw)
+	if k <= 0 || n > uint64(len(raw)-k) {
+		return nil, nil, false
+	}
+	if n > 0 {
+		rc = raw[k : k+int(n)]
+	}
+	return rc, raw[k+int(n):], true
 }
 
 // appendKeyBytes writes one KeyValue whose value is the bytes_value raw (written even when empty:
@@ -577,27 +682,6 @@ func appendKeyString(buf []byte, field int, key, s string) []byte {
 	buf = appendStringFieldAlways(buf, 1, s)
 	buf = closeMessage(buf, 2, inner)
 	return closeMessage(buf, field, mark)
-}
-
-// appendBridgeWireBytes writes the span's wire attributes from its bridge wire entry, as
-// appendBridgeWire did into the object tree: `_rc` when PrepareCheckpoint decided one, then `_br`
-// (the raw emit payload) on checkpoints, or `_o` (SB, the start ordinal) and `_d` (the depth) on
-// ordinary spans, both as uvarint bytes.
-func appendBridgeWireBytes(buf []byte, w *bridgeWire, highPriority bool) []byte {
-	if w == nil {
-		return buf
-	}
-	if w.rev.rc != "" { // Tomislav-RetCtx: `_rc`, decided by PrepareCheckpoint (reverse_checkpoint.go)
-		buf = appendKeyString(buf, 9, backend.ReverseTrussCheckpointKey, w.rev.rc)
-	}
-	if highPriority {
-		return appendKeyBytes(buf, 9, AttrBREmit, w.emit)
-	}
-	var tmp [binary.MaxVarintLen64]byte
-	if w.structural {
-		buf = appendKeyBytes(buf, 9, AttrO, tmp[:binary.PutUvarint(tmp[:], uint64(w.ordinal))])
-	}
-	return appendKeyBytes(buf, 9, AttrD, tmp[:binary.PutUvarint(tmp[:], uint64(w.depth))])
 }
 
 // appendAnyValue writes an AnyValue message as the given field.  A oneof member is written even

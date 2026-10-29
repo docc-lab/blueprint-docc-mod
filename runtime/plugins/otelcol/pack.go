@@ -121,6 +121,13 @@ const AttrBR = "__bag._br"
 // priority bit). The value carries the PRE-RESET packed payload (the
 // full inherited chain ending at this span). Stripped at export time
 // for non-checkpoint spans by createResourceSpans/convertAttributes.
+//
+// Tomislav-RetCtx (user 2026-10-29): on the wire the value is ONE bytes attribute holding
+// everything the checkpoint has to say: uvarint(len(rc)) || rc || payload, where rc is the
+// packed reverse context the checkpoint took over (empty, a single 0x00, when none); the
+// `_rc` attribute beside `_br` is gone (otlp_wire.go appendBridgeWireBytes / splitBR,
+// utils/retctx_wire.py).  Intra-process (legacy fixed-cpd mode) the attribute still holds the
+// base64 of the payload alone.
 const AttrBREmit = "_br"
 
 // AttrOC is the ordinal-chain breadcrumb attached to NON-checkpoint spans:
@@ -141,6 +148,10 @@ const AttrOC = "_oc"
 // (with parent fingerprints) lives only in the checkpoint's _br. Carried
 // OnStart→export as a base64 string (UTF-8-safe intra-process); convertAttributes
 // base64-decodes and emits the raw varint bytes.
+//
+// Tomislav-RetCtx (user 2026-10-29): on the wire an ordinary SB span carries `_o` alone,
+// uvarint(ordinal) || uvarint(depth); the `_d` attribute beside it is gone (otlp_wire.go
+// appendBridgeWireBytes).
 const AttrO = "_o"
 
 // AttrDepth is the LEAN breadcrumb (experiment): a single int64 depth on
@@ -234,7 +245,7 @@ func unpackBR(buf []byte) (depthMod int, bloomBytes []byte, ok bool) {
 // AttrD is the path-bridge depth breadcrumb attached to interior (has-children)
 // NON-checkpoint spans: key "_d", value = varint(ABSOLUTE depth), emitted on
 // the wire as a proto BYTES value (not base64) — exactly mirroring how the SB
-// processor emits "_o". A surviving interior non-checkpoint self-places via its
+// processor emits "_o" (holding the depth too, since 2026-10-29). A surviving interior non-checkpoint self-places via its
 // native parent_span_id + this depth; the full anchored payload (`_br`) lives
 // only on checkpoints and leaves. Carried OnStart→export as a base64 string
 // (UTF-8-safe intra-process); convertAttributes base64-decodes to raw varint bytes.

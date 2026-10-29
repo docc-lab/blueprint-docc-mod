@@ -48,10 +48,10 @@ type reverseSpanState struct {
 	prepared  bool
 	carried   string
 	// Tomislav-RetCtx: the decisions PrepareCheckpoint makes for a bridge span with wire state,
-	// read at OnEnd by classification (pathCheckpoint) and export (appendBridgeWire) instead of
-	// being written to the span as attributes (`_rc`, `__bag.rev_rejected`).  Spans without wire
+	// read at OnEnd by classification (pathCheckpoint) and export (appendBridgeWireBytes) instead
+	// of being written to the span as attributes (`_rc`, `__bag.rev_rejected`).  Spans without wire
 	// state (vanilla, the legacy fixed-cpd mode) still use the attributes.
-	rc       string // the trusses this span took over, as the exported `_rc` text
+	rc       string // the trusses this span took over, raw (packed envelope); exported inside `_br`
 	rejected bool   // a leaf that rejected being a checkpoint
 }
 
@@ -239,12 +239,14 @@ func (p *reverseCheckpointProcessor) prepare(span trace.Span, returned string, c
 			emitted, returned = p.reversePolicy.route(returned, p.reversePolicy.terminates(scheduled, root), depth, rand.Float64)
 		}
 		if emitted != "" {
-			// Tomislav-RetCtx: exported as before, as text (the carrier is raw in the process); for a
-			// bridge span with wire state, from there (appendBridgeWire) instead of the span.
-			if rc := backend.RetCtxText(emitted); w != nil {
-				w.rev.rc = rc
+			// Tomislav-RetCtx: a bridge span with wire state keeps the reverse context there, raw: the
+			// export folds it into the span's `_br` bytes (otlp_wire.go appendBridgeWireBytes, user
+			// 2026-10-29).  A span without wire state (vanilla, the legacy fixed-cpd mode) carries it
+			// as the `_rc` attribute, as text (the carrier is raw in the process).
+			if w != nil {
+				w.rev.rc = emitted
 			} else {
-				s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, rc))
+				s.SetAttributes(attribute.String(backend.ReverseTrussCheckpointKey, backend.RetCtxText(emitted)))
 			}
 			backend.CountCheckpoint()
 			backend.SampleLogCheckpoint(emitted)

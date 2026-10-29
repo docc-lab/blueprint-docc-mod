@@ -1923,3 +1923,54 @@ Not done, noted for later: the per-batch export goroutine (its stack growth, abo
 PB, is older than this work) could be one long-lived worker per processor; gRPC's pooled copy of
 the request misses its pool once per batch under load (117 MB per run; the old exporter's marshal
 buffer did the same) and is not ours to change.
+
+## 2026-10-29: one bridge attribute per span
+
+The user's call from the next-steps list: "flatten bridges-related data as much as possible -- do
+not have multiple kv pairs for one set of bridge data", and in particular fold the reverse context
+into `_br`.  Before, a checkpoint that took over a reverse context exported two attributes, `_br`
+(bytes) and `_rc` (the packed reverse envelope as base64url text), and an ordinary SB span exported
+`_o` and `_d`.  Now every bridge span exports exactly one:
+
+    checkpoint:          `_br` = uvarint(len(rc)) || rc || payload   (no reverse context: a single 0x00, then the payload)
+    ordinary PB / CGPB:  `_d`  = uvarint(depth)
+    ordinary SB:         `_o`  = uvarint(ordinal) || uvarint(depth)
+
+The reverse context is written raw (the packed envelope, `backend/reversetruss_packed.go`); the
+base64 text existed only because `_rc` was a string attribute.  The ranged processors keep it raw in
+the wire entry now (`reverseSpanState.rc`), the legacy fixed-cpd mode still sets the `_rc` text
+attribute and the encoder folds it the same way (`legacyBridgeBytes`); vanilla, which has no `_br`,
+still exports `_rc` as text.  Nothing in the collector reads these keys (checked:
+`opentelemetry-collector-contrib` only synthesises them in telemetrygen), the ClickHouse census and
+the loss analysis test `_br` presence, which still means "checkpoint", and the reverse-context
+readers (`utils/retctx_wire.py`: `analyze_dsb_sn_e2e`, `run_dsb_sn_nw`, `run_dsb_sn_e2e`) read the
+folded form as well as the two older ones, recognising a pre-fold `_br` by its prefix not framing a
+packed envelope.  The random checkpoint processor and `utils/spanload` (synthetic payloads, size
+models) are untouched.
+
+Code: `otlp_wire.go` (`bridgeBytes`, `appendBridgeWireBytes`, `appendKeyBR`, `splitBR`,
+`legacyBridgeBytes`), `reverse_checkpoint.go` (raw rc), `pack.go` / `reversetruss.go` (docs);
+tests: `otlp_wire_br_test.go` (layout, split, legacy fold), the reference encoder of
+`otlp_wire_test.go` (`refBridge`), the exported-attribute helpers of the checkpoint tests
+(`exportedCheckpoint`, `exportedEmit`), `structural_truss_test.go` (one attribute);
+`utils/test_analyze_dsb_sn_e2e.py` (folded form).  All Go and Python suites pass.
+
+Checked end to end (`r21_fold_check.sh`, `fold_check.py`: PB and SB no-work rebuilt, 10 s at
+50 req/s with every span recorded, reverse path on, cpd 3 / ttl): every bridge span carries exactly
+one of the three keys, no `_rc` anywhere, every `_br` splits, every folded reverse context decodes
+with the stored-trace reader.
+
+| | PB | SB |
+|---|---|---|
+| spans recorded | 11,500 | 11,477 |
+| checkpoints, of which with a reverse context | 5,500 / 2,500 | 5,489 / 2,495 |
+| reverse context raw, mean | 28 B | 34.5 B |
+| the old `_rc` attribute it replaces, mean | 49 B | 57 B |
+| checkpoint payload, mean | 15 B | 49 B |
+| ordinary-span attribute | `_d` 1 B | `_o` 2 B (was `_o` 1 B + `_d` 1 B, two key/values of ~10 B each) |
+
+Per span of this workload the export shrinks by about 4 bytes for PB (21 B saved on every rc
+checkpoint, 1 B prefix added on every checkpoint) and about 10 bytes for SB (the same plus one
+key/value less on every ordinary span); one attribute column less per span in ClickHouse.  CPU was
+not re-measured: the change removes one key/value per affected span and a base64 encode per rc
+checkpoint, below the resolution of the pair runs.

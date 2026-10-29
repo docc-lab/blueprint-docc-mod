@@ -60,7 +60,7 @@ func refSpanProto(s sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, w *bridge
 		Name:              s.Name(),
 		Kind:              refSpanKind(s.SpanKind()),
 		Status:            &tracepb.Status{Code: tracepb.Status_StatusCode(s.Status().Code), Message: s.Status().Description},
-		Attributes:        refBridgeWire(refAttributes(attrs, highPriority, policy), w, highPriority),
+		Attributes:        refBridge(refAttributes(attrs, policy, true), attrs, w, highPriority, policy),
 		Events:            refEvents(s.Events(), policy),
 		Links:             refLinks(s.Links(), policy),
 	}
@@ -92,12 +92,7 @@ func refAttribute(kv attribute.KeyValue) *commonpb.KeyValue {
 	return &commonpb.KeyValue{Key: string(kv.Key), Value: anyValueProto(kv.Value)}
 }
 
-func refBridgeBytesKV(key, b64 string) *commonpb.KeyValue {
-	raw, _ := decodeBR(b64)
-	return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_BytesValue{BytesValue: raw}}}
-}
-
-func refAttributes(attrs []attribute.KeyValue, highPriority bool, policy attrPolicy) []*commonpb.KeyValue {
+func refAttributes(attrs []attribute.KeyValue, policy attrPolicy, span bool) []*commonpb.KeyValue {
 	if policy == policyVanilla {
 		if len(attrs) == 0 {
 			return nil
@@ -119,48 +114,25 @@ func refAttributes(attrs []attribute.KeyValue, highPriority bool, policy attrPol
 		switch policy {
 		case policyPath:
 			switch attr.Key {
-			case "depth", "hasChildren":
+			case "depth", "hasChildren", AncestryKey, AncestryModeKey, AncestryExtraKey:
 				continue
 			}
 		case policyCallGraph:
 			switch attr.Key {
-			case "depth", "hasChildren", "childCount":
+			case "depth", "hasChildren", "childCount", AncestryKey, AncestryModeKey, AncestryExtraKey:
 				continue
 			}
 		case policyStructural:
 			switch attr.Key {
-			case "depth", "hasChildren", "childCount", "eventCount", "remEndEvents":
+			case "depth", "hasChildren", "childCount", "eventCount", "remEndEvents", AttrOC, AttrDepth:
 				continue
 			}
 		}
-		if attr.Key == AttrBREmit {
-			if !highPriority {
-				continue
-			}
-			out = append(out, refBridgeBytesKV(string(AttrBREmit), attr.Value.AsString()))
-			continue
-		}
-		if policy == policyStructural {
-			if attr.Key == AttrO || attr.Key == AttrD {
-				if highPriority {
-					continue
-				}
-				out = append(out, refBridgeBytesKV(string(attr.Key), attr.Value.AsString()))
-				continue
-			}
-			if attr.Key == AttrOC || attr.Key == AttrDepth {
-				continue
-			}
-		} else {
-			if attr.Key == AttrD {
-				if highPriority {
-					continue
-				}
-				out = append(out, refBridgeBytesKV(string(AttrD), attr.Value.AsString()))
-				continue
-			}
+		// Tomislav-RetCtx (2026-10-29): a bridge span's own breadcrumbs and reverse context are
+		// written by refBridge as one attribute; on events and links they are ordinary attributes.
+		if span {
 			switch attr.Key {
-			case AncestryKey, AncestryModeKey, AncestryExtraKey:
+			case AttrBREmit, AttrD, AttrO, backend.ReverseTrussCheckpointKey:
 				continue
 			}
 		}
@@ -169,25 +141,64 @@ func refAttributes(attrs []attribute.KeyValue, highPriority bool, policy attrPol
 	return out
 }
 
-func refBridgeWire(out []*commonpb.KeyValue, w *bridgeWire, highPriority bool) []*commonpb.KeyValue {
-	if w == nil {
-		return out
-	}
+// refBridge is the reference layout of the one bridge attribute (otlp_wire.go appendBridgeWireBytes):
+//
+//	checkpoint:          `_br` = uvarint(len(rc)) || rc || payload
+//	ordinary PB / CGPB:  `_d`  = uvarint(depth)
+//	ordinary SB:         `_o`  = uvarint(ordinal) || uvarint(depth)
+//
+// from the wire entry when there is one, else (bridge policies) from the legacy attributes:
+// `_br` / `_d` / `_o` base64 (malformed = empty bytes, absent = none), `_rc` text taken raw.
+func refBridge(out []*commonpb.KeyValue, attrs []attribute.KeyValue, w *bridgeWire, highPriority bool, policy attrPolicy) []*commonpb.KeyValue {
 	bytesKV := func(key string, raw []byte) *commonpb.KeyValue {
 		return &commonpb.KeyValue{Key: key, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_BytesValue{BytesValue: raw}}}
 	}
-	varint := func(n int) []byte { return varintEncode(n) }
-	if w.rev.rc != "" {
-		out = append(out, &commonpb.KeyValue{Key: backend.ReverseTrussCheckpointKey,
-			Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: w.rev.rc}}})
+	var rc string
+	var emit, depth, ordinal []byte
+	structural := policy == policyStructural
+	switch {
+	case w != nil:
+		rc, emit, depth, structural = w.rev.rc, w.emit, varintEncode(w.depth), w.structural
+		if w.structural {
+			ordinal = varintEncode(w.ordinal)
+		}
+	case policy == policyVanilla:
+		return out
+	default:
+		legacy := func(v attribute.Value) []byte {
+			raw, ok := decodeBR(v.AsString())
+			if !ok {
+				return []byte{}
+			}
+			return raw
+		}
+		for _, attr := range attrs {
+			switch attr.Key {
+			case AttrBREmit:
+				emit = legacy(attr.Value)
+			case AttrD:
+				depth = legacy(attr.Value)
+			case AttrO:
+				ordinal = legacy(attr.Value)
+			case backend.ReverseTrussCheckpointKey:
+				rc = backend.RetCtxFromText(attr.Value.AsString())
+			}
+		}
 	}
 	if highPriority {
-		return append(out, bytesKV(AttrBREmit, w.emit))
+		value := append(varintEncode(len(rc)), rc...)
+		return append(out, bytesKV(AttrBREmit, append(value, emit...)))
 	}
-	if w.structural {
-		out = append(out, bytesKV(AttrO, varint(w.ordinal)))
+	if structural {
+		if ordinal == nil && depth == nil {
+			return out
+		}
+		return append(out, bytesKV(AttrO, append(append([]byte{}, ordinal...), depth...)))
 	}
-	return append(out, bytesKV(AttrD, varint(w.depth)))
+	if depth == nil {
+		return out
+	}
+	return append(out, bytesKV(AttrD, depth))
 }
 
 func refEvents(events []sdktrace.Event, policy attrPolicy) []*tracepb.Span_Event {
@@ -196,7 +207,7 @@ func refEvents(events []sdktrace.Event, policy attrPolicy) []*tracepb.Span_Event
 	}
 	out := make([]*tracepb.Span_Event, len(events))
 	for i, event := range events {
-		out[i] = &tracepb.Span_Event{TimeUnixNano: uint64(event.Time.UnixNano()), Name: event.Name, Attributes: refAttributes(event.Attributes, true, policy)}
+		out[i] = &tracepb.Span_Event{TimeUnixNano: uint64(event.Time.UnixNano()), Name: event.Name, Attributes: refAttributes(event.Attributes, policy, false)}
 	}
 	return out
 }
@@ -209,7 +220,7 @@ func refLinks(links []sdktrace.Link, policy attrPolicy) []*tracepb.Span_Link {
 	for i, link := range links {
 		traceID := link.SpanContext.TraceID()
 		spanID := link.SpanContext.SpanID()
-		out[i] = &tracepb.Span_Link{TraceId: traceID[:], SpanId: spanID[:], Attributes: refAttributes(link.Attributes, true, policy)}
+		out[i] = &tracepb.Span_Link{TraceId: traceID[:], SpanId: spanID[:], Attributes: refAttributes(link.Attributes, policy, false)}
 	}
 	return out
 }

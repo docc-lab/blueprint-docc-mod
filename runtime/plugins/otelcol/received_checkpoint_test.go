@@ -62,12 +62,42 @@ func exportedCheckpoint(t *testing.T, span *tracepb.Span) string {
 		if backend.IsReverseBaggageKey(attribute.Key(attr.Key)) {
 			t.Fatalf("SDK leaked reverse carrier: %s", attr.Key)
 		}
-		if attr.Key == backend.ReverseTrussCheckpointKey {
-			// Tomislav-RetCtx: exported as text, compared in the in-process (raw) form.
+		switch attr.Key {
+		case backend.ReverseTrussCheckpointKey:
+			// Tomislav-RetCtx: vanilla exports `_rc` as text; compared in the in-process (raw) form.
 			checkpoint = backend.RetCtxFromText(attr.Value.GetStringValue())
+		case AttrBREmit:
+			// Tomislav-RetCtx (user 2026-10-29): a bridge span's reverse context is folded into
+			// its one `_br` attribute, raw (otlp_wire.go appendBridgeWireBytes / splitBR).
+			rc, _, ok := splitBR(attr.Value.GetBytesValue())
+			if !ok {
+				t.Fatal("malformed _br")
+			}
+			if len(rc) > 0 {
+				checkpoint = backend.RetCtxFromText(string(rc))
+			}
 		}
 	}
 	return checkpoint
+}
+
+// exportedEmit is the checkpoint payload of an exported span's `_br`, after the folded reverse
+// context; nil without `_br`.
+func exportedEmit(t *testing.T, span *tracepb.Span) []byte {
+	t.Helper()
+	for _, attr := range span.Attributes {
+		if attr.Key == AttrBREmit {
+			_, emit, ok := splitBR(attr.Value.GetBytesValue())
+			if !ok {
+				t.Fatal("malformed _br")
+			}
+			if emit == nil {
+				emit = []byte{}
+			}
+			return emit
+		}
+	}
+	return nil
 }
 
 // Tomislav-RetCtx: each live receiver uses its own trusses' TTLs, while an
@@ -174,12 +204,7 @@ func TestSDKCoalescesExpiredTrussesAndForwardsOthers(t *testing.T) {
 			if len(hp) != 1 || len(lp) != 0 || exportedCheckpoint(t, hp[0]) != emitted {
 				t.Fatal("expiry did not produce one checkpoint span")
 			}
-			var ownBytes []byte
-			for _, attr := range hp[0].Attributes {
-				if attr.Key == AttrBREmit {
-					ownBytes = attr.Value.GetBytesValue()
-				}
-			}
+			ownBytes := exportedEmit(t, hp[0])
 			want, _ := decodeBR(ownTruss)
 			if len(ownBytes) == 0 || !bytes.Equal(ownBytes, want) {
 				t.Fatal("emission omitted or changed its own checkpoint data")

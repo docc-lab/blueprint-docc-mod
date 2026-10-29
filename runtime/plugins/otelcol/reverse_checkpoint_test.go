@@ -3,7 +3,6 @@ package otelcol
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"strconv"
 	"strings"
 	"sync"
@@ -251,16 +250,27 @@ func TestSDKUpstreamReverseCheckpointPriority(t *testing.T) {
 			if len(hp) != 1 || len(lp) != 0 {
 				t.Fatalf("upstream reverse checkpoint lacks checkpoint priority: HP=%d LP=%d", len(hp), len(lp))
 			}
-			var exported string
+			var exported []byte
+			var keys []string
 			for _, attr := range hp[0].Attributes {
-				if attr.Key == backend.ReverseTrussCheckpointKey {
-					exported = attr.Value.GetStringValue()
+				keys = append(keys, attr.Key)
+				if attr.Key == AttrBREmit {
+					rc, _, ok := splitBR(attr.Value.GetBytesValue())
+					if !ok {
+						t.Fatal("malformed _br")
+					}
+					exported = rc
 				}
 			}
-			// Tomislav-RetCtx: exported as the text it always was (RawURL base64), although
-			// the carrier is raw bytes in the process.
-			if exported != backend.RetCtxText(retCtx) || exported != base64.RawURLEncoding.EncodeToString([]byte(retCtx)) {
+			// Tomislav-RetCtx (user 2026-10-29): the reverse context is exported raw, folded into the
+			// one `_br` attribute (otlp_wire.go appendBridgeWireBytes); no `_rc` beside it.
+			if string(exported) != retCtx {
 				t.Fatal("upstream checkpoint export lost the returned truss")
+			}
+			for _, key := range keys {
+				if key == backend.ReverseTrussCheckpointKey {
+					t.Fatalf("bridge span exported `_rc` beside `_br`: %v", keys)
+				}
 			}
 		})
 	}

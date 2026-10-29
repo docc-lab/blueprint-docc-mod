@@ -421,6 +421,10 @@ func IsRoot() bool              { return os.Getenv("RT_ROOT") == "on" }
 // is named like the forward path's `_br`/`_o`/`_d` rather than spelled out. The
 // old "bridges.checkpoint" cost 18 bytes of key text per checkpoint span -- more
 // than the whole packed payload now costs -- for a name no consumer parses.
+//
+// Tomislav-RetCtx (user 2026-10-29): a BRIDGE span no longer exports this key at all; its
+// reverse context travels inside the one `_br` bytes attribute (otelcol/otlp_wire.go
+// appendBridgeWireBytes).  Vanilla, which has no `_br`, still exports `_rc` as text.
 const ReverseTrussCheckpointKey = "_rc"
 
 // Tomislav-RetCtx: a "bridges.forward_up" marker used to be written beside the

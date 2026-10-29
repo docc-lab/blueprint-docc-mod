@@ -164,7 +164,7 @@ func TestCheckpointTTLPaths(t *testing.T) {
 							t.Fatalf("internal TTL carrier leaked: %s", attr.Key)
 						}
 						if attr.Key == AttrBREmit {
-							if !checkpoint || !bytes.Equal(attr.Value.GetBytesValue(), wantEmit) {
+							if !checkpoint || !bytes.Equal(exportedEmit(t, exported), wantEmit) {
 								t.Fatal("export truss changed or emitted early")
 							}
 						}
