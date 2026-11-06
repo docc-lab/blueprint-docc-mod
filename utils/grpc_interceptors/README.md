@@ -1974,3 +1974,54 @@ checkpoint, 1 B prefix added on every checkpoint) and about 10 bytes for SB (the
 key/value less on every ordinary span); one attribute column less per span in ClickHouse.  CPU was
 not re-measured: the change removes one key/value per affected span and a base64 encode per rc
 checkpoint, below the resolution of the pair runs.
+
+## 2026-11-06: invariant checks in the tracing instrumentation
+
+The user asked for assertions in the tracing code, in both the wrapper templates and the
+interceptors: "just do the simple comparison ones - things like bounds checks and structural
+consistency", on branch `perf-own-code`.  A broken check panics (the harness already fails a run on
+any pod restart); each one is a comparison on the hot path, and the panic is built only when it
+fails (`backend.InvariantBroken`, `runtime/core/backend/invariant.go`, panic value
+`*backend.InvariantError` naming the rule and the values).
+
+What is checked, in both versions (the HTTP middleware shares the interceptors' code):
+
+| check | before |
+|---|---|
+| `OT_BRIDGE` is one of v, vanilla, pb, path, rc, cgpb, sb or empty: the template generator returns a build error, the interceptor constructors panic at startup | any other value silently meant PB |
+| the forward carrier decodes and names a valid trace ID and span ID (JSON, compact, and the unsampled `U:` / `0x00` forms; `U:` is exactly 50 characters) | a carrier that did not decode started a new trace; the `U:` hex parse errors were dropped |
+| a bridge caller sends `__seq`, and `__seq` is an integer >= 1 | a missing or bad ordinal was skipped (the processor then read 0) |
+| the collector client returns a tracer provider (wrappers; the interceptors already returned the error) | error dropped |
+| the server span is valid and has the caller's trace ID; the client span is valid before its context is encoded | not checked |
+| a bridge client call finds the child counter (SB: also the end-event list and mutex) on the context (BUG_REPORT.md F-08) | bare type-assertion panic |
+| a child ordinal is >= 1 after `childCount.Add(1)` | not checked |
+| SB: no more end events than children when the server finishes | not checked |
+| a reverse context sent or received is a packed envelope (`backend.IsPackedRetCtx`) and its header text decodes | an undecodable trailer was dropped as "" |
+| one value per tracing header (`bp-trace-ctx`, `bp-ret-ctx`, HTTP `Bp-Trace-Ctx` / `Bp-Ret-Ctx`) and a method name with a service and a method part | not checked |
+
+Only packed reverse contexts leave a service: `encodeTruss` packs every checkpoint-only envelope
+of the real segment kinds, and the one producer of the JSON envelope, `BuildRetCtx`, has no
+callers.  Three tests built their sample reverse context with the literal kind `"pb"`, which is
+not a segment kind and so produced the JSON envelope; they now use `backend.SegPathCheckpoint`.
+
+Stack frames: the interceptor closures that stay on the stack for the whole call are unchanged
+(client 288 bytes, server 256).  Formatting a failure in place would have grown the helpers (setup
+from 48 to 536 bytes), so the failure paths are typed out-of-line functions
+(`interceptors/invariants.go`); the two checks that compare span contexts run in their own
+functions (`checkServerSpan`, `checkClientSpan`).  Helpers now: client `prepare` 104 bytes (was 96),
+`retCtxFromTrailer` 64 (40), server `prepare` 320 (376), `setup`, `finish`, `carrierFor`
+unchanged.
+
+Found on the way, fixed: every wrapper-mode build of this branch failed to compile, before these
+changes too ("encoding/base64" imported and not used since the reverse context became raw bytes;
+vanilla never used "sync/atomic"; SB's "sync" was commented out of the import list).  The
+generators now import per kind what each template uses.
+
+Verification: `go test -race` of `runtime/core/backend` and `interceptors` pass, including
+`invariants_test.go` (every check fires on bad input, real input passes) and
+`invariant_test.go`; `go vet` clean.  Generated the upstream-matching Social Network
+(`docker_<kind>_es_bd`) in wrapper mode for v, pb, cgpb and sb and in interceptor mode for sb, and
+compiled every process: 13 of 13 each; every one of the 32 generated wrapper files carries the
+checks.  `go test ./plugins/opentelemetry/` fails exactly as before the change (37 identical
+failures, same messages: the stale fixture of BUG_REPORT.md F-11), so the wrappers' new checks are
+compile-checked but not run.  Not yet measured on the cluster.

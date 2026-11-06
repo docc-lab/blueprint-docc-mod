@@ -108,7 +108,9 @@ const (
 
 // variantFor maps OT_BRIDGE values to variants, exactly as the wrapper templates are chosen in
 // plugins/opentelemetry (ir_ot_server.go / ir_ot_client.go): "v"/"vanilla", "cgpb", "sb", and
-// "pb"/"path"/"rc"/"" for the path bridge.  Like there, any other value means the path bridge.
+// "pb"/"path"/"rc"/"" for the path bridge.  Tomislav-RetCtx: any other value is a broken invariant
+// (it used to mean the path bridge silently); the template generator refuses it the same way at build
+// time.  Called by the constructors, so a bad kind stops the process at startup.
 func variantFor(kind string) variant {
 	switch kind {
 	case "v", "vanilla":
@@ -117,9 +119,11 @@ func variantFor(kind string) variant {
 		return variant{name: "cgpb", countChildren: true, childAttr: childCountAttr}
 	case "sb":
 		return variant{name: "sb", countChildren: true, childAttr: childCountAttr, endEvents: true}
-	default: // "pb", "path", "rc", "" and anything unknown
+	case "pb", "path", "rc", "":
 		return variant{name: "pb", countChildren: true, childAttr: hasChildrenAttr}
 	}
+	backend.InvariantBroken("OT_BRIDGE is one of v, vanilla, pb, path, rc, cgpb, sb or empty", "kind=", kind) // runtime/core/backend/invariant.go
+	return variant{}
 }
 
 // What an interceptor needs for one gRPC method: the span name and the tracer to start the span
@@ -164,6 +168,11 @@ func (c *methodCache) get(fullMethod string) *methodInfo {
 // newMethodInfo names the span and fetches the tracer for one method of a service, on one side.
 // Used by methodCache.get and by the HTTP middleware (http_server.go, http_client.go).
 func newMethodInfo(tp trace.TracerProvider, side side, service, method string) *methodInfo {
+	// Tomislav-RetCtx: span and tracer names are built from both parts ("/pkg.Service/Method" for
+	// gRPC, the service name and "/Method" for HTTP); once per method, the result is cached.
+	if service == "" || method == "" {
+		brokenValue("a traced method has a service name and a method name", "service/method", service+"/"+method) // invariants.go
+	}
 	var tracerName, spanName string
 	if side == serverSpanNames {
 		// The server wrapper names its tracer after the service.

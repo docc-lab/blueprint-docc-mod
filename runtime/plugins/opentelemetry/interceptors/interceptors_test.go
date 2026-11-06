@@ -328,7 +328,7 @@ func TestVanillaRetCtx(t *testing.T) {
 	forTransports(t, func(t *testing.T, tr transport) {
 		t.Setenv("REVERSE_TRUSS", "on")
 		_, tracer := newRecorder(sdktrace.AlwaysSample())
-		ret := backend.EncodeCheckpointRetCtx(trace.SpanID{1, 2, 3, 4, 5, 6, 7, 8}, 1, "pb", nil)
+		ret := backend.EncodeCheckpointRetCtx(trace.SpanID{1, 2, 3, 4, 5, 6, 7, 8}, 1, backend.SegPathCheckpoint, nil) // Tomislav-RetCtx: the kind live code passes, so the envelope is packed
 
 		for _, tc := range []struct {
 			name    string
@@ -525,7 +525,7 @@ func TestVanillaNoBridgeState(t *testing.T) {
 func TestRequestStateKeys(t *testing.T) {
 	type otherKey struct{}
 	parent := context.WithValue(context.Background(), otherKey{}, "parent value")
-	ret := backend.EncodeCheckpointRetCtx(trace.SpanID{9}, 1, "pb", nil)
+	ret := backend.EncodeCheckpointRetCtx(trace.SpanID{9}, 1, backend.SegPathCheckpoint, nil) // Tomislav-RetCtx: the kind live code passes, so the envelope is packed
 	for _, v := range []variant{variantFor("v"), variantFor("pb"), variantFor("sb")} {
 		bag := map[string]string{"__seq": "4"}
 		s := &requestState{Context: parent, children: v.countChildren, hasEndEvents: v.endEvents,

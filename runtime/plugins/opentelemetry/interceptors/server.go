@@ -86,23 +86,34 @@ func (s *serverSide) prepare(ctx context.Context, carrier string) (context.Conte
 	//    so downstream hops stay in the same trace; no tracing work at all.
 	if carrier != "" {
 		cfg, upstream, full, err := decodeCarrier(carrier) // carrier.go
-		if err == nil && !full {
+		// Tomislav-RetCtx: only a traced caller's client side writes this header, so a carrier that
+		// does not decode, or names no valid span, is a bug there (it used to start a new trace).
+		if err != nil {
+			backend.InvariantBroken("the forward carrier decodes", err) // runtime/core/backend/invariant.go
+		}
+		if !cfg.TraceID.IsValid() || !cfg.SpanID.IsValid() {
+			brokenIDs("the forward carrier names a valid trace ID and span ID", cfg.TraceID, cfg.SpanID) // invariants.go
+		}
+		if !full {
 			cfg.Remote = true
 			return trace.ContextWithRemoteSpanContext(ctx, trace.NewSpanContext(cfg)), nil, false
 		}
 		// 2. The caller's span becomes our remote parent; its baggage comes along (for the span
-		//    processor to read when the server span starts).  A carrier that does not decode
-		//    leaves cfg empty, so the span starts a new trace, which is what the wrappers do with
-		//    JSON that does not parse.
+		//    processor to read when the server span starts).
 		ctx = trace.ContextWithRemoteSpanContext(ctx, trace.NewSpanContext(cfg))
 		state.baggage = upstream
 
 		// 3. The caller's child ordinal ("__seq" in the baggage) must be on ctx as "seqNum"
 		//    before our span starts, so the bridge processor's OnStart reads the right ordinal.
+		//    Tomislav-RetCtx: a bridge caller always sends it (client.go, prepare), as an integer >= 1.
 		if sv, ok := upstream["__seq"]; ok {
-			if n, err := strconv.Atoi(sv); err == nil {
-				state.seqNum = n // boxed once here, not on every lookup
+			n, err := strconv.Atoi(sv)
+			if err != nil || n < 1 {
+				brokenValue("the caller's child ordinal (__seq) is an integer >= 1", "__seq", sv)
 			}
+			state.seqNum = n // boxed once here, not on every lookup
+		} else if s.v.countChildren {
+			brokenValue("a bridge caller sends its child ordinal (__seq)", "kind", s.v.name)
 		}
 	}
 	state.Context = ctx
@@ -112,6 +123,7 @@ func (s *serverSide) prepare(ctx context.Context, carrier string) (context.Conte
 // setup does steps 5-6 after the span has started, and sets call.ctx for the service.
 func (s *serverSide) setup(call *serverCall, ctx context.Context) {
 	state := call.state
+	checkServerSpan(call.span, state.Context) // Tomislav-RetCtx: invariants.go
 	// 5. Baggage the processor attached to the new span; the merged result must be visible on
 	//    ctx BEFORE the service runs, so nested calls carry it.  When the caller sent baggage,
 	//    the state already holds that very map and merging updates it in place.
@@ -146,6 +158,10 @@ func (s *serverSide) finish(call *serverCall, err error) string {
 		// The wrapper reads the list without the lock (all child calls have returned by now);
 		// taking it costs nothing and keeps the race detector quiet.
 		call.state.childrenMutex.Lock()
+		// Tomislav-RetCtx: every end event belongs to a child that took its ordinal first.
+		if children := int(call.state.childCount.Load()); len(call.state.endEvents) > children {
+			brokenCount("no more SB end events than children", "endEvents", len(call.state.endEvents), children)
+		}
 		setRemEndEvents(call.span, int(call.state.childCount.Load()), call.state.endEvents) // below
 		call.state.childrenMutex.Unlock()
 	}
@@ -226,6 +242,9 @@ func (s *requestState) Value(key any) any {
 // copy every request header into a new map on every call.
 func incomingTraceCtx(ctx context.Context) string {
 	if v := metadata.ValueFromIncomingContext(ctx, TraceCtxKey); len(v) > 0 { // TraceCtxKey: interceptors.go
+		if len(v) > 1 { // Tomislav-RetCtx: the client side sets exactly one (client.go, withOutgoingTraceCtx)
+			brokenCount("one forward carrier per request", "values", len(v), 1)
+		}
 		return v[0]
 	}
 	return ""
@@ -259,6 +278,9 @@ func serverRetCtx(ctx context.Context, tp trace.TracerProvider, span trace.Span,
 	retCtx := backend.MergedChildren(ctx)                                                       // runtime/core/backend/reversetruss.go
 	if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, children); prepared { // runtime/core/backend/checkpoint.go
 		retCtx = out
+	}
+	if retCtx != "" && !backend.IsPackedRetCtx(retCtx) { // Tomislav-RetCtx: the only form a service sends
+		brokenCount("the reverse context sent back is a packed envelope", "first byte", int(retCtx[0]), 1)
 	}
 	if callErr != nil {
 		return ""

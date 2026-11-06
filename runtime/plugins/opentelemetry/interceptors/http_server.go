@@ -119,6 +119,9 @@ func (r *tracedResponse) finish(status int) {
 // without Header.Get's canonicalisation on every call.
 func headerValue(h http.Header, canonicalKey string) string {
 	if v := h[canonicalKey]; len(v) > 0 {
+		if len(v) > 1 { // Tomislav-RetCtx: the other side sets exactly one (withHeader, tracedResponse.finish)
+			brokenCount("one value per tracing header", canonicalKey, len(v), 1) // invariants.go
+		}
 		return v[0]
 	}
 	return ""

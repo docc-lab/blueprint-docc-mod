@@ -196,13 +196,18 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 		"github.com/blueprint-uservices/blueprint/runtime/core/backend",
 		"strings",
 		"go.opentelemetry.io/otel/sdk/trace",
-		// "sync",
-		"sync/atomic",
 		"strconv",
-		"encoding/base64",
-		"encoding/binary",
-		// "github.com/blueprint-uservices/blueprint/runtime/plugins/critpath",
 	)
+	// Tomislav-RetCtx: packages only some kinds' templates use.  Go refuses an unused import, so adding
+	// them for every kind made every wrapper build fail ("encoding/base64" has had no user since the
+	// reverse context became raw bytes, vanilla never used "sync/atomic", SB's "sync" was commented
+	// out): the child counter (PB, CGPB, SB), SB's end-event mutex and its remEndEvents encoding.
+	switch os.Getenv("OT_BRIDGE") {
+	case "pb", "path", "rc", "", "cgpb":
+		server.Imports.AddPackages("sync/atomic")
+	case "sb":
+		server.Imports.AddPackages("sync/atomic", "sync", "encoding/binary")
+	}
 
 	slog.Info(fmt.Sprintf("Generating %v/%v", server.Package.PackageName, "env.sh"))
 	outputFile := filepath.Join(server.Package.Path, "env.sh")
@@ -225,6 +230,8 @@ func generateServerHandler(builder golang.ModuleBuilder, wrapped *gocode.Service
 		stmpl = serverTemplateSBridge
 	case "pb", "path", "rc", "":
 		stmpl = serverTemplatePath
+	default: // Tomislav-RetCtx: invariant, as interceptors.variantFor at run time (it used to mean the path bridge)
+		return blueprint.Errorf("OT_BRIDGE=%q is not one of v, vanilla, pb, path, rc, cgpb, sb or empty", os.Getenv("OT_BRIDGE"))
 	}
 	slog.Info(fmt.Sprintf("OT server wrapper: OT_BRIDGE=%q", os.Getenv("OT_BRIDGE")))
 	return gogen.ExecuteTemplateToFile("OTServerWrapper", stmpl, server, outputFile)
@@ -544,17 +551,33 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
 	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
 	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
-		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
-		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		// Tomislav-RetCtx: invariants (runtime/core/backend/invariant.go): only a traced caller writes
+		// this carrier, "U:" and 32 + 16 hex digits naming a valid trace and span.
+		if len(traceCtx) != 50 {
+			backend.InvariantBroken("an unsampled carrier is U: and 48 hex digits", "length=", len(traceCtx))
+		}
+		tid, tidErr := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, sidErr := trace.SpanIDFromHex(traceCtx[34:50])
+		if tidErr != nil || sidErr != nil {
+			backend.InvariantBroken("the unsampled carrier names a valid trace ID and span ID", traceCtx)
+		}
 		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
 		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
 		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 		return
 	}
 	var baggage map[string]string
+	var callerTraceID trace.TraceID // Tomislav-RetCtx: the trace the server span must continue
 	if traceCtx != "" {
-		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
+		span_ctx_config, upstreamBaggage, carrierErr := backend.GetSpanContext(traceCtx)
+		if carrierErr != nil { // Tomislav-RetCtx: only a traced caller writes this carrier
+			backend.InvariantBroken("the forward carrier decodes", carrierErr)
+		}
 		span_ctx := trace.NewSpanContext(span_ctx_config)
+		if !span_ctx.IsValid() {
+			backend.InvariantBroken("the forward carrier names a valid trace ID and span ID", traceCtx)
+		}
+		callerTraceID = span_ctx.TraceID()
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
 		
 		// Set baggage in context for span processor to read
@@ -569,17 +592,29 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// processor's OnStart reads the correct seqNum (else it defaults to 0 and
 	// CGPB HA / SB ordinals are never emitted).
 	if baggage != nil {
-		if sv, ok := baggage["__seq"]; ok {
-			if n, e := strconv.Atoi(sv); e == nil {
-				ctx = context.WithValue(ctx, "seqNum", n)
-			}
+		// Tomislav-RetCtx: a bridge caller always sends its child ordinal, an integer >= 1.
+		sv, ok := baggage["__seq"]
+		if !ok {
+			backend.InvariantBroken("a bridge caller sends its child ordinal (__seq)", "kind=sb")
 		}
+		n, e := strconv.Atoi(sv)
+		if e != nil || n < 1 {
+			backend.InvariantBroken("the caller's child ordinal (__seq) is an integer >= 1", "__seq=", sv)
+		}
+		ctx = context.WithValue(ctx, "seqNum", n)
 	}
 
-	tp, _ := handler.CollClient.GetTracerProvider(ctx)
+	tp, tpErr := handler.CollClient.GetTracerProvider(ctx)
+	if tpErr != nil { // Tomislav-RetCtx: invariant (runtime/core/backend/invariant.go)
+		backend.InvariantBroken("the collector client provides a tracer provider", tpErr)
+	}
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindServer))
 	defer span.End()
+	// Tomislav-RetCtx: the span the SDK started is valid and continues the caller's trace.
+	if sc := span.SpanContext(); !sc.IsValid() || (traceCtx != "" && sc.TraceID() != callerTraceID) {
+		backend.InvariantBroken("the server span is valid and continues the caller's trace", "caller=", callerTraceID.String(), " span=", sc.TraceID().String())
+	}
 
 	// Extract new baggage from span attributes by casting to ReadWriteSpan
 	if baggage == nil {
@@ -642,6 +677,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 
 	children := int(childCount.Load())
 	span.SetAttributes(attribute.Int("childCount", children))
+	if len(endEvents) > children { // Tomislav-RetCtx: every end event belongs to a child that took its ordinal first
+		backend.InvariantBroken("no more SB end events than children", "endEvents=", len(endEvents), " children=", children)
+	}
 	// Tomislav-RetCtx: delayed orthogonal truss summary for the SB processor:
 	// varint(children) || varint(count) || count*varint(start ordinal), in end
 	// order, dropping the last end (implied at reconstruction). The processor
@@ -667,6 +705,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		retCtx = backend.MergedChildren(ctx)
 		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, children); prepared { // Tomislav-RetCtx: the child count, not read back off the span
 			retCtx = out
+		}
+		if retCtx != "" && !backend.IsPackedRetCtx(retCtx) { // Tomislav-RetCtx: the only form a service sends
+			backend.InvariantBroken("the reverse context sent back is a packed envelope", "first byte=", retCtx[0])
 		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.
 		retCtx = backend.RetCtxText(retCtx)
@@ -709,8 +750,16 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// span start entirely; just restore the (unsampled) remote span context so
 	// downstream hops stay consistent, then call the service.
 	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
-		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
-		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		// Tomislav-RetCtx: invariants (runtime/core/backend/invariant.go): only a traced caller writes
+		// this carrier, "U:" and 32 + 16 hex digits naming a valid trace and span.
+		if len(traceCtx) != 50 {
+			backend.InvariantBroken("an unsampled carrier is U: and 48 hex digits", "length=", len(traceCtx))
+		}
+		tid, tidErr := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, sidErr := trace.SpanIDFromHex(traceCtx[34:50])
+		if tidErr != nil || sidErr != nil {
+			backend.InvariantBroken("the unsampled carrier names a valid trace ID and span ID", traceCtx)
+		}
 		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
 		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
 		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
@@ -718,9 +767,17 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	}
 
 	var baggage map[string]string
+	var callerTraceID trace.TraceID // Tomislav-RetCtx: the trace the server span must continue
 	if traceCtx != "" {
-		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
+		span_ctx_config, upstreamBaggage, carrierErr := backend.GetSpanContext(traceCtx)
+		if carrierErr != nil { // Tomislav-RetCtx: only a traced caller writes this carrier
+			backend.InvariantBroken("the forward carrier decodes", carrierErr)
+		}
 		span_ctx := trace.NewSpanContext(span_ctx_config)
+		if !span_ctx.IsValid() {
+			backend.InvariantBroken("the forward carrier names a valid trace ID and span ID", traceCtx)
+		}
+		callerTraceID = span_ctx.TraceID()
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
 
 		// Set baggage in context for span processor to read
@@ -736,16 +793,25 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// CGPB HA / SB ordinals are never emitted).
 	if baggage != nil {
 		if sv, ok := baggage["__seq"]; ok {
-			if n, e := strconv.Atoi(sv); e == nil {
-				ctx = context.WithValue(ctx, "seqNum", n)
+			n, e := strconv.Atoi(sv)
+			if e != nil || n < 1 { // Tomislav-RetCtx: an ordinal, when a caller sends one, is an integer >= 1
+				backend.InvariantBroken("the caller's child ordinal (__seq) is an integer >= 1", "__seq=", sv)
 			}
+			ctx = context.WithValue(ctx, "seqNum", n)
 		}
 	}
 
-	tp, _ := handler.CollClient.GetTracerProvider(ctx)
+	tp, tpErr := handler.CollClient.GetTracerProvider(ctx)
+	if tpErr != nil { // Tomislav-RetCtx: invariant (runtime/core/backend/invariant.go)
+		backend.InvariantBroken("the collector client provides a tracer provider", tpErr)
+	}
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindServer))
 	defer span.End()
+	// Tomislav-RetCtx: the span the SDK started is valid and continues the caller's trace.
+	if sc := span.SpanContext(); !sc.IsValid() || (traceCtx != "" && sc.TraceID() != callerTraceID) {
+		backend.InvariantBroken("the server span is valid and continues the caller's trace", "caller=", callerTraceID.String(), " span=", sc.TraceID().String())
+	}
 
 	// Extract new baggage from span attributes by casting to ReadWriteSpan
 	if baggage == nil {
@@ -798,6 +864,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, 0); prepared { // Tomislav-RetCtx: vanilla sets no child attributes: 0 children, as before
 			retCtx = out
 		}
+		if retCtx != "" && !backend.IsPackedRetCtx(retCtx) { // Tomislav-RetCtx: the only form a service sends
+			backend.InvariantBroken("the reverse context sent back is a packed envelope", "first byte=", retCtx[0])
+		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.
 		retCtx = backend.RetCtxText(retCtx)
 	}
@@ -837,17 +906,33 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
 	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
 	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
-		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
-		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		// Tomislav-RetCtx: invariants (runtime/core/backend/invariant.go): only a traced caller writes
+		// this carrier, "U:" and 32 + 16 hex digits naming a valid trace and span.
+		if len(traceCtx) != 50 {
+			backend.InvariantBroken("an unsampled carrier is U: and 48 hex digits", "length=", len(traceCtx))
+		}
+		tid, tidErr := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, sidErr := trace.SpanIDFromHex(traceCtx[34:50])
+		if tidErr != nil || sidErr != nil {
+			backend.InvariantBroken("the unsampled carrier names a valid trace ID and span ID", traceCtx)
+		}
 		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
 		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
 		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 		return
 	}
 	var baggage map[string]string
+	var callerTraceID trace.TraceID // Tomislav-RetCtx: the trace the server span must continue
 	if traceCtx != "" {
-		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
+		span_ctx_config, upstreamBaggage, carrierErr := backend.GetSpanContext(traceCtx)
+		if carrierErr != nil { // Tomislav-RetCtx: only a traced caller writes this carrier
+			backend.InvariantBroken("the forward carrier decodes", carrierErr)
+		}
 		span_ctx := trace.NewSpanContext(span_ctx_config)
+		if !span_ctx.IsValid() {
+			backend.InvariantBroken("the forward carrier names a valid trace ID and span ID", traceCtx)
+		}
+		callerTraceID = span_ctx.TraceID()
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
 		
 		// Set baggage in context for span processor to read
@@ -862,17 +947,29 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// processor's OnStart reads the correct seqNum (else it defaults to 0 and
 	// CGPB HA / SB ordinals are never emitted).
 	if baggage != nil {
-		if sv, ok := baggage["__seq"]; ok {
-			if n, e := strconv.Atoi(sv); e == nil {
-				ctx = context.WithValue(ctx, "seqNum", n)
-			}
+		// Tomislav-RetCtx: a bridge caller always sends its child ordinal, an integer >= 1.
+		sv, ok := baggage["__seq"]
+		if !ok {
+			backend.InvariantBroken("a bridge caller sends its child ordinal (__seq)", "kind=cgpb")
 		}
+		n, e := strconv.Atoi(sv)
+		if e != nil || n < 1 {
+			backend.InvariantBroken("the caller's child ordinal (__seq) is an integer >= 1", "__seq=", sv)
+		}
+		ctx = context.WithValue(ctx, "seqNum", n)
 	}
 
-	tp, _ := handler.CollClient.GetTracerProvider(ctx)
+	tp, tpErr := handler.CollClient.GetTracerProvider(ctx)
+	if tpErr != nil { // Tomislav-RetCtx: invariant (runtime/core/backend/invariant.go)
+		backend.InvariantBroken("the collector client provides a tracer provider", tpErr)
+	}
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindServer))
 	defer span.End()
+	// Tomislav-RetCtx: the span the SDK started is valid and continues the caller's trace.
+	if sc := span.SpanContext(); !sc.IsValid() || (traceCtx != "" && sc.TraceID() != callerTraceID) {
+		backend.InvariantBroken("the server span is valid and continues the caller's trace", "caller=", callerTraceID.String(), " span=", sc.TraceID().String())
+	}
 
 	// Extract new baggage from span attributes by casting to ReadWriteSpan
 	if baggage == nil {
@@ -930,6 +1027,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, int(childCount.Load())); prepared { // Tomislav-RetCtx: the child count, not read back off the span
 			retCtx = out
 		}
+		if retCtx != "" && !backend.IsPackedRetCtx(retCtx) { // Tomislav-RetCtx: the only form a service sends
+			backend.InvariantBroken("the reverse context sent back is a packed envelope", "first byte=", retCtx[0])
+		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.
 		retCtx = backend.RetCtxText(retCtx)
 	}
@@ -969,17 +1069,33 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// Sampling-aware fast path: compact "U:" carrier = head-unsampled upstream ->
 	// skip JSON deserialize/baggage/span; restore remote ctx and call the service.
 	if len(traceCtx) >= 50 && traceCtx[0:2] == "U:" {
-		tid, _ := trace.TraceIDFromHex(traceCtx[2:34])
-		sid, _ := trace.SpanIDFromHex(traceCtx[34:50])
+		// Tomislav-RetCtx: invariants (runtime/core/backend/invariant.go): only a traced caller writes
+		// this carrier, "U:" and 32 + 16 hex digits naming a valid trace and span.
+		if len(traceCtx) != 50 {
+			backend.InvariantBroken("an unsampled carrier is U: and 48 hex digits", "length=", len(traceCtx))
+		}
+		tid, tidErr := trace.TraceIDFromHex(traceCtx[2:34])
+		sid, sidErr := trace.SpanIDFromHex(traceCtx[34:50])
+		if tidErr != nil || sidErr != nil {
+			backend.InvariantBroken("the unsampled carrier names a valid trace ID and span ID", traceCtx)
+		}
 		rsc := trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, Remote: true})
 		ctx = trace.ContextWithRemoteSpanContext(ctx, rsc)
 		{{RetVars $f "err"}} = handler.Service.{{$f.Name}}({{ArgVars $f "ctx"}})
 		return
 	}
 	var baggage map[string]string
+	var callerTraceID trace.TraceID // Tomislav-RetCtx: the trace the server span must continue
 	if traceCtx != "" {
-		span_ctx_config, upstreamBaggage, _ := backend.GetSpanContext(traceCtx)
+		span_ctx_config, upstreamBaggage, carrierErr := backend.GetSpanContext(traceCtx)
+		if carrierErr != nil { // Tomislav-RetCtx: only a traced caller writes this carrier
+			backend.InvariantBroken("the forward carrier decodes", carrierErr)
+		}
 		span_ctx := trace.NewSpanContext(span_ctx_config)
+		if !span_ctx.IsValid() {
+			backend.InvariantBroken("the forward carrier names a valid trace ID and span ID", traceCtx)
+		}
+		callerTraceID = span_ctx.TraceID()
 		ctx = trace.ContextWithRemoteSpanContext(ctx, span_ctx)
 		
 		// Set baggage in context for span processor to read
@@ -994,17 +1110,29 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 	// processor's OnStart reads the correct seqNum (else it defaults to 0 and
 	// CGPB HA / SB ordinals are never emitted).
 	if baggage != nil {
-		if sv, ok := baggage["__seq"]; ok {
-			if n, e := strconv.Atoi(sv); e == nil {
-				ctx = context.WithValue(ctx, "seqNum", n)
-			}
+		// Tomislav-RetCtx: a bridge caller always sends its child ordinal, an integer >= 1.
+		sv, ok := baggage["__seq"]
+		if !ok {
+			backend.InvariantBroken("a bridge caller sends its child ordinal (__seq)", "kind=pb")
 		}
+		n, e := strconv.Atoi(sv)
+		if e != nil || n < 1 {
+			backend.InvariantBroken("the caller's child ordinal (__seq) is an integer >= 1", "__seq=", sv)
+		}
+		ctx = context.WithValue(ctx, "seqNum", n)
 	}
 
-	tp, _ := handler.CollClient.GetTracerProvider(ctx)
+	tp, tpErr := handler.CollClient.GetTracerProvider(ctx)
+	if tpErr != nil { // Tomislav-RetCtx: invariant (runtime/core/backend/invariant.go)
+		backend.InvariantBroken("the collector client provides a tracer provider", tpErr)
+	}
 	tr := tp.Tracer("{{$service}}")
 	ctx, span := tr.Start(ctx, "{{$service}}Server_{{$f.Name}}", trace.WithSpanKind(trace.SpanKindServer))
 	defer span.End()
+	// Tomislav-RetCtx: the span the SDK started is valid and continues the caller's trace.
+	if sc := span.SpanContext(); !sc.IsValid() || (traceCtx != "" && sc.TraceID() != callerTraceID) {
+		backend.InvariantBroken("the server span is valid and continues the caller's trace", "caller=", callerTraceID.String(), " span=", sc.TraceID().String())
+	}
 
 	// Extract new baggage from span attributes by casting to ReadWriteSpan
 	if baggage == nil {
@@ -1061,6 +1189,9 @@ func (handler *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.C
 		retCtx = backend.MergedChildren(ctx)
 		if out, prepared := backend.PrepareServerCheckpoint(tp, span, retCtx, int(childCount.Load())); prepared { // Tomislav-RetCtx: the child count, not read back off the span
 			retCtx = out
+		}
+		if retCtx != "" && !backend.IsPackedRetCtx(retCtx) { // Tomislav-RetCtx: the only form a service sends
+			backend.InvariantBroken("the reverse context sent back is a packed envelope", "first byte=", retCtx[0])
 		}
 		// Tomislav-RetCtx: raw in the process; the response field needs text.
 		retCtx = backend.RetCtxText(retCtx)

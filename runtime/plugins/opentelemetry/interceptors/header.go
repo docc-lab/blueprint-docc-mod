@@ -3,6 +3,8 @@ package interceptors
 import (
 	"encoding/base64"
 	"unsafe"
+
+	"github.com/blueprint-uservices/blueprint/runtime/core/backend"
 )
 
 // How the interceptors' two values are written as header text.
@@ -43,15 +45,22 @@ func retCtxHeader(retCtx string) string {
 }
 
 // retCtxFromHeader turns a trailer or header value back into the reverse context the server's
-// backend produced.  A value that does not decode means nothing usable came back: "".  Called by the
-// client side (client.go, http_client.go).
+// backend produced.  Called by the client side (client.go, http_client.go).
+//
+// Tomislav-RetCtx: only a traced server writes this value (retCtxHeader above, from a packed
+// envelope), so one that does not decode, or decodes to anything but a packed envelope, is a bug
+// on that side (it used to be dropped as "").
 func retCtxFromHeader(v string) string {
 	if v == "" {
 		return ""
 	}
 	raw, err := headerEncoding.DecodeString(v)
 	if err != nil {
-		return ""
+		backend.InvariantBroken("the reverse context header decodes", err) // runtime/core/backend/invariant.go
 	}
-	return unsafe.String(unsafe.SliceData(raw), len(raw)) // raw is never written again
+	retCtx := unsafe.String(unsafe.SliceData(raw), len(raw)) // raw is never written again
+	if !backend.IsPackedRetCtx(retCtx) {
+		brokenCount("the reverse context received is a packed envelope", "length", len(raw), 0) // invariants.go
+	}
+	return retCtx
 }

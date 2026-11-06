@@ -92,15 +92,27 @@ func (c *clientSide) prepare(call *clientCall, ctx context.Context) (context.Con
 	baggage := copyBaggage(ctx) // below
 
 	// 3. Bridges: take the next child ordinal from the enclosing server's counter.  Like the
-	//    wrappers, this assumes the caller runs inside a traced server (which sets the counter);
-	//    a missing counter panics there too.
+	//    wrappers, this requires the caller to run inside a traced server (which sets the counter).
 	if c.v.countChildren {
-		childCount := ctx.Value("childCount").(*atomic.Uint64)
+		// Tomislav-RetCtx: checked type assertions, so a call from outside a traced request (no
+		// server put the counter on ctx: BUG_REPORT.md F-08) panics naming the rule it broke, in
+		// both versions, instead of with a bare type-assertion error.
+		childCount, ok := ctx.Value("childCount").(*atomic.Uint64)
+		if !ok {
+			brokenValue("a bridge client call runs inside a traced request (child counter on the context)", "kind", c.v.name) // invariants.go
+		}
 		if c.v.endEvents {
-			call.endEvents = ctx.Value("endEvents").(*[]int)
-			call.childrenMutex = ctx.Value("childrenMutex").(*sync.Mutex)
+			if call.endEvents, ok = ctx.Value("endEvents").(*[]int); !ok {
+				backend.InvariantBroken("an SB client call runs inside a traced request (end-event list on the context)")
+			}
+			if call.childrenMutex, ok = ctx.Value("childrenMutex").(*sync.Mutex); !ok {
+				backend.InvariantBroken("an SB client call runs inside a traced request (end-event mutex on the context)")
+			}
 		}
 		call.seqNum = int(childCount.Add(1))
+		if call.seqNum < 1 { // Tomislav-RetCtx: the first child is 1; int(uint64) wraps past MaxInt
+			brokenCount("a child ordinal is >= 1", "seqNum", call.seqNum, 1)
+		}
 		ctx = context.WithValue(ctx, "seqNum", call.seqNum) // read by the processor when our span starts
 		baggage["__seq"] = strconv.Itoa(call.seqNum)        // read by the server on the other side
 	}
@@ -117,6 +129,7 @@ func carry(ctx context.Context, span trace.Span, baggage map[string]string, attr
 // (http_client.go).
 func carrierFor(span trace.Span, baggage map[string]string, attrBaggage bool) string {
 	mergeSpanBaggage(span, baggage, attrBaggage)      // interceptors.go
+	checkClientSpan(span)                             // Tomislav-RetCtx: invariants.go
 	return encodeCarrier(span.SpanContext(), baggage) // carrier.go
 }
 
@@ -214,6 +227,9 @@ var baggageMaps = sync.Pool{New: func() any { return make(map[string]string, 8) 
 // RetCtxKey (already lower case) on every call.
 func retCtxFromTrailer(trailer metadata.MD) string {
 	if v := trailer[RetCtxKey]; len(v) > 0 { // RetCtxKey: interceptors.go
+		if len(v) > 1 { // Tomislav-RetCtx: the server sets exactly one (server.go, setRetCtxTrailer)
+			brokenCount("one reverse context per response", "values", len(v), 1)
+		}
 		return retCtxFromHeader(v[0]) // header.go
 	}
 	return ""
